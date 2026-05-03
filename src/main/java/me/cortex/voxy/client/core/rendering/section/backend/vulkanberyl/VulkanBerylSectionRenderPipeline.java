@@ -78,14 +78,12 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         if (this.sectionRenderer == null) {
             throw new IllegalStateException("VULKANMOD_BERYL section renderer is not set");
         }
-        if (!(viewport instanceof VulkanBerylViewport)) {
-            throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylViewport");
-        }
+        VulkanBerylViewport vulkanViewport = VulkanBerylViewport.require(viewport);
         Renderer renderer = this.requireRenderer();
         SwapChain swapChain = this.requireSwapChain(renderer);
         VkExtent2D extent = this.requireExtent(swapChain);
         this.requireValidExtent(extent);
-        this.requireCompatibleViewport(viewport, extent.width(), extent.height());
+        this.requireCompatibleViewport(vulkanViewport, extent.width(), extent.height());
     }
 
     @Override
@@ -120,9 +118,7 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         if (this.sectionRenderer == null) {
             throw new IllegalStateException("VULKANMOD_BERYL section renderer is not set");
         }
-        if (!(viewport instanceof VulkanBerylViewport)) {
-            throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylViewport");
-        }
+        VulkanBerylViewport.require(viewport);
         if (!(chunkBoundRenderer instanceof VulkanBerylChunkBoundsRenderer)) {
             throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylChunkBoundsRenderer");
         }
@@ -131,7 +127,7 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         SwapChain swapChain = this.requireSwapChain(renderer);
         VkExtent2D extent = this.requireExtent(swapChain);
         this.requireValidExtent(extent);
-        this.requireCompatibleViewport(viewport, extent.width(), extent.height());
+        this.requireCompatibleViewport(vulkanViewport, extent.width(), extent.height());
 
         // MDIC uses this hook for an OpenGL chunk-bound/depth-bound pass. Vulkan/Beryl does not yet have an
         // equivalent depth-bound resource, so this is intentionally a validated no-op until a real pre-pass exists.
@@ -145,9 +141,7 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         if (this.sectionRenderer == null) {
             throw new IllegalStateException("VULKANMOD_BERYL section renderer is not set");
         }
-        if (!(viewport instanceof VulkanBerylViewport)) {
-            throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylViewport");
-        }
+        VulkanBerylViewport vulkanViewport = VulkanBerylViewport.require(viewport);
         if (!(frame instanceof VulkanBerylRenderFrameContext vulkanFrame)) {
             throw new IllegalArgumentException("Expected VulkanBerylRenderFrameContext");
         }
@@ -156,9 +150,10 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         SwapChain swapChain = this.requireSwapChain(renderer);
         VkExtent2D extent = this.requireExtent(swapChain);
         this.requireValidExtent(extent);
-        this.requireCompatibleViewport(viewport, extent.width(), extent.height());
+        this.requireCompatibleViewport(vulkanViewport, extent.width(), extent.height());
+        VulkanBerylViewportRenderList.require(vulkanViewport.getRenderList());
 
-        this.backendRuntime.doPrimaryWork(viewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
+        this.backendRuntime.doPrimaryWork(vulkanViewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
     }
 
     @Override
