@@ -13,7 +13,7 @@ import me.cortex.voxy.client.core.rendering.SectionUpdateRouter;
 import me.cortex.voxy.client.core.rendering.building.BuiltSection;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.section.geometry.BasicAsyncGeometryManager;
-import me.cortex.voxy.client.core.rendering.section.geometry.BasicSectionGeometryData;
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.client.core.rendering.util.UploadStream;
 import me.cortex.voxy.common.Logger;
@@ -92,7 +92,7 @@ public class AsyncNodeManager {
         // it MUST ONLY be accessed on the render thread
         // AsyncNodeManager will use an AsyncGeometryManager as the manager for the data store, and sync the results on the render thread
         this.geometryData = geometryData;
-        this.geometryCapacity = ((BasicSectionGeometryData)geometryData).getGeometryCapacityBytes();
+        this.geometryCapacity = ((MDICSectionGeometryData)geometryData).getGeometryCapacityBytes();
 
         this.maxNodeCount = maxNodeCount;
 
@@ -115,7 +115,7 @@ public class AsyncNodeManager {
         });
         this.thread.setName("Async Node Manager");
 
-        this.geometryManager = new BasicAsyncGeometryManager(((BasicSectionGeometryData)geometryData).getMaxSectionCount(), this.geometryCapacity);
+        this.geometryManager = new BasicAsyncGeometryManager(((MDICSectionGeometryData)geometryData).getMaxSectionCount(), this.geometryCapacity);
 
         this.router = new SectionUpdateRouter();
         this.router.setCallbacks(pos->{//On initial render gen, try get from geometry cache
@@ -535,13 +535,13 @@ public class AsyncNodeManager {
         }
 
         {//Update basic geometry data
-            var store = (BasicSectionGeometryData)this.geometryData;
+            var store = (MDICSectionGeometryData)this.geometryData;
 
             store.setSectionCount(results.geometrySectionCount);
 
             var upload = results.geometryUpload;
             if (!upload.dataUploadPoints.isEmpty()) {
-                ((BasicSectionGeometryData)this.geometryData).ensureAccessable(upload.maxElementAccess);
+                ((MDICSectionGeometryData)this.geometryData).ensureAccessable(upload.maxElementAccess);
                 TimingStatistics.A.start();
 
                 int copies = upload.dataUploadPoints.size();
@@ -556,7 +556,7 @@ public class AsyncNodeManager {
                 this.multiMemcpy.bind();
                 glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, UploadStream.INSTANCE.getRawBufferId(), ptr, upCopies);
                 glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, UploadStream.INSTANCE.getRawBufferId(), ptr+upCopies, upScratchSize);
-                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ((BasicSectionGeometryData) this.geometryData).getGeometryBuffer().id);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ((MDICSectionGeometryData) this.geometryData).getGeometryBuffer().id);
 
                 if (copies > 500) {
                     Logger.warn("Large amount of copies, lag will probably happen: " + copies);
@@ -582,7 +582,7 @@ public class AsyncNodeManager {
             this.scatterWrite.bind();
             glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, UploadStream.INSTANCE.getRawBufferId(), ptr, UploadStream.alignUpAlloc(streamSize));
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, nodeBuffer.id);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ((BasicSectionGeometryData) this.geometryData).getMetadataBuffer().id);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ((MDICSectionGeometryData) this.geometryData).getMetadataBuffer().id);
             glUniform1ui(0, count);
             glMemoryBarrier(GL_UNIFORM_BARRIER_BIT|GL_SHADER_STORAGE_BARRIER_BIT);
             glDispatchCompute((count+127)/128, 1, 1);

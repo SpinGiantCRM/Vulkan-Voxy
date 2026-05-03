@@ -12,7 +12,7 @@ import me.cortex.voxy.client.core.gl.shader.ShaderLoader;
 import me.cortex.voxy.client.core.gl.shader.ShaderType;
 import me.cortex.voxy.client.core.model.ModelStore;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
-import me.cortex.voxy.client.core.rendering.section.geometry.BasicSectionGeometryData;
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.util.DownloadStream;
 import me.cortex.voxy.client.core.rendering.util.LightMapHelper;
 import me.cortex.voxy.client.core.rendering.util.SharedIndexBuffer;
@@ -44,8 +44,8 @@ import static org.lwjgl.opengl.GL45.glBindTextureUnit;
 import static org.lwjgl.opengl.NVRepresentativeFragmentTest.GL_REPRESENTATIVE_FRAGMENT_TEST_NV;
 
 //Uses MDIC to render the sections
-public class MDICSectionRenderer extends AbstractSectionRenderer<MDICViewport, BasicSectionGeometryData> {
-    public static final Factory<MDICViewport, BasicSectionGeometryData> FACTORY = AbstractSectionRenderer.Factory.create(MDICSectionRenderer.class);
+public class MDICSectionRenderer extends AbstractSectionRenderer<MDICViewport, MDICSectionGeometryData> {
+    public static final Factory<MDICViewport, MDICSectionGeometryData> FACTORY = AbstractSectionRenderer.Factory.create(MDICSectionRenderer.class);
 
     public static final int OPAQUE_DRAW_COUNT = 400_000;//in draw calls
     public static final int TRANSLUCENT_DRAW_COUNT = 100_000;//in draw calls
@@ -97,7 +97,7 @@ public class MDICSectionRenderer extends AbstractSectionRenderer<MDICViewport, B
     private final GlBuffer statisticsBuffer = new GlBuffer(1024).zero();
 
     private final AbstractRenderPipeline pipeline;
-    public MDICSectionRenderer(AbstractRenderPipeline pipeline, ModelStore modelStore, BasicSectionGeometryData geometryData) {
+    public MDICSectionRenderer(AbstractRenderPipeline pipeline, ModelStore modelStore, MDICSectionGeometryData geometryData) {
         super(pipeline.properties, modelStore, geometryData);
         this.pipeline = pipeline;
         //The pipeline can be used to transform the renderer in abstract ways

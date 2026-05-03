@@ -5,7 +5,7 @@ import me.cortex.voxy.client.core.AbstractRenderPipeline;
 import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.model.ModelStore;
 import me.cortex.voxy.client.core.rendering.Viewport;
-import me.cortex.voxy.client.core.rendering.section.geometry.BasicSectionGeometryData;
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.common.Logger;
 import net.minecraft.world.level.dimension.DimensionType;
