@@ -1,5 +1,8 @@
 package me.cortex.voxy.client.core.rendering.section.backend;
 
+import me.cortex.voxy.client.core.AbstractRenderPipeline;
+import me.cortex.voxy.client.core.RenderPipelineFactory;
+import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.RenderResourceReuse;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
@@ -10,6 +13,8 @@ import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionRend
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.common.Logger;
 import net.fabricmc.loader.api.FabricLoader;
+
+import java.util.function.BooleanSupplier;
 
 public final class SectionRendererBackendSelector {
     private static final String VULKANMOD_MOD_ID = "vulkanmod";
@@ -55,6 +60,11 @@ public final class SectionRendererBackendSelector {
                 @Override
                 public SectionRenderBackendRuntime createBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
                     return new MDICRenderBackendRuntime(nodeManager, renderGen);
+                }
+
+                @Override
+                public AbstractRenderPipeline createPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
+                    return RenderPipelineFactory.createPipeline(properties, backendRuntime, frexSupplier);
                 }
 
                 @Override

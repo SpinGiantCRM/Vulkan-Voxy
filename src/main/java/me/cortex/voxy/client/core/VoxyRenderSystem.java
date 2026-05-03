@@ -122,7 +122,7 @@ public class VoxyRenderSystem {
                 this.nodeManager.start();
             }
 
-            this.pipeline = RenderPipelineFactory.createPipeline(this.properties, this.backendRuntime, this::frexStillHasWork);
+            this.pipeline = backendContext.createPipeline(this.properties, this.backendRuntime, this::frexStillHasWork);
             this.pipeline.setupExtraModelBakeryData(this.modelService);//Configure the model service
 
             //Late stage traversal compile for shaders with taa
