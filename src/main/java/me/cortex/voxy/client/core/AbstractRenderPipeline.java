@@ -1,5 +1,7 @@
 package me.cortex.voxy.client.core;
 
+import com.mojang.blaze3d.platform.GlConst;
+import com.mojang.blaze3d.platform.GlStateManager;
 import me.cortex.voxy.client.RenderStatistics;
 import me.cortex.voxy.client.TimingStatistics;
 import me.cortex.voxy.client.VoxyClient;
@@ -11,6 +13,7 @@ import me.cortex.voxy.client.core.rendering.post.FullscreenBlit;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.RenderFrameContext;
+import me.cortex.voxy.client.core.rendering.section.backend.RenderBackendStateGuard;
 import me.cortex.voxy.client.core.rendering.section.backend.RenderViewportSize;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
@@ -52,6 +55,12 @@ import static org.lwjgl.opengl.GL45.glClearNamedFramebufferfi;
 import static org.lwjgl.opengl.GL45.glGetNamedFramebufferAttachmentParameteri;
 import static org.lwjgl.opengl.GL45C.glBindTextureUnit;
 import static org.lwjgl.opengl.GL11.glGetInteger;
+import static org.lwjgl.opengl.GL43C.GL_SHADER_STORAGE_BUFFER;
+import static org.lwjgl.opengl.GL30C.glGetIntegeri;
+import static org.lwjgl.opengl.GL30C.glGenSamplers;
+import static org.lwjgl.opengl.GL30C.glBindSampler;
+import static org.lwjgl.opengl.GL20C.glUseProgram;
+import static org.lwjgl.opengl.GL15C.glBindBufferBase;
 
 public abstract class AbstractRenderPipeline extends TrackedObject implements SectionRenderPipeline {
     public final RenderProperties properties;
@@ -141,6 +150,36 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
             public void close() {
                 glBindFramebuffer(GL_FRAMEBUFFER, oldFB);
                 glViewport(dims[0], dims[1], dims[2], dims[3]);
+            }
+        };
+    }
+
+
+    @Override
+    public RenderBackendStateGuard enterFrameStateGuard() {
+        int[] oldBufferBindings = new int[10];
+        for (int i = 0; i < oldBufferBindings.length; i++) {
+            oldBufferBindings[i] = glGetIntegeri(GL_SHADER_STORAGE_BUFFER_BINDING, i);
+        }
+
+        return () -> {
+            glUseProgram(0);
+            glEnable(GL_DEPTH_TEST);
+            glDisable(GL_STENCIL_TEST);
+
+            GlStateManager._glBindVertexArray(0);
+
+            GlStateManager._activeTexture(GlConst.GL_TEXTURE1);
+            for (int i = 0; i < 12; i++) {
+                GlStateManager._activeTexture(GlConst.GL_TEXTURE0 + i);
+                GlStateManager._bindTexture(0);
+                glBindSampler(i, 0);
+            }
+
+            IrisUtil.clearIrisSamplers();
+
+            for (int i = 0; i < oldBufferBindings.length; i++) {
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, oldBufferBindings[i]);
             }
         };
     }
