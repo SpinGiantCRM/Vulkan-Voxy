@@ -5,13 +5,10 @@ import me.cortex.voxy.client.TimingStatistics;
 import me.cortex.voxy.client.VoxyClient;
 import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.Viewport;
-import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
-import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTraverser;
-import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
 import me.cortex.voxy.client.core.rendering.post.FullscreenBlit;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.util.DepthFramebuffer;
-import me.cortex.voxy.client.core.rendering.util.DownloadStream;
 import me.cortex.voxy.client.core.util.GPUTiming;
 import me.cortex.voxy.common.util.TrackedObject;
 import org.joml.Matrix4f;
@@ -39,7 +36,6 @@ import static org.lwjgl.opengl.GL30C.glBindFramebuffer;
 import static org.lwjgl.opengl.GL42.GL_LEQUAL;
 import static org.lwjgl.opengl.GL42.GL_NOTEQUAL;
 import static org.lwjgl.opengl.GL42.glDepthFunc;
-import static org.lwjgl.opengl.GL42.*;
 import static org.lwjgl.opengl.GL45.glClearNamedFramebufferfi;
 import static org.lwjgl.opengl.GL45.glGetNamedFramebufferAttachmentParameteri;
 import static org.lwjgl.opengl.GL45C.glBindTextureUnit;
@@ -48,9 +44,7 @@ public abstract class AbstractRenderPipeline extends TrackedObject {
     public final RenderProperties properties;
     private final BooleanSupplier frexStillHasWork;
 
-    private final AsyncNodeManager nodeManager;
-    private final NodeCleaner nodeCleaner;
-    private final HierarchicalOcclusionTraverser traversal;
+    private final SectionRenderBackendRuntime backendRuntime;
 
     protected AbstractSectionRenderer<?,?> sectionRenderer;
 
@@ -66,12 +60,10 @@ public abstract class AbstractRenderPipeline extends TrackedObject {
         glSamplerParameteri(DEPTH_SAMPLER, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     }
 
-    protected AbstractRenderPipeline(RenderProperties properties, AsyncNodeManager nodeManager, NodeCleaner nodeCleaner, HierarchicalOcclusionTraverser traversal, BooleanSupplier frexSupplier, boolean deferTranslucency) {
+    protected AbstractRenderPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier, boolean deferTranslucency) {
         this.properties = properties;
         this.frexStillHasWork = frexSupplier;
-        this.nodeManager = nodeManager;
-        this.nodeCleaner = nodeCleaner;
-        this.traversal = traversal;
+        this.backendRuntime = backendRuntime;
         this.deferTranslucency = deferTranslucency;
 
         this.depthStencilSetup = new FullscreenBlit(properties, "voxy:post/fullscreen2.vert", "voxy:post/setup_stencil_depth.frag");
@@ -188,33 +180,7 @@ public abstract class AbstractRenderPipeline extends TrackedObject {
     }
 
     protected void innerPrimaryWork(Viewport<?> viewport, int depthBuffer) {
-
-        //Compute the mip chain
-        viewport.hiZBuffer.buildMipChain(depthBuffer, viewport.width, viewport.height);
-
-        do {
-            TimingStatistics.main.stop();
-            TimingStatistics.dynamic.start();
-
-            TimingStatistics.D.start();
-            //Tick download stream
-            DownloadStream.INSTANCE.tick();
-            TimingStatistics.D.stop();
-
-            this.nodeManager.tick(this.traversal.getNodeMetadataStore(), this.nodeCleaner);
-            //glFlush();
-
-            this.nodeCleaner.tick(this.traversal.getNodeBuffer());//Probably do this here??
-
-            TimingStatistics.dynamic.stop();
-            TimingStatistics.main.start();
-
-            glMemoryBarrier(GL_FRAMEBUFFER_BARRIER_BIT | GL_PIXEL_BUFFER_BARRIER_BIT);
-
-            TimingStatistics.F.start();
-            this.traversal.doTraversal(viewport);
-            TimingStatistics.F.stop();
-        } while (this.frexStillHasWork.getAsBoolean());
+        this.backendRuntime.doPrimaryWork(viewport, depthBuffer, this.frexStillHasWork);
     }
 
     @Override
@@ -227,7 +193,7 @@ public abstract class AbstractRenderPipeline extends TrackedObject {
 
     public void addDebug(List<String> debug) {
         this.sectionRenderer.addDebug(debug);
-        this.traversal.addDebug(debug);
+        this.backendRuntime.addDebug(debug);
         RenderStatistics.addDebug(debug);
     }
 

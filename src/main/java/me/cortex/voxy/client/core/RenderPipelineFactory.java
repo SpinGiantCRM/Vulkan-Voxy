@@ -1,8 +1,6 @@
 package me.cortex.voxy.client.core;
 
-import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
-import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTraverser;
-import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.util.IrisUtil;
 import me.cortex.voxy.client.iris.IGetIrisVoxyPipelineData;
 import me.cortex.voxy.common.Logger;
@@ -12,19 +10,19 @@ import net.irisshaders.iris.api.v0.IrisApi;
 import java.util.function.BooleanSupplier;
 
 public class RenderPipelineFactory {
-    public static AbstractRenderPipeline createPipeline(RenderProperties properties, AsyncNodeManager nodeManager, NodeCleaner nodeCleaner, HierarchicalOcclusionTraverser traversal, BooleanSupplier frexSupplier) {
+    public static AbstractRenderPipeline createPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
         //Note this is where will choose/create e.g. IrisRenderPipeline or normal pipeline
         AbstractRenderPipeline pipeline = null;
         if (IrisUtil.IRIS_INSTALLED && IrisUtil.SHADER_SUPPORT) {
-            pipeline = createIrisPipeline(properties, nodeManager, nodeCleaner, traversal, frexSupplier);
+            pipeline = createIrisPipeline(properties, backendRuntime, frexSupplier);
         }
         if (pipeline == null) {
-            pipeline = new NormalRenderPipeline(properties, nodeManager, nodeCleaner, traversal, frexSupplier);
+            pipeline = new NormalRenderPipeline(properties, backendRuntime, frexSupplier);
         }
         return pipeline;
     }
 
-    private static AbstractRenderPipeline createIrisPipeline(RenderProperties properties, AsyncNodeManager nodeManager, NodeCleaner nodeCleaner, HierarchicalOcclusionTraverser traversal, BooleanSupplier frexSupplier) {
+    private static AbstractRenderPipeline createIrisPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
         var irisPipe = Iris.getPipelineManager().getPipelineNullable();
         if (irisPipe == null) {
             return null;
@@ -36,7 +34,7 @@ public class RenderPipelineFactory {
             }
             Logger.info("Creating voxy iris render pipeline");
             try {
-                return new IrisVoxyRenderPipeline(properties, pipeData, nodeManager, nodeCleaner, traversal, frexSupplier);
+                return new IrisVoxyRenderPipeline(properties, pipeData, backendRuntime, frexSupplier);
             } catch (Exception e) {
                 Logger.error("Failed to create iris render pipeline", e);
                 IrisUtil.disableIrisShaders();
