@@ -118,7 +118,7 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         if (this.sectionRenderer == null) {
             throw new IllegalStateException("VULKANMOD_BERYL section renderer is not set");
         }
-        VulkanBerylViewport.require(viewport);
+        VulkanBerylViewport vulkanViewport = VulkanBerylViewport.require(viewport);
         if (!(chunkBoundRenderer instanceof VulkanBerylChunkBoundsRenderer)) {
             throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylChunkBoundsRenderer");
         }
