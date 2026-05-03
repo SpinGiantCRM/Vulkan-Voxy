@@ -7,6 +7,7 @@ import me.cortex.voxy.client.core.rendering.hierachical.SectionGeometrySyncBacke
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
+import me.cortex.voxy.client.core.rendering.section.backend.RenderBackendStateGuard;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendContext;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 
@@ -15,6 +16,11 @@ import java.util.function.BooleanSupplier;
 public final class VulkanBerylSectionBackendContext implements SectionRendererBackendContext {
     private static UnsupportedOperationException notImplemented(String component) {
         return new UnsupportedOperationException("VULKANMOD_BERYL " + component + " is not implemented yet");
+    }
+
+    @Override
+    public RenderBackendStateGuard enterConstructionStateGuard() {
+        return RenderBackendStateGuard.NO_OP;
     }
 
     @Override

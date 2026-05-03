@@ -1,7 +1,5 @@
 package me.cortex.voxy.client.core;
 
-import com.mojang.blaze3d.opengl.GlConst;
-import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -48,9 +46,6 @@ import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
 import static org.lwjgl.opengl.GL11.glGetIntegerv;
 import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.opengl.GL30C.*;
-import static org.lwjgl.opengl.GL33.glBindSampler;
-import static org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER;
-import static org.lwjgl.opengl.GL43C.GL_SHADER_STORAGE_BUFFER_BINDING;
 
 public class VoxyRenderSystem {
     private final WorldEngine worldIn;
@@ -89,22 +84,12 @@ public class VoxyRenderSystem {
             Minecraft.getInstance().getChatListener().handleSystemMessage(Component.literal(msg), false);
         }
 
-        //Fking HATE EVERYTHING AAAAAAAAAAAAAAAA
-        int[] oldBufferBindings = new int[10];
-        for (int i = 0; i < oldBufferBindings.length; i++) {
-            oldBufferBindings[i] = glGetIntegeri(GL_SHADER_STORAGE_BUFFER_BINDING, i);
-        }
-
         try {
-            //wait for opengl to be finished, this should hopefully ensure all memory allocations are free
-            glFinish();
-            glFinish();
-
             this.worldIn = world;
 
             this.properties = RenderProperties.getRenderProperties();
             var backendContext = getRenderBackendContext();
-            {
+            try (var stateGuard = backendContext.enterConstructionStateGuard()) {
                 this.modelService = new ModelBakerySubsystem(world.getMapper());
                 this.renderGen = new RenderGenerationService(world, this.modelService, sm, backendContext.usesMeshlets());
 
@@ -157,16 +142,6 @@ public class VoxyRenderSystem {
         } catch (RuntimeException e) {
             world.releaseRef();//If something goes wrong, we must release the world first
             throw e;
-        }
-
-        for (int i = 0; i < oldBufferBindings.length; i++) {
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, oldBufferBindings[i]);
-        }
-
-        for (int i = 0; i < 12; i++) {
-            GlStateManager._activeTexture(GlConst.GL_TEXTURE0+i);
-            GlStateManager._bindTexture(0);
-            glBindSampler(i, 0);
         }
     }
 
