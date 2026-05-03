@@ -6,10 +6,8 @@ import me.cortex.voxy.client.core.gl.GlTexture;
 import me.cortex.voxy.client.core.gl.shader.Shader;
 import me.cortex.voxy.client.core.gl.shader.ShaderType;
 import me.cortex.voxy.client.core.rendering.Viewport;
-import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
-import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTraverser;
-import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
 import me.cortex.voxy.client.core.rendering.post.FullscreenBlit;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.util.DepthFramebuffer;
 import me.cortex.voxy.client.core.util.GPUTiming;
 import net.minecraft.client.Minecraft;
@@ -40,8 +38,8 @@ public class NormalRenderPipeline extends AbstractRenderPipeline {
 
     private final SSAO ssao;
 
-    protected NormalRenderPipeline(RenderProperties properties, AsyncNodeManager nodeManager, NodeCleaner nodeCleaner, HierarchicalOcclusionTraverser traversal, BooleanSupplier frexSupplier) {
-        super(properties, nodeManager, nodeCleaner, traversal, frexSupplier, false);
+    protected NormalRenderPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
+        super(properties, backendRuntime, frexSupplier, false);
         this.useEnvFog = VoxyConfig.CONFIG.useEnvironmentalFog;
         this.finalBlit = new FullscreenBlit(properties, "voxy:post/blit_texture_depth_cutout.frag",
                 a->a.defineIf("USE_ENV_FOG", this.useEnvFog).define("EMIT_COLOUR"));

@@ -19,8 +19,6 @@ import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.ViewportSelector;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
-import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTraverser;
-import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
 import me.cortex.voxy.client.core.rendering.section.IUsesMeshlets;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
@@ -63,8 +61,6 @@ public class VoxyRenderSystem {
     private final IGeometryData geometryData;
     private final AsyncNodeManager nodeManager;
     private final SectionRenderBackendRuntime backendRuntime;
-    private final NodeCleaner nodeCleaner;
-    private final HierarchicalOcclusionTraverser traversal;
 
 
     private final RenderDistanceTracker renderDistanceTracker;
@@ -117,8 +113,6 @@ public class VoxyRenderSystem {
 
                 this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen, backendContext.createGeometrySyncBackend());
                 this.backendRuntime = backendContext.createBackendRuntime(this.nodeManager, this.renderGen);
-                this.nodeCleaner = this.backendRuntime.getNodeCleaner();
-                this.traversal = this.backendRuntime.getTraversal();
 
                 world.setDirtyCallback(this.nodeManager::worldEvent);
 
@@ -128,7 +122,7 @@ public class VoxyRenderSystem {
                 this.nodeManager.start();
             }
 
-            this.pipeline = RenderPipelineFactory.createPipeline(this.properties, this.nodeManager, this.nodeCleaner, this.traversal, this::frexStillHasWork);
+            this.pipeline = RenderPipelineFactory.createPipeline(this.properties, this.backendRuntime, this::frexStillHasWork);
             this.pipeline.setupExtraModelBakeryData(this.modelService);//Configure the model service
 
             //Late stage traversal compile for shaders with taa
