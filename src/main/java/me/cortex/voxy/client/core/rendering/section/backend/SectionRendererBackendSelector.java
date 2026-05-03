@@ -17,6 +17,15 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.util.function.BooleanSupplier;
 
+import static org.lwjgl.opengl.GL11C.glFinish;
+import static org.lwjgl.opengl.GL30C.glGetIntegeri;
+import static org.lwjgl.opengl.GL33.glBindSampler;
+import static org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER;
+import static org.lwjgl.opengl.GL43C.GL_SHADER_STORAGE_BUFFER_BINDING;
+import static org.lwjgl.opengl.GL43C.glBindBufferBase;
+import com.mojang.blaze3d.opengl.GlConst;
+import com.mojang.blaze3d.opengl.GlStateManager;
+
 public final class SectionRendererBackendSelector {
     private static final String VULKANMOD_MOD_ID = "vulkanmod";
     private static final String BERYL_MOD_ID = "beryl";
@@ -43,6 +52,29 @@ public final class SectionRendererBackendSelector {
     public static SectionRendererBackendContext getContext(SectionRendererBackend backend) {
         return switch (backend) {
             case OPENGL_MDIC -> new SectionRendererBackendContext() {
+                @Override
+                public RenderBackendStateGuard enterConstructionStateGuard() {
+                    int[] oldBufferBindings = new int[10];
+                    for (int i = 0; i < oldBufferBindings.length; i++) {
+                        oldBufferBindings[i] = glGetIntegeri(GL_SHADER_STORAGE_BUFFER_BINDING, i);
+                    }
+
+                    glFinish();
+                    glFinish();
+
+                    return () -> {
+                        for (int i = 0; i < oldBufferBindings.length; i++) {
+                            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, oldBufferBindings[i]);
+                        }
+
+                        for (int i = 0; i < 12; i++) {
+                            GlStateManager._activeTexture(GlConst.GL_TEXTURE0 + i);
+                            GlStateManager._bindTexture(0);
+                            glBindSampler(i, 0);
+                        }
+                    };
+                }
+
                 @Override
                 public boolean usesMeshlets() {
                     return IUsesMeshlets.class.isAssignableFrom(MDICSectionRenderer.FACTORY.clz());
