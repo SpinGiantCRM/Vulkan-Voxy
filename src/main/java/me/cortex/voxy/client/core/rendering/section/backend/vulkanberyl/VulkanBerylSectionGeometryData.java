@@ -73,6 +73,10 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         return this.geometryBuffer.getBufferSize();
     }
 
+    public long getMetadataCapacityBytes() {
+        return this.metadataBuffer.getBufferSize();
+    }
+
     public void setSectionCount(int sectionCount) {
         if (this.freed) {
             throw new IllegalStateException("Cannot update sectionCount after free");
