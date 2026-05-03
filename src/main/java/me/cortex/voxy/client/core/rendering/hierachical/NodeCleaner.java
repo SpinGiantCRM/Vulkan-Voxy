@@ -25,7 +25,7 @@ import static org.lwjgl.opengl.GL43C.*;
 
 
 //TODO : USE THIS IN HierarchicalOcclusionTraverser instead of other shit
-public class NodeCleaner {
+public class NodeCleaner implements NodeCleanupSink {
     //TODO: use batch_visibility_set to clear visibility data when nodes are removed!! (TODO: nodeManager will need to forward info to this)
 
 

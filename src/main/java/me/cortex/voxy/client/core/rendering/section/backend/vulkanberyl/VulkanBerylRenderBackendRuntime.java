@@ -13,12 +13,14 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private final AsyncNodeManager nodeManager;
     private final RenderGenerationService renderGen;
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
+    private final VulkanBerylNodeCleanupSink nodeCleanupSink;
     private boolean freed;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
         this.nodeManager = nodeManager;
         this.renderGen = renderGen;
         this.nodeMetadataStore = new VulkanBerylNodeMetadataStore(nodeManager.maxNodeCount);
+        this.nodeCleanupSink = new VulkanBerylNodeCleanupSink();
     }
 
     @Override
@@ -28,12 +30,19 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     @Override
     public void doPrimaryWork(Viewport<?> viewport, int depthBuffer, BooleanSupplier frexStillHasWork) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL primary render work is not implemented yet");
+        if (this.freed) {
+            throw new IllegalStateException("Cannot execute runtime work after free");
+        }
+        VulkanBerylViewport.require(viewport);
+
+        do {
+            this.nodeManager.tick(this.nodeMetadataStore, this.nodeCleanupSink);
+        } while (frexStillHasWork.getAsBoolean());
     }
 
     @Override
     public void addDebug(List<String> debug) {
-        debug.add("Vulkan/Beryl backend runtime: initialized");
+        debug.add("Vulkan/Beryl backend runtime: initialized (sync-only primary work; node metadata store active)");
     }
 
     VulkanBerylNodeMetadataStore getNodeMetadataStore() {
