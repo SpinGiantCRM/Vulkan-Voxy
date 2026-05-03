@@ -1,6 +1,10 @@
 package me.cortex.voxy.client.core.rendering.section.backend;
 
+import me.cortex.voxy.client.core.RenderResourceReuse;
+import me.cortex.voxy.client.core.rendering.hierachical.MDICSectionGeometrySyncBackend;
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.common.Logger;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -22,13 +26,36 @@ public final class SectionRendererBackendSelector {
         return SectionRendererBackend.OPENGL_MDIC;
     }
 
-    public static AbstractSectionRenderer.Factory<?, ?> getFactoryForActiveBackend() {
-        return getFactory(getActiveBackend());
+    public static SectionRendererBackendContext getContextForActiveBackend() {
+        return getContext(getActiveBackend());
     }
 
-    public static AbstractSectionRenderer.Factory<?, ?> getFactory(SectionRendererBackend backend) {
+    public static SectionRendererBackendContext getContext(SectionRendererBackend backend) {
         return switch (backend) {
-            case OPENGL_MDIC -> MDICSectionRenderer.FACTORY;
+            case OPENGL_MDIC -> new SectionRendererBackendContext() {
+                @Override
+                public AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRendererFactory() {
+                    return MDICSectionRenderer.FACTORY;
+                }
+
+                @Override
+                public IGeometryData createGeometryData() {
+                    return new MDICSectionGeometryData(1 << 20, RenderResourceReuse.getOrCreateGeometryBuffer());
+                }
+
+                @Override
+                public MDICSectionGeometrySyncBackend createGeometrySyncBackend() {
+                    return new MDICSectionGeometrySyncBackend();
+                }
+
+                @Override
+                public void releaseGeometryData(IGeometryData geometryData) {
+                    var mdicGeometryData = (MDICSectionGeometryData) geometryData;
+                    if (mdicGeometryData.isExternalGeometryBuffer) {
+                        RenderResourceReuse.giveBackGeometryBuffer(mdicGeometryData.getGeometryBuffer());
+                    }
+                }
+            };
             case VULKANMOD_BERYL -> throw new UnsupportedOperationException("VULKANMOD_BERYL section renderer backend is not implemented yet");
         };
     }
