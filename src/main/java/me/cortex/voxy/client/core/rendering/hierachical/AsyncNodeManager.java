@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.ints.IntConsumer;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import me.cortex.voxy.client.TimingStatistics;
-import me.cortex.voxy.client.core.gl.GlBuffer;
 import me.cortex.voxy.client.core.rendering.GeometryCache;
 import me.cortex.voxy.client.core.rendering.SectionUpdateRouter;
 import me.cortex.voxy.client.core.rendering.building.BuiltSection;
@@ -490,7 +489,7 @@ public class AsyncNodeManager {
 
     private IntConsumer tlnAddCallback; private IntConsumer tlnRemoveCallback;
     //Render thread synchronization
-    public void tick(GlBuffer nodeBuffer, NodeCleaner cleaner) {//TODO: dont pass nodeBuffer here??, do something else thats better
+    public void tick(NodeMetadataStore nodeMetadataStore, NodeCleaner cleaner) {//TODO: dont pass node metadata store here??, do something else thats better
         if (this.uncaughtException != null) {
             throw new RuntimeException(this.uncaughtException);//Propagate internal exception
         }
@@ -516,7 +515,7 @@ public class AsyncNodeManager {
         this.geometrySyncBackend.applyGeometrySync(this.geometryData, results);
 
         TimingStatistics.B.start();
-        this.geometrySyncBackend.applyScatterWrites(this.geometryData, results, nodeBuffer);
+        this.geometrySyncBackend.applyScatterWrites(this.geometryData, results, nodeMetadataStore);
         TimingStatistics.B.stop();
 
         TimingStatistics.C.start();

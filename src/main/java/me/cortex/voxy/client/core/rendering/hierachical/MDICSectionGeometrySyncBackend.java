@@ -79,7 +79,7 @@ public class MDICSectionGeometrySyncBackend implements SectionGeometrySyncBacken
     }
 
     @Override
-    public void applyScatterWrites(IGeometryData geometryData, AsyncNodeManager.SyncResults results, GlBuffer nodeBuffer) {
+    public void applyScatterWrites(IGeometryData geometryData, AsyncNodeManager.SyncResults results, NodeMetadataStore nodeMetadataStore) {
         if (!results.scatterWriteLocationMap.isEmpty()) {
             int count = results.scatterWriteLocationMap.size();
             int chunks = (count + 3) / 4;
@@ -90,6 +90,7 @@ public class MDICSectionGeometrySyncBackend implements SectionGeometrySyncBacken
 
             this.scatterWrite.bind();
             glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, UploadStream.INSTANCE.getRawBufferId(), ptr, UploadStream.alignUpAlloc(streamSize));
+            var nodeBuffer = ((MDICNodeMetadataStore) nodeMetadataStore).getNodeBuffer();
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, nodeBuffer.id);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ((MDICSectionGeometryData) geometryData).getMetadataBuffer().id);
             glUniform1ui(0, count);
