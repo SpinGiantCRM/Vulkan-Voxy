@@ -4,8 +4,10 @@ import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.NodeMetadataStore;
 import me.cortex.voxy.client.core.rendering.hierachical.SectionGeometrySyncBackend;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
+import net.vulkanmod.vulkan.memory.buffer.Buffer;
 
 public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeometrySyncBackend {
+    private static final long GEOMETRY_ELEMENT_SIZE_BYTES = 8L;
     private boolean freed;
 
     @Override
@@ -27,33 +29,64 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
             throw new IllegalStateException("Vulkan/Beryl geometry usage exceeds capacity: used=" + results.getUsedGeometry() + ", max=" + vulkanGeometryData.getGeometryCapacityBytes());
         }
 
-        if (results.hasGeometryUploadWork()) {
-            int copyCount = results.getGeometryUploadCopyCount();
-            if (copyCount <= 0) {
-                throw new IllegalStateException("Geometry upload work reported but copy count is " + copyCount);
-            }
-            if (results.getGeometryUploadMaxElementAccess() <= 0) {
-                throw new IllegalStateException("Geometry upload work reported but max element access is non-positive");
-            }
-            if (results.getGeometryUploadScratchHeaderAddress() == 0L || results.getGeometryUploadScratchHeaderSizeBytes() <= 0L) {
-                throw new IllegalStateException("Geometry upload scratch header buffer is unreadable");
-            }
-            if (results.getGeometryUploadScratchDataAddress() == 0L || results.getGeometryUploadScratchDataSizeBytes() <= 0L) {
-                throw new IllegalStateException("Geometry upload scratch data buffer is unreadable");
-            }
-            results.forEachGeometryUploadCopy((destinationElementOffset, scratchDataElementOffset, elementCount) -> {
-                if (destinationElementOffset < 0) {
-                    throw new IllegalStateException("Geometry upload destination offset is negative: " + destinationElementOffset);
-                }
-                if (scratchDataElementOffset < 0) {
-                    throw new IllegalStateException("Geometry upload scratch data offset is negative: " + scratchDataElementOffset);
-                }
-                if (elementCount <= 0) {
-                    throw new IllegalStateException("Geometry upload element count must be positive: " + elementCount);
-                }
-            });
-            throw new UnsupportedOperationException("Vulkan/Beryl geometry upload is not implemented yet");
+        if (!results.hasGeometryUploadWork()) {
+            return;
         }
+
+        Buffer geometryBuffer = vulkanGeometryData.getGeometryBuffer();
+        long geometryCapacityBytes = geometryBuffer.getBufferSize();
+        long geometryElementCapacity = geometryCapacityBytes / GEOMETRY_ELEMENT_SIZE_BYTES;
+        int copyCount = results.getGeometryUploadCopyCount();
+        if (copyCount <= 0) {
+            throw new IllegalStateException("Geometry upload work reported but copy count is " + copyCount);
+        }
+
+        int maxElementAccess = results.getGeometryUploadMaxElementAccess();
+        if (maxElementAccess <= 0) {
+            throw new IllegalStateException("Geometry upload work reported but max element access is non-positive");
+        }
+        if ((long) maxElementAccess > geometryElementCapacity) {
+            throw new IllegalStateException("Geometry upload max element access exceeds geometry capacity: maxElementAccess=" + maxElementAccess + ", capacityElements=" + geometryElementCapacity);
+        }
+
+        long scratchDataAddress = results.getGeometryUploadScratchDataAddress();
+        long scratchDataSizeBytes = results.getGeometryUploadScratchDataSizeBytes();
+        if (scratchDataAddress == 0L || scratchDataSizeBytes <= 0L) {
+            throw new IllegalStateException("Geometry upload scratch data buffer is unreadable");
+        }
+        if (vulkanGeometryData.isFreed()) {
+            throw new IllegalStateException("Cannot apply geometry upload to freed Vulkan/Beryl geometry data");
+        }
+
+        VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+        results.forEachGeometryUploadCopy((destinationElementOffset, scratchDataElementOffset, elementCount) -> {
+            if (destinationElementOffset < 0) {
+                throw new IllegalStateException("Geometry upload destination offset is negative: " + destinationElementOffset);
+            }
+            if (scratchDataElementOffset < 0) {
+                throw new IllegalStateException("Geometry upload scratch data offset is negative: " + scratchDataElementOffset);
+            }
+            if (elementCount <= 0) {
+                throw new IllegalStateException("Geometry upload element count must be positive: " + elementCount);
+            }
+
+            long destinationOffsetBytes = Math.multiplyExact((long) destinationElementOffset, GEOMETRY_ELEMENT_SIZE_BYTES);
+            long sourceOffsetBytes = Math.multiplyExact((long) scratchDataElementOffset, GEOMETRY_ELEMENT_SIZE_BYTES);
+            long copySizeBytes = Math.multiplyExact((long) elementCount, GEOMETRY_ELEMENT_SIZE_BYTES);
+
+            long sourceEndBytes = Math.addExact(sourceOffsetBytes, copySizeBytes);
+            if (sourceEndBytes > scratchDataSizeBytes) {
+                throw new IllegalStateException("Geometry upload source range exceeds scratch data size: end=" + sourceEndBytes + ", scratchSize=" + scratchDataSizeBytes);
+            }
+
+            long destinationEndBytes = Math.addExact(destinationOffsetBytes, copySizeBytes);
+            if (destinationEndBytes > geometryCapacityBytes) {
+                throw new IllegalStateException("Geometry upload destination range exceeds geometry capacity: end=" + destinationEndBytes + ", capacity=" + geometryCapacityBytes);
+            }
+
+            uploader.upload(geometryBuffer, destinationOffsetBytes, scratchDataAddress + sourceOffsetBytes, copySizeBytes);
+        });
+        uploader.flush();
     }
 
     @Override
