@@ -46,6 +46,11 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     }
 
     @Override
+    public RenderProperties getRenderProperties() {
+        return this.properties;
+    }
+
+    @Override
     public void preSetup(Viewport<?> viewport) {
         throw new UnsupportedOperationException("VULKANMOD_BERYL pipeline pre-setup is not implemented yet");
     }
