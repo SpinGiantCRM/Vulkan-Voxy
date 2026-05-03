@@ -8,6 +8,9 @@ import net.vulkanmod.vulkan.memory.buffer.Buffer;
 
 public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeometrySyncBackend {
     private static final long GEOMETRY_ELEMENT_SIZE_BYTES = 8L;
+    private static final long SCATTER_PAYLOAD_SIZE_BYTES = 16L;
+    private static final long SCATTER_LOCATION_TARGET_MASK = 1L << 31;
+    private static final long SCATTER_LOCATION_INDEX_MASK = SCATTER_LOCATION_TARGET_MASK - 1L;
     private boolean freed;
 
     @Override
@@ -91,7 +94,7 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
 
     @Override
     public void applyScatterWrites(IGeometryData geometryData, AsyncNodeManager.SyncResults results, NodeMetadataStore nodeMetadataStore) {
-        requireVulkanGeometryData(geometryData);
+        VulkanBerylSectionGeometryData vulkanGeometryData = requireVulkanGeometryData(geometryData);
         if (!results.hasScatterWriteWork()) {
             return;
         }
@@ -116,15 +119,56 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
             throw new IllegalStateException("Scatter write encoded stream exceeds buffer size: streamSize=" + encodedStreamSizeBytes + ", bufferSize=" + scatterWriteBufferSizeBytes);
         }
 
+        if (vulkanGeometryData.isFreed()) {
+            throw new IllegalStateException("Cannot apply scatter writes to freed Vulkan/Beryl geometry data");
+        }
+
+        Buffer metadataBuffer = vulkanGeometryData.getMetadataBuffer();
+        long metadataCapacityBytes = vulkanGeometryData.getMetadataCapacityBytes();
+        VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+        boolean[] hasMetadataScatterWrites = new boolean[1];
+        boolean[] hasNodeMetadataScatterWrites = new boolean[1];
+
         results.forEachScatterWrite((encodedLocation, dataAddress, dataSizeBytes) -> {
             if (dataAddress == 0L) {
                 throw new IllegalStateException("Scatter write data address is null for encoded location: " + encodedLocation);
             }
-            if (dataSizeBytes != 16) {
+            if (dataSizeBytes != SCATTER_PAYLOAD_SIZE_BYTES) {
                 throw new IllegalStateException("Scatter write payload size must be 16 bytes: " + dataSizeBytes);
             }
+
+            long locationBits = Integer.toUnsignedLong(encodedLocation);
+            boolean writeToSectionMetadataBuffer = (locationBits & SCATTER_LOCATION_TARGET_MASK) != 0L;
+            if (!writeToSectionMetadataBuffer) {
+                hasNodeMetadataScatterWrites[0] = true;
+                return;
+            }
+
+            if (vulkanGeometryData.isFreed()) {
+                throw new IllegalStateException("Cannot apply scatter writes to freed Vulkan/Beryl geometry data");
+            }
+
+            long decodedLocation = locationBits & SCATTER_LOCATION_INDEX_MASK;
+            long destinationOffsetBytes = Math.multiplyExact(decodedLocation, SCATTER_PAYLOAD_SIZE_BYTES);
+            if (destinationOffsetBytes < 0L) {
+                throw new IllegalStateException("Scatter write destination offset is negative: " + destinationOffsetBytes);
+            }
+
+            long destinationEndBytes = Math.addExact(destinationOffsetBytes, SCATTER_PAYLOAD_SIZE_BYTES);
+            if (destinationEndBytes > metadataCapacityBytes) {
+                throw new IllegalStateException("Scatter write destination range exceeds metadata capacity: end=" + destinationEndBytes + ", capacity=" + metadataCapacityBytes);
+            }
+
+            uploader.upload(metadataBuffer, destinationOffsetBytes, dataAddress, SCATTER_PAYLOAD_SIZE_BYTES);
+            hasMetadataScatterWrites[0] = true;
         });
-        throw new UnsupportedOperationException("Vulkan/Beryl node/metadata scatter writes are not implemented yet");
+
+        if (hasMetadataScatterWrites[0]) {
+            uploader.flush();
+        }
+        if (hasNodeMetadataScatterWrites[0]) {
+            throw new UnsupportedOperationException("Vulkan/Beryl node metadata scatter writes are not implemented yet");
+        }
     }
 
     @Override
