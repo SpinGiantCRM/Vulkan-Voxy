@@ -91,7 +91,33 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
     @Override
     public RenderFrameContext enterRenderFrame(Viewport<?> viewport) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL render frame setup is not implemented yet");
+        Renderer renderer = Renderer.getInstance();
+        if (renderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
+        }
+
+        SwapChain swapChain = renderer.getSwapChain();
+        if (swapChain == null || !swapChain.hasImages()) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain is unavailable");
+        }
+
+        VkExtent2D extent = swapChain.getExtent();
+        if (extent == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is unavailable");
+        }
+
+        int width = extent.width();
+        int height = extent.height();
+        if (width <= 0 || height <= 0) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is invalid: " + width + "x" + height);
+        }
+
+        if (viewport.width != width || viewport.height != height) {
+            throw new IllegalStateException("VULKANMOD_BERYL viewport/swapchain extent mismatch: viewport=" +
+                    viewport.width + "x" + viewport.height + ", swapchain=" + width + "x" + height);
+        }
+
+        return new VulkanBerylRenderFrameContext(renderer, swapChain, width, height);
     }
 
 
@@ -111,7 +137,10 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     }
 
     @Override
-    public void runPipeline(Viewport<?> viewport, int sourceFrameBuffer, int srcWidth, int srcHeight) {
+    public void runPipeline(Viewport<?> viewport, RenderFrameContext frame) {
+        if (!(frame instanceof VulkanBerylRenderFrameContext)) {
+            throw new IllegalArgumentException("Expected VulkanBerylRenderFrameContext");
+        }
         throw new UnsupportedOperationException("VULKANMOD_BERYL pipeline rendering is not implemented yet");
     }
 

@@ -18,7 +18,7 @@ public interface SectionRenderPipeline {
     RenderBackendStateGuard enterFrameStateGuard();
     ChunkBoundsRenderer createChunkBoundsRenderer();
     void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundsRenderer chunkBoundRenderer);
-    void runPipeline(Viewport<?> viewport, int sourceFrameBuffer, int srcWidth, int srcHeight);
+    void runPipeline(Viewport<?> viewport, RenderFrameContext frame);
     void addDebug(List<String> debug);
     void free();
 }
