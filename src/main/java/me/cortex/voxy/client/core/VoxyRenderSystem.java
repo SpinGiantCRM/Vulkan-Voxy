@@ -40,6 +40,7 @@ import org.joml.Matrix4fc;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 
 public class VoxyRenderSystem {
@@ -60,6 +61,7 @@ public class VoxyRenderSystem {
 
     private final SectionRenderPipeline pipeline;
     private final RenderProperties properties;
+    private final BooleanSupplier frexWorkSupplier;
 
     private static SectionRendererBackendContext getRenderBackendContext() {
         return SectionRendererBackendSelector.getContextForActiveBackend();
@@ -92,6 +94,7 @@ public class VoxyRenderSystem {
 
                 this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen, backendContext.createGeometrySyncBackend());
                 this.backendRuntime = backendContext.createBackendRuntime(this.nodeManager, this.renderGen);
+                this.frexWorkSupplier = backendContext.createFrexWorkSupplier(this.nodeManager, this.renderGen, this.modelService);
 
                 world.setDirtyCallback(this.nodeManager::worldEvent);
 
@@ -101,7 +104,7 @@ public class VoxyRenderSystem {
                 this.nodeManager.start();
             }
 
-            this.pipeline = backendContext.createPipeline(this.properties, this.backendRuntime, this::frexStillHasWork);
+            this.pipeline = backendContext.createPipeline(this.properties, this.backendRuntime, this.frexWorkSupplier);
             this.pipeline.setupExtraModelBakeryData(this.modelService);//Configure the model service
 
             //Late stage traversal compile for shaders with taa
@@ -361,18 +364,6 @@ public class VoxyRenderSystem {
                 .m22((properties.isZero2One()?far:(far+near)) / (near - far))
                 .m32((properties.isZero2One()?far:(far+far)) * near / (near - far))
         );
-    }
-
-    private boolean frexStillHasWork() {
-        if (!VoxyClient.isFrexActive()) {
-            return false;
-        }
-        //If frex is running we must tick everything to ensure correctness
-        UploadStream.INSTANCE.tick();
-        //Done here as is allows less gl state resetup
-        this.modelService.tick(100_000_000);
-        GL11.glFinish();
-        return this.nodeManager.hasWork() || this.renderGen.getTaskCount()!=0 || !this.modelService.areQueuesEmpty();
     }
 
     public void setRenderDistance(float renderDistance) {
