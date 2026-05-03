@@ -19,7 +19,6 @@ import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.ViewportSelector;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
-import me.cortex.voxy.client.core.rendering.section.IUsesMeshlets;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendContext;
@@ -104,10 +103,9 @@ public class VoxyRenderSystem {
 
             this.properties = RenderProperties.getRenderProperties();
             var backendContext = getRenderBackendContext();
-            var backendFactory = backendContext.getRendererFactory();
             {
                 this.modelService = new ModelBakerySubsystem(world.getMapper());
-                this.renderGen = new RenderGenerationService(world, this.modelService, sm, IUsesMeshlets.class.isAssignableFrom(backendFactory.clz()));
+                this.renderGen = new RenderGenerationService(world, this.modelService, sm, backendContext.usesMeshlets());
 
                 this.geometryData = backendContext.createGeometryData();
 
@@ -128,7 +126,7 @@ public class VoxyRenderSystem {
             //Late stage traversal compile for shaders with taa
             this.backendRuntime.lateStageCompile(this.pipeline);
 
-
+            var backendFactory = backendContext.getRendererFactory();
             var sectionRenderer = backendFactory.create(this.pipeline, this.modelService.getStore(), this.geometryData);
             this.pipeline.setSectionRenderer(sectionRenderer);
             this.viewportSelector = new ViewportSelector<>(sectionRenderer::createViewport);

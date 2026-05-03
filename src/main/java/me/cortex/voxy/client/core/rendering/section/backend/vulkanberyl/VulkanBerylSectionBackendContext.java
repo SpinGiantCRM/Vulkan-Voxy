@@ -18,6 +18,11 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
     }
 
     @Override
+    public boolean usesMeshlets() {
+        throw notImplemented("meshlet capability");
+    }
+
+    @Override
     public AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRendererFactory() {
         throw notImplemented("renderer factory");
     }
