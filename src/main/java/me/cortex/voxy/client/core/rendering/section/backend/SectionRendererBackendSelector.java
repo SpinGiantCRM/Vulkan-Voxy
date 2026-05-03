@@ -28,10 +28,11 @@ public final class SectionRendererBackendSelector {
         boolean berylLoaded = FabricLoader.getInstance().isModLoaded(BERYL_MOD_ID);
 
         if (vulkanModLoaded && berylLoaded) {
-            Logger.info("Detected VulkanMod and Beryl. Vulkan backend is not implemented yet; falling back to OPENGL_MDIC.");
+            Logger.info("Detected VulkanMod and Beryl. Selecting required VULKANMOD_BERYL backend.");
+            return SectionRendererBackend.VULKANMOD_BERYL;
         }
 
-        return SectionRendererBackend.OPENGL_MDIC;
+        throw new IllegalStateException("This fork requires both VulkanMod and Beryl mods to run the VULKANMOD_BERYL backend.");
     }
 
     public static SectionRendererBackendContext getContextForActiveBackend() {
@@ -75,7 +76,7 @@ public final class SectionRendererBackendSelector {
                     }
                 }
             };
-            case VULKANMOD_BERYL -> throw new UnsupportedOperationException("VULKANMOD_BERYL section renderer backend is not implemented yet");
+            case VULKANMOD_BERYL -> throw new UnsupportedOperationException("VULKANMOD_BERYL backend is required but not implemented yet");
         };
     }
 }
