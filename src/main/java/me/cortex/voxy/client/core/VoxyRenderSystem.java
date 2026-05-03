@@ -21,6 +21,7 @@ import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendContext;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendSelector;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
@@ -67,7 +68,7 @@ public class VoxyRenderSystem {
 
     private final ViewportSelector<?> viewportSelector;
 
-    private final AbstractRenderPipeline pipeline;
+    private final SectionRenderPipeline pipeline;
     private final RenderProperties properties;
 
     private static SectionRendererBackendContext getRenderBackendContext() {

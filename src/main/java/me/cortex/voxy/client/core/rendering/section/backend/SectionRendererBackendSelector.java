@@ -1,6 +1,5 @@
 package me.cortex.voxy.client.core.rendering.section.backend;
 
-import me.cortex.voxy.client.core.AbstractRenderPipeline;
 import me.cortex.voxy.client.core.RenderPipelineFactory;
 import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.RenderResourceReuse;
@@ -71,7 +70,7 @@ public final class SectionRendererBackendSelector {
                 }
 
                 @Override
-                public AbstractRenderPipeline createPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
+                public SectionRenderPipeline createPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
                     return RenderPipelineFactory.createPipeline(properties, backendRuntime, frexSupplier);
                 }
 

@@ -6,6 +6,7 @@ import me.cortex.voxy.client.VoxyClient;
 import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.post.FullscreenBlit;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.util.DepthFramebuffer;
@@ -40,7 +41,7 @@ import static org.lwjgl.opengl.GL45.glClearNamedFramebufferfi;
 import static org.lwjgl.opengl.GL45.glGetNamedFramebufferAttachmentParameteri;
 import static org.lwjgl.opengl.GL45C.glBindTextureUnit;
 
-public abstract class AbstractRenderPipeline extends TrackedObject {
+public abstract class AbstractRenderPipeline extends TrackedObject implements SectionRenderPipeline {
     public final RenderProperties properties;
     private final BooleanSupplier frexStillHasWork;
 

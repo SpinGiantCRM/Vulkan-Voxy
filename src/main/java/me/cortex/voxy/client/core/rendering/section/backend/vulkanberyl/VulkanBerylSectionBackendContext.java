@@ -1,12 +1,12 @@
 package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
-import me.cortex.voxy.client.core.AbstractRenderPipeline;
 import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.SectionGeometrySyncBackend;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendContext;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 
@@ -45,7 +45,7 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
     }
 
     @Override
-    public AbstractRenderPipeline createPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
+    public SectionRenderPipeline createPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
         throw notImplemented("pipeline");
     }
 
