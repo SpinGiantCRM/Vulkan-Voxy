@@ -25,7 +25,6 @@ import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBacke
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.client.core.rendering.util.DownloadStream;
 import me.cortex.voxy.client.core.rendering.util.PrintfDebugUtil;
-import me.cortex.voxy.client.core.rendering.util.UploadStream;
 import me.cortex.voxy.client.core.util.GPUTiming;
 import me.cortex.voxy.client.core.util.IrisUtil;
 import me.cortex.voxy.common.Logger;
@@ -232,8 +231,7 @@ public class VoxyRenderSystem {
 
         //As much dynamic runtime stuff here
         {
-            //Tick upload stream (this is ok to do here as upload ticking is just memory management)
-            UploadStream.INSTANCE.tick();
+            this.pipeline.tickPostFrameUploads();
 
             while (this.renderDistanceTracker.setCenterAndProcess(viewport.cameraX, viewport.cameraZ) && VoxyClient.isFrexActive());//While FF is active, run until everything is processed
             TimingStatistics.H.start();

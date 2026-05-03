@@ -20,5 +20,6 @@ public interface SectionRenderPipeline {
     void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundsRenderer chunkBoundRenderer);
     void runPipeline(Viewport<?> viewport, RenderFrameContext frame);
     void addDebug(List<String> debug);
+    void tickPostFrameUploads();
     void free();
 }

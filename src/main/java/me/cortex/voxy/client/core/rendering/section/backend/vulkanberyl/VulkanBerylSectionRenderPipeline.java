@@ -151,6 +151,11 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     }
 
     @Override
+    public void tickPostFrameUploads() {
+        // Vulkan/Beryl upload ticking will be implemented with the real Vulkan upload path later.
+    }
+
+    @Override
     public void free() {
         this.freed = true;
     }

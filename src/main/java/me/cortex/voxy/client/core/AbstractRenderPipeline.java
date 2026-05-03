@@ -18,6 +18,7 @@ import me.cortex.voxy.client.core.rendering.section.backend.RenderViewportSize;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
 import me.cortex.voxy.client.core.rendering.util.DepthFramebuffer;
+import me.cortex.voxy.client.core.rendering.util.UploadStream;
 import me.cortex.voxy.client.core.util.GPUTiming;
 import me.cortex.voxy.client.core.util.IrisUtil;
 import me.cortex.voxy.common.util.TrackedObject;
@@ -176,6 +177,12 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
     @Override
     public ChunkBoundsRenderer createChunkBoundsRenderer() {
         return new ChunkBoundRenderer(this);
+    }
+
+
+    @Override
+    public void tickPostFrameUploads() {
+        UploadStream.INSTANCE.tick();
     }
 
     @Override
