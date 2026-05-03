@@ -8,7 +8,7 @@ import java.util.function.BooleanSupplier;
 public interface SectionRenderBackendRuntime {
     void lateStageCompile(AbstractRenderPipeline pipeline);
 
-    void doPrimaryWork(Viewport<?> viewport, int depthBuffer, BooleanSupplier frexStillHasWork);
+    void doPrimaryWork(Viewport<?> viewport, PrimaryRenderWorkContext workContext, BooleanSupplier frexStillHasWork);
 
     default void addDebug(List<String> debug) {
     }

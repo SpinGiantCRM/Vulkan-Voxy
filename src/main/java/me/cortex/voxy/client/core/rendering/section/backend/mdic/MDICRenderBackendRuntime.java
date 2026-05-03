@@ -7,6 +7,7 @@ import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTraverser;
 import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
+import me.cortex.voxy.client.core.rendering.section.backend.PrimaryRenderWorkContext;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.util.DownloadStream;
 
@@ -34,7 +35,11 @@ public class MDICRenderBackendRuntime implements SectionRenderBackendRuntime {
     }
 
     @Override
-    public void doPrimaryWork(Viewport<?> viewport, int depthBuffer, BooleanSupplier frexStillHasWork) {
+    public void doPrimaryWork(Viewport<?> viewport, PrimaryRenderWorkContext workContext, BooleanSupplier frexStillHasWork) {
+        if (!(workContext instanceof MDICPrimaryRenderWorkContext mdicWorkContext)) {
+            throw new IllegalArgumentException("MDIC runtime requires MDICPrimaryRenderWorkContext");
+        }
+        int depthBuffer = mdicWorkContext.depthBuffer();
         MDICViewport.require(viewport).depthResources.hiZBuffer.buildMipChain(depthBuffer, viewport.width, viewport.height);
 
         do {
