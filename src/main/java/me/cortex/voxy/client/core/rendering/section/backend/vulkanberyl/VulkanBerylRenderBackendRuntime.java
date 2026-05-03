@@ -14,6 +14,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private final AsyncNodeManager nodeManager;
     private final RenderGenerationService renderGen;
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
+    private final VulkanBerylTopLevelNodeStore topLevelNodeStore;
     private final VulkanBerylNodeCleanupSink nodeCleanupSink;
     private boolean freed;
 
@@ -21,7 +22,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.nodeManager = nodeManager;
         this.renderGen = renderGen;
         this.nodeMetadataStore = new VulkanBerylNodeMetadataStore(nodeManager.maxNodeCount);
+        this.topLevelNodeStore = new VulkanBerylTopLevelNodeStore();
         this.nodeCleanupSink = new VulkanBerylNodeCleanupSink();
+        this.nodeManager.setTLNAddRemoveCallbacks(this.topLevelNodeStore::addTopLevelNode, this.topLevelNodeStore::removeTopLevelNode);
     }
 
     @Override
@@ -46,11 +49,16 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     @Override
     public void addDebug(List<String> debug) {
-        debug.add("Vulkan/Beryl backend runtime: initialized (sync-only primary work; node metadata store active)");
+        debug.add("Vulkan/Beryl backend runtime: initialized (sync-only primary work; node metadata + TLN stores active)");
+        debug.add("Vulkan/Beryl TLN: " + this.topLevelNodeStore.getTopNodeCount() + "/" + this.topLevelNodeStore.getMaxTopLevelNodeCount());
     }
 
     VulkanBerylNodeMetadataStore getNodeMetadataStore() {
         return this.nodeMetadataStore;
+    }
+
+    VulkanBerylTopLevelNodeStore getTopLevelNodeStore() {
+        return this.topLevelNodeStore;
     }
 
     @Override
@@ -59,6 +67,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             return;
         }
         this.nodeMetadataStore.free();
+        this.topLevelNodeStore.free();
         this.freed = true;
     }
 }
