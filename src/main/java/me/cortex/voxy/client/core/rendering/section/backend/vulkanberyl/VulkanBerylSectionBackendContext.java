@@ -46,7 +46,7 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
 
     @Override
     public SectionRenderPipeline createPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
-        throw notImplemented("pipeline");
+        return new VulkanBerylSectionRenderPipeline(properties, backendRuntime, frexSupplier);
     }
 
     @Override
