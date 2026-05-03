@@ -15,7 +15,7 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
 
     @Override
     public long getGeometryCapacityBytes(IGeometryData geometryData) {
-        return requireVulkanGeometryData(geometryData).getMaxCapacity();
+        return requireVulkanGeometryData(geometryData).getGeometryCapacityBytes();
     }
 
     @Override
@@ -23,8 +23,8 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
         VulkanBerylSectionGeometryData vulkanGeometryData = requireVulkanGeometryData(geometryData);
         vulkanGeometryData.setSectionCount(results.getGeometrySectionCount());
 
-        if (results.getUsedGeometry() > vulkanGeometryData.getMaxCapacity()) {
-            throw new IllegalStateException("Vulkan/Beryl geometry usage exceeds capacity: used=" + results.getUsedGeometry() + ", max=" + vulkanGeometryData.getMaxCapacity());
+        if (results.getUsedGeometry() > vulkanGeometryData.getGeometryCapacityBytes()) {
+            throw new IllegalStateException("Vulkan/Beryl geometry usage exceeds capacity: used=" + results.getUsedGeometry() + ", max=" + vulkanGeometryData.getGeometryCapacityBytes());
         }
 
         if (results.hasGeometryUploadWork()) {
