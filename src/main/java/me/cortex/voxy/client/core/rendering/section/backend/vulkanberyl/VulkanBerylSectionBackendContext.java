@@ -4,6 +4,7 @@ import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.SectionGeometrySyncBackend;
+import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
@@ -48,6 +49,11 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
     @Override
     public SectionRenderBackendRuntime createBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
         return new VulkanBerylRenderBackendRuntime(nodeManager, renderGen);
+    }
+
+    @Override
+    public BooleanSupplier createFrexWorkSupplier(AsyncNodeManager nodeManager, RenderGenerationService renderGen, ModelBakerySubsystem modelService) {
+        return () -> false;
     }
 
     @Override

@@ -3,6 +3,8 @@ package me.cortex.voxy.client.core.rendering.section.backend;
 import me.cortex.voxy.client.core.RenderPipelineFactory;
 import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.RenderResourceReuse;
+import me.cortex.voxy.client.VoxyClient;
+import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.MDICSectionGeometrySyncBackend;
@@ -12,6 +14,7 @@ import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeom
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl.VulkanBerylSectionBackendContext;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
+import me.cortex.voxy.client.core.rendering.util.UploadStream;
 import me.cortex.voxy.common.Logger;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -99,6 +102,19 @@ public final class SectionRendererBackendSelector {
                 @Override
                 public SectionRenderBackendRuntime createBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
                     return new MDICRenderBackendRuntime(nodeManager, renderGen);
+                }
+
+                @Override
+                public BooleanSupplier createFrexWorkSupplier(AsyncNodeManager nodeManager, RenderGenerationService renderGen, ModelBakerySubsystem modelService) {
+                    return () -> {
+                        if (!VoxyClient.isFrexActive()) {
+                            return false;
+                        }
+                        UploadStream.INSTANCE.tick();
+                        modelService.tick(100_000_000);
+                        glFinish();
+                        return nodeManager.hasWork() || renderGen.getTaskCount() != 0 || !modelService.areQueuesEmpty();
+                    };
                 }
 
                 @Override
