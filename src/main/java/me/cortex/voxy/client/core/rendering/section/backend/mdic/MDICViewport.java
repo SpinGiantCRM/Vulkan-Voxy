@@ -11,10 +11,12 @@ public class MDICViewport extends Viewport<MDICViewport> {
     public final GlBuffer positionScratchBuffer  = new GlBuffer(8*400000).zero();//400k positions
     public final GlBuffer indirectLookupBuffer = new GlBuffer(HierarchicalOcclusionTraverser.MAX_QUEUE_SIZE*4+4);//In theory, this could be global/not unique to the viewport
     public final GlBuffer visibilityBuffer;
+    private final MDICViewportRenderList renderList;
 
     public MDICViewport(RenderProperties properties, int maxSectionCount) {
         super(properties);
         this.visibilityBuffer = new GlBuffer(maxSectionCount*4L);
+        this.renderList = new MDICViewportRenderList(this.indirectLookupBuffer);
     }
 
     @Override
@@ -28,7 +30,7 @@ public class MDICViewport extends Viewport<MDICViewport> {
     }
 
     @Override
-    public GlBuffer getRenderList() {
-        return this.indirectLookupBuffer;
+    public MDICViewportRenderList getRenderList() {
+        return this.renderList;
     }
 }
