@@ -24,7 +24,7 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
 
     @Override
     public IGeometryData createGeometryData() {
-        throw notImplemented("geometry data");
+        return new VulkanBerylSectionGeometryData(1 << 20, 1L << 32);
     }
 
     @Override
@@ -44,6 +44,10 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
 
     @Override
     public void releaseGeometryData(IGeometryData geometryData) {
-        throw notImplemented("geometry data release");
+        if (geometryData instanceof VulkanBerylSectionGeometryData vulkanGeometryData) {
+            vulkanGeometryData.free();
+            return;
+        }
+        throw new IllegalArgumentException("Expected VulkanBerylSectionGeometryData, got: " + geometryData.getClass().getName());
     }
 }
