@@ -60,62 +60,43 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
     @Override
     public RenderViewportSize getRenderViewportSize() {
-        Renderer renderer = Renderer.getInstance();
-        if (renderer == null) {
-            throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
-        }
-
-        SwapChain swapChain = renderer.getSwapChain();
-        if (swapChain == null || !swapChain.hasImages()) {
-            throw new IllegalStateException("VULKANMOD_BERYL swapchain is unavailable");
-        }
-
-        VkExtent2D extent = swapChain.getExtent();
-        if (extent == null) {
-            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is unavailable");
-        }
-
+        Renderer renderer = this.requireRenderer();
+        SwapChain swapChain = this.requireSwapChain(renderer);
+        VkExtent2D extent = this.requireExtent(swapChain);
+        this.requireValidExtent(extent);
         int width = extent.width();
         int height = extent.height();
-        if (width <= 0 || height <= 0) {
-            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is invalid: " + width + "x" + height);
-        }
 
         return new RenderViewportSize(0, 0, width, height);
     }
 
     @Override
     public void preSetup(Viewport<?> viewport) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL pipeline pre-setup is not implemented yet");
+        if (this.freed) {
+            throw new IllegalStateException("VULKANMOD_BERYL pipeline is freed");
+        }
+        if (this.sectionRenderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL section renderer is not set");
+        }
+        if (!(viewport instanceof VulkanBerylViewport)) {
+            throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylViewport");
+        }
+        Renderer renderer = this.requireRenderer();
+        SwapChain swapChain = this.requireSwapChain(renderer);
+        VkExtent2D extent = this.requireExtent(swapChain);
+        this.requireValidExtent(extent);
+        this.requireCompatibleViewport(viewport, extent.width(), extent.height());
     }
 
     @Override
     public RenderFrameContext enterRenderFrame(Viewport<?> viewport) {
-        Renderer renderer = Renderer.getInstance();
-        if (renderer == null) {
-            throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
-        }
-
-        SwapChain swapChain = renderer.getSwapChain();
-        if (swapChain == null || !swapChain.hasImages()) {
-            throw new IllegalStateException("VULKANMOD_BERYL swapchain is unavailable");
-        }
-
-        VkExtent2D extent = swapChain.getExtent();
-        if (extent == null) {
-            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is unavailable");
-        }
-
+        Renderer renderer = this.requireRenderer();
+        SwapChain swapChain = this.requireSwapChain(renderer);
+        VkExtent2D extent = this.requireExtent(swapChain);
+        this.requireValidExtent(extent);
         int width = extent.width();
         int height = extent.height();
-        if (width <= 0 || height <= 0) {
-            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is invalid: " + width + "x" + height);
-        }
-
-        if (viewport.width != width || viewport.height != height) {
-            throw new IllegalStateException("VULKANMOD_BERYL viewport/swapchain extent mismatch: viewport=" +
-                    viewport.width + "x" + viewport.height + ", swapchain=" + width + "x" + height);
-        }
+        this.requireCompatibleViewport(viewport, width, height);
 
         return new VulkanBerylRenderFrameContext(renderer, swapChain, width, height);
     }
@@ -152,5 +133,44 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     @Override
     public void free() {
         this.freed = true;
+    }
+
+    private Renderer requireRenderer() {
+        Renderer renderer = Renderer.getInstance();
+        if (renderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
+        }
+        return renderer;
+    }
+
+    private SwapChain requireSwapChain(Renderer renderer) {
+        SwapChain swapChain = renderer.getSwapChain();
+        if (swapChain == null || !swapChain.hasImages()) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain is unavailable");
+        }
+        return swapChain;
+    }
+
+    private VkExtent2D requireExtent(SwapChain swapChain) {
+        VkExtent2D extent = swapChain.getExtent();
+        if (extent == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is unavailable");
+        }
+        return extent;
+    }
+
+    private void requireValidExtent(VkExtent2D extent) {
+        int width = extent.width();
+        int height = extent.height();
+        if (width <= 0 || height <= 0) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is invalid: " + width + "x" + height);
+        }
+    }
+
+    private void requireCompatibleViewport(Viewport<?> viewport, int width, int height) {
+        if (viewport.width != width || viewport.height != height) {
+            throw new IllegalStateException("VULKANMOD_BERYL viewport/swapchain extent mismatch: viewport=" +
+                    viewport.width + "x" + viewport.height + ", swapchain=" + width + "x" + height);
+        }
     }
 }
