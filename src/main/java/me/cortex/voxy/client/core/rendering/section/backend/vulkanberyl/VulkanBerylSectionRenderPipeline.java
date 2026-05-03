@@ -11,6 +11,10 @@ import me.cortex.voxy.client.core.rendering.section.backend.RenderViewportSize;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 
+import net.vulkanmod.vulkan.Renderer;
+import net.vulkanmod.vulkan.framebuffer.SwapChain;
+import org.lwjgl.vulkan.VkExtent2D;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
@@ -56,7 +60,28 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
     @Override
     public RenderViewportSize getRenderViewportSize() {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL render viewport size is not implemented yet");
+        Renderer renderer = Renderer.getInstance();
+        if (renderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
+        }
+
+        SwapChain swapChain = renderer.getSwapChain();
+        if (swapChain == null || !swapChain.hasImages()) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain is unavailable");
+        }
+
+        VkExtent2D extent = swapChain.getExtent();
+        if (extent == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is unavailable");
+        }
+
+        int width = extent.width();
+        int height = extent.height();
+        if (width <= 0 || height <= 0) {
+            throw new IllegalStateException("VULKANMOD_BERYL swapchain extent is invalid: " + width + "x" + height);
+        }
+
+        return new RenderViewportSize(0, 0, width, height);
     }
 
     @Override
