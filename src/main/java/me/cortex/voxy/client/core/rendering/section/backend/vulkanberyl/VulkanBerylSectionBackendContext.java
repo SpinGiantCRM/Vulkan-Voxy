@@ -18,8 +18,10 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
     }
 
     @Override
+    // Vulkan/Beryl upload/render wiring is currently quad-section based, and no meshlet renderer path exists here yet.
+    // Keep RenderDataFactory output in the default section-geometry layout until Vulkan/Beryl meshlet consumers are implemented.
     public boolean usesMeshlets() {
-        throw notImplemented("meshlet capability");
+        return false;
     }
 
     @Override
