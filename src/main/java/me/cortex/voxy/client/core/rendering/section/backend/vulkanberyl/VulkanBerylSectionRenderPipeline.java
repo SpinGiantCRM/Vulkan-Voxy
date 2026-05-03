@@ -151,7 +151,8 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         VkExtent2D extent = this.requireExtent(swapChain);
         this.requireValidExtent(extent);
         this.requireCompatibleViewport(vulkanViewport, extent.width(), extent.height());
-        VulkanBerylViewportRenderList.require(vulkanViewport.getRenderList());
+        VulkanBerylViewportRenderList renderList = VulkanBerylViewportRenderList.require(vulkanViewport.getRenderList());
+        renderList.clearCounter();
 
         this.backendRuntime.doPrimaryWork(vulkanViewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
     }

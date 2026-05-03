@@ -3,7 +3,9 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 import me.cortex.voxy.client.core.rendering.ViewportRenderList;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
+import org.lwjgl.system.MemoryStack;
 
+import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -47,6 +49,27 @@ public final class VulkanBerylViewportRenderList implements ViewportRenderList {
 
     public boolean isFreed() {
         return this.freed;
+    }
+
+    public void clearCounter() {
+        if (this.freed) {
+            throw new IllegalStateException("Render list is freed");
+        }
+        if (this.maxEntryCount < 0) {
+            throw new IllegalStateException("maxEntryCount must be non-negative");
+        }
+
+        long sizeBytes = this.buffer.getBufferSize();
+        if (sizeBytes < Integer.BYTES) {
+            throw new IllegalStateException("Render list buffer is too small to contain a counter: " + sizeBytes);
+        }
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            long zeroAddress = memAddress(stack.callocInt(1));
+            VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+            uploader.upload(this.buffer, 0L, zeroAddress, Integer.BYTES);
+            uploader.flush();
+        }
     }
 
     public void free() {
