@@ -41,7 +41,7 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
 
     @Override
     public SectionRenderBackendRuntime createBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
-        throw notImplemented("backend runtime");
+        return new VulkanBerylRenderBackendRuntime(nodeManager, renderGen);
     }
 
     @Override
