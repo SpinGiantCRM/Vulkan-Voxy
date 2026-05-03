@@ -32,7 +32,7 @@ import static org.lwjgl.opengl.GL42.glDrawElementsInstancedBaseInstance;
 
 //This is a render subsystem, its very simple in what it does
 // it renders an AABB around loaded chunks, thats it
-public class ChunkBoundRenderer {
+public class ChunkBoundRenderer implements ChunkBoundsRenderer {
     private static final int INIT_MAX_CHUNK_COUNT = 1<<12;
     private GlBuffer chunkPosBuffer = new GlBuffer(INIT_MAX_CHUNK_COUNT*8);//Stored as ivec2
     private final GlBuffer uniformBuffer = new GlBuffer(128);
