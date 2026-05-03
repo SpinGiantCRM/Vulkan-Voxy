@@ -4,13 +4,16 @@ import me.cortex.voxy.client.RenderStatistics;
 import me.cortex.voxy.client.TimingStatistics;
 import me.cortex.voxy.client.VoxyClient;
 import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
+import me.cortex.voxy.client.core.rendering.ChunkBoundRenderer;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.post.FullscreenBlit;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
 import me.cortex.voxy.client.core.rendering.util.DepthFramebuffer;
 import me.cortex.voxy.client.core.util.GPUTiming;
+import me.cortex.voxy.client.core.util.IrisUtil;
 import me.cortex.voxy.common.util.TrackedObject;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL30;
@@ -86,6 +89,15 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
     //Called before the pipeline starts running, used to update uniforms etc
     public void preSetup(Viewport<?> viewport) {
 
+    }
+
+    @Override
+    public void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundRenderer chunkBoundRenderer) {
+        if ((!VoxyClient.disableSodiumChunkRender()) && !IrisUtil.irisShadowActive()) {
+            chunkBoundRenderer.render(viewport);
+        } else {
+            MDICViewport.require(viewport).depthResources.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
+        }
     }
 
     protected abstract int setup(Viewport<?> viewport, int sourceFramebuffer, int srcWidth, int srcHeight);
