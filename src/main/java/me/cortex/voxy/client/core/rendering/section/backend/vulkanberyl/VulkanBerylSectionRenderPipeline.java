@@ -2,7 +2,7 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
 import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
-import me.cortex.voxy.client.core.rendering.ChunkBoundRenderer;
+import me.cortex.voxy.client.core.rendering.ChunkBoundsRenderer;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
@@ -57,7 +57,12 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     }
 
     @Override
-    public void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundRenderer chunkBoundRenderer) {
+    public ChunkBoundsRenderer createChunkBoundsRenderer() {
+        return new VulkanBerylChunkBoundsRenderer();
+    }
+
+    @Override
+    public void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundsRenderer chunkBoundRenderer) {
         throw new UnsupportedOperationException("VULKANMOD_BERYL depth pre-pass is not implemented yet");
     }
 

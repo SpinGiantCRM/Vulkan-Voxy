@@ -13,7 +13,7 @@ import me.cortex.voxy.client.core.gl.GlBuffer;
 import me.cortex.voxy.client.core.gl.GlTexture;
 import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.model.ModelStore;
-import me.cortex.voxy.client.core.rendering.ChunkBoundRenderer;
+import me.cortex.voxy.client.core.rendering.ChunkBoundsRenderer;
 import me.cortex.voxy.client.core.rendering.RenderDistanceTracker;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.ViewportSelector;
@@ -64,7 +64,7 @@ public class VoxyRenderSystem {
 
 
     private final RenderDistanceTracker renderDistanceTracker;
-    public final ChunkBoundRenderer chunkBoundRenderer;
+    public final ChunkBoundsRenderer chunkBoundRenderer;
 
     private final ViewportSelector<?> viewportSelector;
 
@@ -151,7 +151,7 @@ public class VoxyRenderSystem {
                 this.setRenderDistance(VoxyConfig.CONFIG.sectionRenderDistance);
             }
 
-            this.chunkBoundRenderer = new ChunkBoundRenderer(this.pipeline);
+            this.chunkBoundRenderer = this.pipeline.createChunkBoundsRenderer();
 
             Logger.info("Voxy render system created with " + this.geometryData.getMaxCapacity() + " geometry capacity, using pipeline '" + this.pipeline.getClass().getSimpleName() + "' with renderer '" + sectionRenderer.getClass().getSimpleName() + "'");
         } catch (RuntimeException e) {

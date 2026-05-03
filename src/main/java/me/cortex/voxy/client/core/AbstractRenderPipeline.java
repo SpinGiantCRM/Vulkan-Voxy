@@ -5,6 +5,7 @@ import me.cortex.voxy.client.TimingStatistics;
 import me.cortex.voxy.client.VoxyClient;
 import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.ChunkBoundRenderer;
+import me.cortex.voxy.client.core.rendering.ChunkBoundsRenderer;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.post.FullscreenBlit;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
@@ -92,7 +93,12 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
     }
 
     @Override
-    public void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundRenderer chunkBoundRenderer) {
+    public ChunkBoundsRenderer createChunkBoundsRenderer() {
+        return new ChunkBoundRenderer(this);
+    }
+
+    @Override
+    public void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundsRenderer chunkBoundRenderer) {
         if ((!VoxyClient.disableSodiumChunkRender()) && !IrisUtil.irisShadowActive()) {
             chunkBoundRenderer.render(viewport);
         } else {
