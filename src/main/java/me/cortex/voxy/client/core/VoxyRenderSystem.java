@@ -41,8 +41,6 @@ import org.joml.Matrix4fc;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.lwjgl.opengl.GL11C.*;
-import static org.lwjgl.opengl.GL30C.*;
 
 public class VoxyRenderSystem {
     private final WorldEngine worldIn;
@@ -206,14 +204,8 @@ public class VoxyRenderSystem {
         GPUTiming.INSTANCE.marker();//Start marker
         TimingStatistics.main.start();
 
-        //TODO: optimize
-        int[] oldBufferBindings = new int[10];
-        for (int i = 0; i < oldBufferBindings.length; i++) {
-            oldBufferBindings[i] = glGetIntegeri(GL_SHADER_STORAGE_BUFFER_BINDING, i);
-        }
-
-
-        try (var frame = this.pipeline.enterRenderFrame(viewport)) {
+        try (var stateGuard = this.pipeline.enterFrameStateGuard();
+             var frame = this.pipeline.enterRenderFrame(viewport)) {
             //this.autoBalanceSubDivSize();
 
             this.pipeline.preSetup(viewport);
@@ -250,31 +242,6 @@ public class VoxyRenderSystem {
         TimingStatistics.postDynamic.stop();
 
         GPUTiming.INSTANCE.tick();
-
-        {//Reset state manager stuffs
-            glUseProgram(0);
-            glEnable(GL_DEPTH_TEST);
-            glDisable(GL_STENCIL_TEST);
-
-            GlStateManager._glBindVertexArray(0);//Clear binding
-
-            GlStateManager._activeTexture(GlConst.GL_TEXTURE1);
-            for (int i = 0; i < 12; i++) {
-                GlStateManager._activeTexture(GlConst.GL_TEXTURE0+i);
-                GlStateManager._bindTexture(0);
-                glBindSampler(i, 0);
-            }
-
-            IrisUtil.clearIrisSamplers();//Thanks iris (sigh)
-
-            //TODO: should/needto actually restore all of these, not just clear them
-            //Clear all the bindings
-            for (int i = 0; i < oldBufferBindings.length; i++) {
-                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, oldBufferBindings[i]);
-            }
-
-            //((SodiumShader) Iris.getPipelineManager().getPipelineNullable().getSodiumPrograms().getProgram(DefaultTerrainRenderPasses.CUTOUT).getInterface()).setupState(DefaultTerrainRenderPasses.CUTOUT, fogParameters);
-        }
 
         TimingStatistics.all.stop();
 
