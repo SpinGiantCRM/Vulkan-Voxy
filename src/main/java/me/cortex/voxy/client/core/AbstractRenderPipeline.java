@@ -10,6 +10,7 @@ import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.post.FullscreenBlit;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.backend.RenderFrameContext;
 import me.cortex.voxy.client.core.rendering.section.backend.RenderViewportSize;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
@@ -31,6 +32,8 @@ import static org.lwjgl.opengl.GL11C.GL_KEEP;
 import static org.lwjgl.opengl.GL11C.GL_REPLACE;
 import static org.lwjgl.opengl.GL11C.GL_STENCIL_TEST;
 import static org.lwjgl.opengl.GL11C.GL_VIEWPORT;
+import static org.lwjgl.opengl.GL11C.glGetIntegerv;
+import static org.lwjgl.opengl.GL11C.glViewport;
 import static org.lwjgl.opengl.GL11C.glColorMask;
 import static org.lwjgl.opengl.GL11C.glDisable;
 import static org.lwjgl.opengl.GL11C.glEnable;
@@ -40,6 +43,7 @@ import static org.lwjgl.opengl.GL11C.glStencilMask;
 import static org.lwjgl.opengl.GL11C.glStencilOp;
 import static org.lwjgl.opengl.GL30C.GL_DEPTH24_STENCIL8;
 import static org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER;
+import static org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER_BINDING;
 import static org.lwjgl.opengl.GL30C.glBindFramebuffer;
 import static org.lwjgl.opengl.GL42.GL_LEQUAL;
 import static org.lwjgl.opengl.GL42.GL_NOTEQUAL;
@@ -47,6 +51,7 @@ import static org.lwjgl.opengl.GL42.glDepthFunc;
 import static org.lwjgl.opengl.GL45.glClearNamedFramebufferfi;
 import static org.lwjgl.opengl.GL45.glGetNamedFramebufferAttachmentParameteri;
 import static org.lwjgl.opengl.GL45C.glBindTextureUnit;
+import static org.lwjgl.opengl.GL11.glGetInteger;
 
 public abstract class AbstractRenderPipeline extends TrackedObject implements SectionRenderPipeline {
     public final RenderProperties properties;
@@ -100,6 +105,44 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
     //Called before the pipeline starts running, used to update uniforms etc
     public void preSetup(Viewport<?> viewport) {
 
+    }
+
+
+
+    @Override
+    public RenderFrameContext enterRenderFrame(Viewport<?> viewport) {
+        int oldFB = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
+        int[] dims = new int[4];
+        glGetIntegerv(GL_VIEWPORT, dims);
+
+        glViewport(0, 0, viewport.width, viewport.height);
+
+        if (oldFB == 0) {
+            throw new IllegalStateException("Cannot use the default framebuffer as cannot source from it");
+        }
+
+        return new RenderFrameContext() {
+            @Override
+            public int sourceFrameBuffer() {
+                return oldFB;
+            }
+
+            @Override
+            public int sourceWidth() {
+                return dims[2];
+            }
+
+            @Override
+            public int sourceHeight() {
+                return dims[3];
+            }
+
+            @Override
+            public void close() {
+                glBindFramebuffer(GL_FRAMEBUFFER, oldFB);
+                glViewport(dims[0], dims[1], dims[2], dims[3]);
+            }
+        };
     }
 
     @Override

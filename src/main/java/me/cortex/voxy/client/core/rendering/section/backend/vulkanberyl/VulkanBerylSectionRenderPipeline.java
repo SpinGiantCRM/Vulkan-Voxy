@@ -5,6 +5,7 @@ import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.ChunkBoundsRenderer;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.backend.RenderFrameContext;
 import me.cortex.voxy.client.core.rendering.section.backend.RenderViewportSize;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
@@ -60,6 +61,11 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     @Override
     public void preSetup(Viewport<?> viewport) {
         throw new UnsupportedOperationException("VULKANMOD_BERYL pipeline pre-setup is not implemented yet");
+    }
+
+    @Override
+    public RenderFrameContext enterRenderFrame(Viewport<?> viewport) {
+        throw new UnsupportedOperationException("VULKANMOD_BERYL render frame setup is not implemented yet");
     }
 
     @Override

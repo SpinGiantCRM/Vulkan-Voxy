@@ -14,6 +14,7 @@ public interface SectionRenderPipeline {
     RenderViewportSize getRenderViewportSize();
     float[] getRenderScalingFactor();
     void preSetup(Viewport<?> viewport);
+    RenderFrameContext enterRenderFrame(Viewport<?> viewport);
     ChunkBoundsRenderer createChunkBoundsRenderer();
     void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundsRenderer chunkBoundRenderer);
     void runPipeline(Viewport<?> viewport, int sourceFrameBuffer, int srcWidth, int srcHeight);

@@ -37,7 +37,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
-import org.lwjgl.opengl.GL11;
 
 import java.util.Arrays;
 import java.util.List;
@@ -214,33 +213,21 @@ public class VoxyRenderSystem {
         }
 
 
-        int oldFB = GL11.glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
-        int boundFB = oldFB;
+        try (var frame = this.pipeline.enterRenderFrame(viewport)) {
+            //this.autoBalanceSubDivSize();
 
-        int[] dims = new int[4];
-        glGetIntegerv(GL_VIEWPORT, dims);
+            this.pipeline.preSetup(viewport);
 
-        glViewport(0,0, viewport.width, viewport.height);
+            TimingStatistics.E.start();
+            this.pipeline.runPreMainDepthPass(viewport, this.chunkBoundRenderer);
+            TimingStatistics.E.stop();
 
-        //var target = DefaultTerrainRenderPasses.CUTOUT.getTarget();
-        //boundFB = ((net.minecraft.client.texture.GlTexture) target.getColorAttachment()).getOrCreateFramebuffer(((GlBackend) RenderSystem.getDevice()).getFramebufferManager(), target.getDepthAttachment());
-        if (boundFB == 0) {
-            throw new IllegalStateException("Cannot use the default framebuffer as cannot source from it");
+
+            GPUTiming.INSTANCE.marker();
+            //The entire rendering pipeline (excluding the chunkbound thing)
+            this.pipeline.runPipeline(viewport, frame.sourceFrameBuffer(), frame.sourceWidth(), frame.sourceHeight());
+            GPUTiming.INSTANCE.marker();
         }
-
-        //this.autoBalanceSubDivSize();
-
-        this.pipeline.preSetup(viewport);
-
-        TimingStatistics.E.start();
-        this.pipeline.runPreMainDepthPass(viewport, this.chunkBoundRenderer);
-        TimingStatistics.E.stop();
-
-
-        GPUTiming.INSTANCE.marker();
-        //The entire rendering pipeline (excluding the chunkbound thing)
-        this.pipeline.runPipeline(viewport, boundFB, dims[2], dims[3]);
-        GPUTiming.INSTANCE.marker();
 
 
         TimingStatistics.main.stop();
@@ -263,9 +250,6 @@ public class VoxyRenderSystem {
         TimingStatistics.postDynamic.stop();
 
         GPUTiming.INSTANCE.tick();
-
-        glBindFramebuffer(GlConst.GL_FRAMEBUFFER, oldFB);
-        glViewport(dims[0], dims[1], dims[2], dims[3]);
 
         {//Reset state manager stuffs
             glUseProgram(0);
