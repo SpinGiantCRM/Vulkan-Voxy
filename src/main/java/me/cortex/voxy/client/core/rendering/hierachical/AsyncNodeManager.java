@@ -822,9 +822,45 @@ public class AsyncNodeManager {
             return !this.scatterWriteLocationMap.isEmpty();
         }
 
+        public int getScatterWriteCount() {
+            return this.scatterWriteLocationMap.size();
+        }
+
+        public int getScatterWriteChunkCount() {
+            return (this.scatterWriteLocationMap.size() + 3) / 4;
+        }
+
+        public long getScatterWriteBufferAddress() {
+            return this.scatterWriteBuffer.address;
+        }
+
+        public long getScatterWriteBufferSizeBytes() {
+            return this.scatterWriteBuffer.size;
+        }
+
+        public long getScatterWriteEncodedStreamSizeBytes() {
+            return this.getScatterWriteChunkCount() * 5L * 16L;
+        }
+
+        public void forEachScatterWrite(ScatterWriteConsumer consumer) {
+            int writeCount = this.scatterWriteLocationMap.size();
+            for (int i = 0; i < writeCount; i++) {
+                int chunkBase = (i / 4) * 5;
+                int innerId = i & 3;
+                int encodedLocation = MemoryUtil.memGetInt(this.scatterWriteBuffer.address + (chunkBase * 16L) + (innerId * 4L));
+                long dataAddress = this.scatterWriteBuffer.address + ((long) (chunkBase + 1 + innerId) * 16L);
+                consumer.accept(encodedLocation, dataAddress, 16);
+            }
+        }
+
         @FunctionalInterface
         public interface GeometryUploadCopyConsumer {
             void accept(int destinationElementOffset, int scratchDataElementOffset, int elementCount);
+        }
+
+        @FunctionalInterface
+        public interface ScatterWriteConsumer {
+            void accept(int encodedLocation, long dataAddress, int dataSizeBytes);
         }
 
         //Get or create a scatter write address for the given location
