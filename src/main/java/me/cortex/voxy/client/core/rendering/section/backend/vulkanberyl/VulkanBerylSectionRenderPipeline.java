@@ -114,7 +114,27 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
     @Override
     public void runPreMainDepthPass(Viewport<?> viewport, ChunkBoundsRenderer chunkBoundRenderer) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL depth pre-pass is not implemented yet");
+        if (this.freed) {
+            throw new IllegalStateException("VULKANMOD_BERYL pipeline is freed");
+        }
+        if (this.sectionRenderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL section renderer is not set");
+        }
+        if (!(viewport instanceof VulkanBerylViewport)) {
+            throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylViewport");
+        }
+        if (!(chunkBoundRenderer instanceof VulkanBerylChunkBoundsRenderer)) {
+            throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylChunkBoundsRenderer");
+        }
+
+        Renderer renderer = this.requireRenderer();
+        SwapChain swapChain = this.requireSwapChain(renderer);
+        VkExtent2D extent = this.requireExtent(swapChain);
+        this.requireValidExtent(extent);
+        this.requireCompatibleViewport(viewport, extent.width(), extent.height());
+
+        // MDIC uses this hook for an OpenGL chunk-bound/depth-bound pass. Vulkan/Beryl does not yet have an
+        // equivalent depth-bound resource, so this is intentionally a validated no-op until a real pre-pass exists.
     }
 
     @Override
