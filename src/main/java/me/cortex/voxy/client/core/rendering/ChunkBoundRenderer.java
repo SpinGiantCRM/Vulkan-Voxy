@@ -1,5 +1,6 @@
 package me.cortex.voxy.client.core.rendering;
 
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import me.cortex.voxy.client.core.AbstractRenderPipeline;
@@ -86,13 +87,13 @@ public class ChunkBoundRenderer {
             this.remQueue.forEach(this::_remPos);//TODO: REPLACE WITH SCATTER COMPUTE
             this.remQueue.clear();
             if (this.chunk2idx.isEmpty()&&!wasEmpty) {//When going from stuff to nothing need to clear the depth buffer
-                viewport.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
+                MDICViewport.require(viewport).depthResources.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
             }
         }
 
         if (this.chunk2idx.isEmpty() && this.addQueue.isEmpty()) return;
 
-        viewport.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
+        MDICViewport.require(viewport).depthResources.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
 
         long ptr = UploadStream.INSTANCE.upload(this.uniformBuffer, 0, 128);
         long matPtr = ptr; ptr += 4*4*4;
@@ -132,7 +133,7 @@ public class ChunkBoundRenderer {
         }
 
         glBindVertexArray(GlVertexArray.STATIC_VAO);
-        viewport.depthBoundingBuffer.bind();
+        MDICViewport.require(viewport).depthResources.depthBoundingBuffer.bind();
         this.rasterShader.bind();
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, SharedIndexBuffer.INSTANCE_BB_BYTE.id());
         if (this.pipeline != null) this.pipeline.bindUniforms();//shader TAA

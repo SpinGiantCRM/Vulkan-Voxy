@@ -1,8 +1,6 @@
 package me.cortex.voxy.client.core.rendering;
 
 import me.cortex.voxy.client.core.RenderProperties;
-import me.cortex.voxy.client.core.rendering.util.DepthFramebuffer;
-import me.cortex.voxy.client.core.rendering.util.HiZBuffer;
 import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import net.minecraft.util.Mth;
 import org.joml.*;
@@ -10,10 +8,6 @@ import org.joml.*;
 import java.lang.reflect.Field;
 
 public abstract class Viewport <A extends Viewport<A>> {
-    //public final HiZBuffer2 hiZBuffer = new HiZBuffer2();
-    public final HiZBuffer hiZBuffer;
-    public final DepthFramebuffer depthBoundingBuffer = new DepthFramebuffer();
-
     private static final Field planesField;
     static {
         try {
@@ -43,6 +37,10 @@ public abstract class Viewport <A extends Viewport<A>> {
 
     private final RenderProperties properties;
 
+    protected final RenderProperties properties() {
+        return this.properties;
+    }
+
     protected Viewport(RenderProperties properties) {
         Vector4f[] planes = null;
         try {
@@ -53,7 +51,6 @@ public abstract class Viewport <A extends Viewport<A>> {
         this.frustumPlanes = planes;
 
         this.properties = properties;
-        this.hiZBuffer = new HiZBuffer(properties);
     }
 
     public final void delete() {
@@ -61,8 +58,6 @@ public abstract class Viewport <A extends Viewport<A>> {
     }
 
     protected void delete0() {
-        this.hiZBuffer.free();
-        this.depthBoundingBuffer.free();
     }
 
     public A setVanillaProjection(Matrix4fc projection) {
@@ -116,9 +111,6 @@ public abstract class Viewport <A extends Viewport<A>> {
                 (float) (this.cameraY-(sy<<5)),
                 (float) (this.cameraZ-(sz<<5)));
 
-        if (this.depthBoundingBuffer.resize(this.width, this.height)) {
-            this.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
-        }
 
         return (A) this;
     }
