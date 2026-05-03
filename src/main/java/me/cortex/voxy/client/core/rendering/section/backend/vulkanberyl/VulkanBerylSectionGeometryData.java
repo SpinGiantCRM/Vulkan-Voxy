@@ -39,6 +39,16 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         return this.maxSectionCount;
     }
 
+    public void setSectionCount(int sectionCount) {
+        if (sectionCount < 0) {
+            throw new IllegalArgumentException("sectionCount must be non-negative");
+        }
+        if (sectionCount > this.maxSectionCount) {
+            throw new IllegalArgumentException("sectionCount must not exceed maxSectionCount");
+        }
+        this.sectionCount = sectionCount;
+    }
+
     public boolean isFreed() {
         return this.freed;
     }
