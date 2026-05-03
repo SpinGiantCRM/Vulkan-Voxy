@@ -10,6 +10,7 @@ import me.cortex.voxy.client.core.rendering.hierachical.MDICSectionGeometrySyncB
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl.VulkanBerylSectionBackendContext;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.common.Logger;
 import net.fabricmc.loader.api.FabricLoader;
@@ -76,7 +77,7 @@ public final class SectionRendererBackendSelector {
                     }
                 }
             };
-            case VULKANMOD_BERYL -> throw new UnsupportedOperationException("VULKANMOD_BERYL backend is required but not implemented yet");
+            case VULKANMOD_BERYL -> new VulkanBerylSectionBackendContext();
         };
     }
 }
