@@ -20,12 +20,11 @@ import me.cortex.voxy.client.core.rendering.ViewportSelector;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTraverser;
-import me.cortex.voxy.client.core.rendering.hierachical.MDICSectionGeometrySyncBackend;
 import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
 import me.cortex.voxy.client.core.rendering.section.IUsesMeshlets;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendContext;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendSelector;
-import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.client.core.rendering.util.DownloadStream;
 import me.cortex.voxy.client.core.rendering.util.PrintfDebugUtil;
@@ -74,8 +73,8 @@ public class VoxyRenderSystem {
     private final AbstractRenderPipeline pipeline;
     private final RenderProperties properties;
 
-    private static AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRenderBackendFactory() {
-        return (AbstractSectionRenderer.Factory<?, ? extends IGeometryData>) SectionRendererBackendSelector.getFactoryForActiveBackend();
+    private static SectionRendererBackendContext getRenderBackendContext() {
+        return SectionRendererBackendSelector.getContextForActiveBackend();
     }
 
     public VoxyRenderSystem(WorldEngine world, ServiceManager sm) {
@@ -106,14 +105,15 @@ public class VoxyRenderSystem {
             this.worldIn = world;
 
             this.properties = RenderProperties.getRenderProperties();
-            var backendFactory = getRenderBackendFactory();
+            var backendContext = getRenderBackendContext();
+            var backendFactory = backendContext.getRendererFactory();
             {
                 this.modelService = new ModelBakerySubsystem(world.getMapper());
                 this.renderGen = new RenderGenerationService(world, this.modelService, sm, IUsesMeshlets.class.isAssignableFrom(backendFactory.clz()));
 
-                this.geometryData = new MDICSectionGeometryData(1<<20, RenderResourceReuse.getOrCreateGeometryBuffer());
+                this.geometryData = backendContext.createGeometryData();
 
-                this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen, new MDICSectionGeometrySyncBackend());
+                this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen, backendContext.createGeometrySyncBackend());
                 this.nodeCleaner = new NodeCleaner(this.nodeManager);
                 this.traversal = new HierarchicalOcclusionTraverser(this.nodeManager, this.nodeCleaner, this.renderGen);
 
@@ -507,9 +507,7 @@ public class VoxyRenderSystem {
             this.traversal.free();
             this.nodeCleaner.free();
             this.geometryData.free();
-            if (((MDICSectionGeometryData)this.geometryData).isExternalGeometryBuffer) {
-                RenderResourceReuse.giveBackGeometryBuffer(((MDICSectionGeometryData)this.geometryData).getGeometryBuffer());
-            }
+            getRenderBackendContext().releaseGeometryData(this.geometryData);
 
             this.chunkBoundRenderer.free();
 
