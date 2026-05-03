@@ -29,16 +29,6 @@ public class MDICRenderBackendRuntime implements SectionRenderBackendRuntime {
     }
 
     @Override
-    public NodeCleaner getNodeCleaner() {
-        return this.nodeCleaner;
-    }
-
-    @Override
-    public HierarchicalOcclusionTraverser getTraversal() {
-        return this.traversal;
-    }
-
-    @Override
     public void lateStageCompile(AbstractRenderPipeline pipeline) {
         this.traversal.lateStageCompile(pipeline);
     }
