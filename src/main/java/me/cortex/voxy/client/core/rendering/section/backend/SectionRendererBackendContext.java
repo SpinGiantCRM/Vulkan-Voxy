@@ -9,6 +9,8 @@ import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import java.util.function.BooleanSupplier;
 
 public interface SectionRendererBackendContext {
+    boolean usesMeshlets();
+
     AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRendererFactory();
 
     IGeometryData createGeometryData();

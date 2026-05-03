@@ -7,6 +7,7 @@ import me.cortex.voxy.client.core.RenderResourceReuse;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.MDICSectionGeometrySyncBackend;
+import me.cortex.voxy.client.core.rendering.section.IUsesMeshlets;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionRenderer;
@@ -43,6 +44,11 @@ public final class SectionRendererBackendSelector {
     public static SectionRendererBackendContext getContext(SectionRendererBackend backend) {
         return switch (backend) {
             case OPENGL_MDIC -> new SectionRendererBackendContext() {
+                @Override
+                public boolean usesMeshlets() {
+                    return IUsesMeshlets.class.isAssignableFrom(MDICSectionRenderer.FACTORY.clz());
+                }
+
                 @Override
                 public AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRendererFactory() {
                     return MDICSectionRenderer.FACTORY;
