@@ -5,6 +5,7 @@ import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.ChunkBoundsRenderer;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.backend.RenderViewportSize;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
 
@@ -49,6 +50,11 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     @Override
     public RenderProperties getRenderProperties() {
         return this.properties;
+    }
+
+    @Override
+    public RenderViewportSize getRenderViewportSize() {
+        throw new UnsupportedOperationException("VULKANMOD_BERYL render viewport size is not implemented yet");
     }
 
     @Override

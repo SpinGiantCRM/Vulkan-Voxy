@@ -11,6 +11,7 @@ public interface SectionRenderPipeline {
     void setupExtraModelBakeryData(ModelBakerySubsystem modelService);
     void setSectionRenderer(AbstractSectionRenderer<?,?> sectionRenderer);
     RenderProperties getRenderProperties();
+    RenderViewportSize getRenderViewportSize();
     float[] getRenderScalingFactor();
     void preSetup(Viewport<?> viewport);
     ChunkBoundsRenderer createChunkBoundsRenderer();

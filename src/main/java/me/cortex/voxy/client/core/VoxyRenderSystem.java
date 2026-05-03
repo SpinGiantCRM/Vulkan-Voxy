@@ -42,8 +42,6 @@ import org.lwjgl.opengl.GL11;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
-import static org.lwjgl.opengl.GL11.glGetIntegerv;
 import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.opengl.GL30C.*;
 
@@ -162,11 +160,9 @@ public class VoxyRenderSystem {
         //cameraY += 100;
         var voxyProjection = computeProjectionMat(this.properties, vanillaProjection);
 
-        int[] dims = new int[4];
-        glGetIntegerv(GL_VIEWPORT, dims);
-
-        int width = dims[2];
-        int height = dims[3];
+        var viewportSize = this.pipeline.getRenderViewportSize();
+        int width = viewportSize.width();
+        int height = viewportSize.height();
 
         {//Apply render scaling factor
             var factor = this.pipeline.getRenderScalingFactor();
