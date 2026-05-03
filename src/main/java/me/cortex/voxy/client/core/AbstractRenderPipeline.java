@@ -130,28 +130,17 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
             throw new IllegalStateException("Cannot use the default framebuffer as cannot source from it");
         }
 
-        return new RenderFrameContext() {
-            @Override
-            public int sourceFrameBuffer() {
-                return oldFB;
-            }
-
-            @Override
-            public int sourceWidth() {
-                return dims[2];
-            }
-
-            @Override
-            public int sourceHeight() {
-                return dims[3];
-            }
-
-            @Override
-            public void close() {
-                glBindFramebuffer(GL_FRAMEBUFFER, oldFB);
-                glViewport(dims[0], dims[1], dims[2], dims[3]);
-            }
-        };
+        return new MDICRenderFrameContext(
+                oldFB,
+                dims[2],
+                dims[3],
+                dims[0],
+                dims[1],
+                () -> {
+                    glBindFramebuffer(GL_FRAMEBUFFER, oldFB);
+                    glViewport(dims[0], dims[1], dims[2], dims[3]);
+                }
+        );
     }
 
 
@@ -205,7 +194,12 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
         glBindFramebuffer(GL_FRAMEBUFFER, sourceFrameBuffer);
     }
 
-    public void runPipeline(Viewport<?> viewport, int sourceFrameBuffer, int srcWidth, int srcHeight) {
+    public void runPipeline(Viewport<?> viewport, RenderFrameContext frame) {
+        MDICRenderFrameContext mdicFrame = (MDICRenderFrameContext) frame;
+        int sourceFrameBuffer = mdicFrame.sourceFrameBuffer();
+        int srcWidth = mdicFrame.sourceWidth();
+        int srcHeight = mdicFrame.sourceHeight();
+
         int depthTexture = this.setup(viewport, sourceFrameBuffer, srcWidth, srcHeight);
 
         var rs = ((AbstractSectionRenderer)this.sectionRenderer);

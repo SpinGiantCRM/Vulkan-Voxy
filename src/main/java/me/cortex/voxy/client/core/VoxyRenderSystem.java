@@ -220,7 +220,7 @@ public class VoxyRenderSystem {
 
             GPUTiming.INSTANCE.marker();
             //The entire rendering pipeline (excluding the chunkbound thing)
-            this.pipeline.runPipeline(viewport, frame.sourceFrameBuffer(), frame.sourceWidth(), frame.sourceHeight());
+            this.pipeline.runPipeline(viewport, frame);
             GPUTiming.INSTANCE.marker();
         }
 
