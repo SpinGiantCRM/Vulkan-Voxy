@@ -20,6 +20,7 @@ import me.cortex.voxy.client.core.rendering.ViewportSelector;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
 import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTraverser;
+import me.cortex.voxy.client.core.rendering.hierachical.MDICSectionGeometrySyncBackend;
 import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
 import me.cortex.voxy.client.core.rendering.section.IUsesMeshlets;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
@@ -112,7 +113,7 @@ public class VoxyRenderSystem {
 
                 this.geometryData = new MDICSectionGeometryData(1<<20, RenderResourceReuse.getOrCreateGeometryBuffer());
 
-                this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen);
+                this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen, new MDICSectionGeometrySyncBackend());
                 this.nodeCleaner = new NodeCleaner(this.nodeManager);
                 this.traversal = new HierarchicalOcclusionTraverser(this.nodeManager, this.nodeCleaner, this.renderGen);
 
