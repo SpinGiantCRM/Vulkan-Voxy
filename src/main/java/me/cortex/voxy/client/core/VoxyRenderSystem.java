@@ -23,6 +23,7 @@ import me.cortex.voxy.client.core.rendering.hierachical.HierarchicalOcclusionTra
 import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
 import me.cortex.voxy.client.core.rendering.section.IUsesMeshlets;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendContext;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendSelector;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
@@ -61,6 +62,7 @@ public class VoxyRenderSystem {
     private final RenderGenerationService renderGen;
     private final IGeometryData geometryData;
     private final AsyncNodeManager nodeManager;
+    private final SectionRenderBackendRuntime backendRuntime;
     private final NodeCleaner nodeCleaner;
     private final HierarchicalOcclusionTraverser traversal;
 
@@ -114,8 +116,9 @@ public class VoxyRenderSystem {
                 this.geometryData = backendContext.createGeometryData();
 
                 this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen, backendContext.createGeometrySyncBackend());
-                this.nodeCleaner = new NodeCleaner(this.nodeManager);
-                this.traversal = new HierarchicalOcclusionTraverser(this.nodeManager, this.nodeCleaner, this.renderGen);
+                this.backendRuntime = backendContext.createBackendRuntime(this.nodeManager, this.renderGen);
+                this.nodeCleaner = this.backendRuntime.getNodeCleaner();
+                this.traversal = this.backendRuntime.getTraversal();
 
                 world.setDirtyCallback(this.nodeManager::worldEvent);
 
@@ -129,7 +132,7 @@ public class VoxyRenderSystem {
             this.pipeline.setupExtraModelBakeryData(this.modelService);//Configure the model service
 
             //Late stage traversal compile for shaders with taa
-            this.traversal.lateStageCompile(this.pipeline);
+            this.backendRuntime.lateStageCompile(this.pipeline);
 
 
             var sectionRenderer = backendFactory.create(this.pipeline, this.modelService.getStore(), this.geometryData);
@@ -504,8 +507,7 @@ public class VoxyRenderSystem {
 
             this.modelService.shutdown();
             this.renderGen.shutdown();
-            this.traversal.free();
-            this.nodeCleaner.free();
+            this.backendRuntime.free();
             this.geometryData.free();
             getRenderBackendContext().releaseGeometryData(this.geometryData);
 
