@@ -790,8 +790,41 @@ public class AsyncNodeManager {
             return this.geometryUpload.currentElemCopyAmount != 0 || !this.geometryUpload.dataUploadPoints.isEmpty();
         }
 
+        public int getGeometryUploadCopyCount() {
+            return this.geometryUpload.dataUploadPoints.size();
+        }
+
+        public int getGeometryUploadMaxElementAccess() {
+            return this.geometryUpload.maxElementAccess;
+        }
+
+        public long getGeometryUploadScratchHeaderAddress() {
+            return this.geometryUpload.scratchHeaderBuffer.address;
+        }
+
+        public long getGeometryUploadScratchHeaderSizeBytes() {
+            return this.geometryUpload.scratchHeaderBuffer.size;
+        }
+
+        public long getGeometryUploadScratchDataAddress() {
+            return this.geometryUpload.scratchDataBuffer.address;
+        }
+
+        public long getGeometryUploadScratchDataSizeBytes() {
+            return this.geometryUpload.scratchDataBuffer.size;
+        }
+
+        public void forEachGeometryUploadCopy(GeometryUploadCopyConsumer consumer) {
+            this.geometryUpload.forEachCopy(consumer);
+        }
+
         public boolean hasScatterWriteWork() {
             return !this.scatterWriteLocationMap.isEmpty();
+        }
+
+        @FunctionalInterface
+        public interface GeometryUploadCopyConsumer {
+            void accept(int destinationElementOffset, int scratchDataElementOffset, int elementCount);
         }
 
         //Get or create a scatter write address for the given location
@@ -966,6 +999,17 @@ public class AsyncNodeManager {
             this.currentElemCopyAmount = 0;
             this.dataUploadPoints.clear();
             this.arena.reset();
+        }
+
+        public void forEachCopy(SyncResults.GeometryUploadCopyConsumer consumer) {
+            for (var entry : this.dataUploadPoints.int2IntEntrySet()) {
+                int destinationElementOffset = entry.getIntKey();
+                int headerIndex = entry.getIntValue();
+                long headerPtr = this.scratchHeaderBuffer.address + headerIndex * 16L;
+                int scratchDataElementOffset = MemoryUtil.memGetInt(headerPtr);
+                int elementCount = MemoryUtil.memGetInt(headerPtr + 8L);
+                consumer.accept(destinationElementOffset, scratchDataElementOffset, elementCount);
+            }
         }
 
         public void free() {
