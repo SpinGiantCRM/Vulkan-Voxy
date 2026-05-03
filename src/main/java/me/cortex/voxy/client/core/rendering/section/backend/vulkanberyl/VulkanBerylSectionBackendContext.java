@@ -29,7 +29,7 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
 
     @Override
     public SectionGeometrySyncBackend createGeometrySyncBackend() {
-        throw notImplemented("geometry sync backend");
+        return new VulkanBerylSectionGeometrySyncBackend();
     }
 
     @Override

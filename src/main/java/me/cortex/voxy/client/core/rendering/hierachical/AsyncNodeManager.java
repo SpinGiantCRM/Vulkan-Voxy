@@ -738,7 +738,7 @@ public class AsyncNodeManager {
     }
 
     //Results object, which is to be synced between the render thread and worker thread
-    static final class SyncResults {
+    public static final class SyncResults {
         //Contains
         // geometry uploads and id invalidations and the data
         // node ids to invalidate/update and its data
@@ -776,6 +776,22 @@ public class AsyncNodeManager {
             this.geometrySectionCount = 0;
             this.usedGeometry = 0;
             this.geometryUpload.reset();
+        }
+
+        public int getGeometrySectionCount() {
+            return this.geometrySectionCount;
+        }
+
+        public long getUsedGeometry() {
+            return this.usedGeometry;
+        }
+
+        public boolean hasGeometryUploadWork() {
+            return this.geometryUpload.currentElemCopyAmount != 0 || !this.geometryUpload.dataUploadPoints.isEmpty();
+        }
+
+        public boolean hasScatterWriteWork() {
+            return !this.scatterWriteLocationMap.isEmpty();
         }
 
         //Get or create a scatter write address for the given location
