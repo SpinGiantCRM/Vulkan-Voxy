@@ -1,7 +1,6 @@
 package me.cortex.voxy.client.core.rendering.section.backend;
 
 
-import me.cortex.voxy.client.core.AbstractRenderPipeline;
 import me.cortex.voxy.client.core.RenderProperties;
 import me.cortex.voxy.client.core.model.ModelStore;
 import me.cortex.voxy.client.core.rendering.Viewport;
@@ -14,7 +13,7 @@ import java.util.List;
 
 //Takes in mesh ids from the hierachical traversal and may perform more culling then renders it
 public abstract class AbstractSectionRenderer <T extends Viewport<T>, J extends IGeometryData> {
-    public record CreateContext(AbstractRenderPipeline pipeline, ModelStore modelStore, IGeometryData geometryData) {}
+    public record CreateContext(SectionRenderPipeline pipeline, ModelStore modelStore, IGeometryData geometryData) {}
 
     public interface FactoryConstructor<VIEWPORT extends Viewport<VIEWPORT>, GEODATA extends IGeometryData> {
         AbstractSectionRenderer<VIEWPORT, GEODATA> create(CreateContext context, GEODATA geometryData);
@@ -25,7 +24,7 @@ public abstract class AbstractSectionRenderer <T extends Viewport<T>, J extends 
             return this.constructor.create(context, (GEODATA) context.geometryData());
         }
 
-        public AbstractSectionRenderer<VIEWPORT, GEODATA> create(AbstractRenderPipeline pipeline, ModelStore store, IGeometryData geometryData) {
+        public AbstractSectionRenderer<VIEWPORT, GEODATA> create(SectionRenderPipeline pipeline, ModelStore store, IGeometryData geometryData) {
             return this.create(new CreateContext(pipeline, store, geometryData));
         }
 
@@ -37,12 +36,16 @@ public abstract class AbstractSectionRenderer <T extends Viewport<T>, J extends 
             }
             var constructor = constructors[0];
             var params = constructor.getParameterTypes();
-            if (params.length != 3 || params[0] != AbstractRenderPipeline.class || params[1] != ModelStore.class || !IGeometryData.class.isAssignableFrom(params[2])) {
+            if (params.length != 3 || !SectionRenderPipeline.class.isAssignableFrom(params[0]) || params[1] != ModelStore.class || !IGeometryData.class.isAssignableFrom(params[2])) {
                 Logger.error("Render backend " + clz.getCanonicalName() + " had invalid constructor");
                 return null;
             }
+            var pipelineType = params[0];
             return new Factory<>(clz, (context, geometryData)-> {
                 try {
+                    if (!pipelineType.isInstance(context.pipeline())) {
+                        throw new IllegalArgumentException("Pipeline type mismatch, expected " + pipelineType.getName() + " but got " + context.pipeline().getClass().getName());
+                    }
                     return (AbstractSectionRenderer<VIEWPORT2, GEODATA2>) constructor.newInstance(context.pipeline(), context.modelStore(), geometryData);
                 } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
                     throw new RuntimeException(e);
