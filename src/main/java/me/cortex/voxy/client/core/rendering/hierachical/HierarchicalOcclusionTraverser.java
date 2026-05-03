@@ -49,6 +49,7 @@ public class HierarchicalOcclusionTraverser {
     private final GlBuffer requestBuffer;
 
     private final GlBuffer nodeBuffer;
+    private final NodeMetadataStore nodeMetadataStore;
     private final GlBuffer uniformBuffer = new GlBuffer(1024).zero();
     private final GlBuffer statisticsBuffer = new GlBuffer(1024).zero();
 
@@ -85,6 +86,7 @@ public class HierarchicalOcclusionTraverser {
         this.meshGen = meshGen;
         this.requestBuffer = new GlBuffer(MAX_REQUEST_QUEUE_SIZE*8L+8).zero();
         this.nodeBuffer = new GlBuffer(nodeManager.maxNodeCount*16L).fill(-1);
+        this.nodeMetadataStore = new MDICNodeMetadataStore(this.nodeBuffer);
 
 
         glSamplerParameteri(this.hizSampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
@@ -376,6 +378,10 @@ public class HierarchicalOcclusionTraverser {
         if (count != 0) {
             this.nodeManager.submitRequestBatch(new MemoryBuffer(count*8L+8).cpyFrom(ptr-8));// the -8 is because we incremented it by 8
         }
+    }
+
+    public NodeMetadataStore getNodeMetadataStore() {
+        return this.nodeMetadataStore;
     }
 
     public GlBuffer getNodeBuffer() {
