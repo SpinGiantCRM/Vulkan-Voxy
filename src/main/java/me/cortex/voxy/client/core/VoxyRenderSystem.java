@@ -127,7 +127,7 @@ public class VoxyRenderSystem {
             this.backendRuntime.lateStageCompile(this.pipeline);
 
             var backendFactory = backendContext.getRendererFactory();
-            var sectionRenderer = backendFactory.create(this.pipeline, this.modelService.getStore(), this.geometryData);
+            var sectionRenderer = backendFactory.create(new AbstractSectionRenderer.CreateContext(this.pipeline, this.modelService.getStore(), this.geometryData));
             this.pipeline.setSectionRenderer(sectionRenderer);
             this.viewportSelector = new ViewportSelector<>(sectionRenderer::createViewport);
 

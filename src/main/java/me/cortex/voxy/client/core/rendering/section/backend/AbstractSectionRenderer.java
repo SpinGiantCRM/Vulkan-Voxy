@@ -14,13 +14,19 @@ import java.util.List;
 
 //Takes in mesh ids from the hierachical traversal and may perform more culling then renders it
 public abstract class AbstractSectionRenderer <T extends Viewport<T>, J extends IGeometryData> {
+    public record CreateContext(AbstractRenderPipeline pipeline, ModelStore modelStore, IGeometryData geometryData) {}
+
     public interface FactoryConstructor<VIEWPORT extends Viewport<VIEWPORT>, GEODATA extends IGeometryData> {
-        AbstractSectionRenderer<VIEWPORT, GEODATA> create(AbstractRenderPipeline pipeline, ModelStore modelStore, GEODATA geometryData);
+        AbstractSectionRenderer<VIEWPORT, GEODATA> create(CreateContext context, GEODATA geometryData);
     }
 
     public record Factory<VIEWPORT extends Viewport<VIEWPORT>, GEODATA extends IGeometryData>(Class<? extends AbstractSectionRenderer<VIEWPORT, GEODATA>> clz, FactoryConstructor<VIEWPORT, GEODATA> constructor) {
+        public AbstractSectionRenderer<VIEWPORT, GEODATA> create(CreateContext context) {
+            return this.constructor.create(context, (GEODATA) context.geometryData());
+        }
+
         public AbstractSectionRenderer<VIEWPORT, GEODATA> create(AbstractRenderPipeline pipeline, ModelStore store, IGeometryData geometryData) {
-            return this.constructor.create(pipeline, store, (GEODATA) geometryData);
+            return this.create(new CreateContext(pipeline, store, geometryData));
         }
 
         public static <VIEWPORT2 extends Viewport<VIEWPORT2>, GEODATA2 extends IGeometryData> Factory<VIEWPORT2, GEODATA2> create(Class<? extends AbstractSectionRenderer<VIEWPORT2, GEODATA2>> clz) {
@@ -35,9 +41,9 @@ public abstract class AbstractSectionRenderer <T extends Viewport<T>, J extends 
                 Logger.error("Render backend " + clz.getCanonicalName() + " had invalid constructor");
                 return null;
             }
-            return new Factory<>(clz, (a,b,c)-> {
+            return new Factory<>(clz, (context, geometryData)-> {
                 try {
-                    return (AbstractSectionRenderer<VIEWPORT2, GEODATA2>) constructor.newInstance(a,b,c);
+                    return (AbstractSectionRenderer<VIEWPORT2, GEODATA2>) constructor.newInstance(context.pipeline(), context.modelStore(), geometryData);
                 } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
                     throw new RuntimeException(e);
                 }
