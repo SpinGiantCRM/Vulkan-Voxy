@@ -26,7 +26,7 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
 
     @Override
     public AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRendererFactory() {
-        throw notImplemented("renderer factory");
+        return VulkanBerylSectionRenderer.FACTORY;
     }
 
     @Override

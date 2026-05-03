@@ -78,6 +78,11 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
         this.sectionRenderer = sectionRenderer;
     }
 
+    @Override
+    public RenderProperties getRenderProperties() {
+        return this.properties;
+    }
+
     //Called before the pipeline starts running, used to update uniforms etc
     public void preSetup(Viewport<?> viewport) {
 
