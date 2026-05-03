@@ -1,5 +1,6 @@
 package me.cortex.voxy.client.core.rendering.hierachical;
 
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import me.cortex.voxy.client.RenderStatistics;
 import me.cortex.voxy.client.config.VoxyConfig;
@@ -203,7 +204,7 @@ public class HierarchicalOcclusionTraverser {
         viewport.section.getToAddress(ptr); ptr += 4*3;
 
         //MemoryUtil.memPutFloat(ptr, viewport.width); ptr += 4;
-        MemoryUtil.memPutInt(ptr, viewport.hiZBuffer.getPackedLevels()); ptr += 4;
+        MemoryUtil.memPutInt(ptr, MDICViewport.require(viewport).depthResources.hiZBuffer.getPackedLevels()); ptr += 4;
 
         viewport.innerTranslation.getToAddress(ptr); ptr += 4*3;
 
@@ -238,7 +239,7 @@ public class HierarchicalOcclusionTraverser {
         glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, this.queueMetaBuffer.id);
 
         //Bind the hiz buffer
-        glBindTextureUnit(0, viewport.hiZBuffer.getHizTextureId());
+        glBindTextureUnit(0, MDICViewport.require(viewport).depthResources.hiZBuffer.getHizTextureId());
         glBindSampler(0, this.hizSampler);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, RENDER_QUEUE_BINDING, MDICViewportRenderList.require(viewport.getRenderList()).glBuffer().id);
     }

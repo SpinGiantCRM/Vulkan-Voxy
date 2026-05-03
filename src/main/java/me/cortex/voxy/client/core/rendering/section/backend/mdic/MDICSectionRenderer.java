@@ -177,7 +177,7 @@ public class MDICSectionRenderer extends AbstractSectionRenderer<MDICViewport, M
         this.modelStore.bind(3, 4, 0);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, viewport.positionScratchBuffer.id);
         LightMapHelper.bind(1);
-        glBindTextureUnit(2, viewport.depthBoundingBuffer.getDepthTex().id);
+        glBindTextureUnit(2, MDICViewport.require(viewport).depthResources.depthBoundingBuffer.getDepthTex().id);
 
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, SharedIndexBuffer.INSTANCE.id());
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, viewport.drawCallBuffer.id);

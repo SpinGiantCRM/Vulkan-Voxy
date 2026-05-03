@@ -1,5 +1,6 @@
 package me.cortex.voxy.client.core;
 
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
 import com.mojang.blaze3d.opengl.GlConst;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
@@ -265,7 +266,7 @@ public class VoxyRenderSystem {
         if ((!VoxyClient.disableSodiumChunkRender())&&!IrisUtil.irisShadowActive()) {
             this.chunkBoundRenderer.render(viewport);
         } else {
-            viewport.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
+            MDICViewport.require(viewport).depthResources.depthBoundingBuffer.clear(this.properties.inverseClearDepth());
         }
         TimingStatistics.E.stop();
 

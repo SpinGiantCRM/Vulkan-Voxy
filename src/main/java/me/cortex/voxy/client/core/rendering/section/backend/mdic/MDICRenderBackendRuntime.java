@@ -35,7 +35,7 @@ public class MDICRenderBackendRuntime implements SectionRenderBackendRuntime {
 
     @Override
     public void doPrimaryWork(Viewport<?> viewport, int depthBuffer, BooleanSupplier frexStillHasWork) {
-        viewport.hiZBuffer.buildMipChain(depthBuffer, viewport.width, viewport.height);
+        MDICViewport.require(viewport).depthResources.hiZBuffer.buildMipChain(depthBuffer, viewport.width, viewport.height);
 
         do {
             TimingStatistics.main.stop();
