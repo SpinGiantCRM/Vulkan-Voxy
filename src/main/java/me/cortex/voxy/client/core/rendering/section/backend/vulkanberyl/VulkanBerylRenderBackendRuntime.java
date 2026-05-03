@@ -12,11 +12,13 @@ import java.util.function.BooleanSupplier;
 public final class VulkanBerylRenderBackendRuntime implements SectionRenderBackendRuntime {
     private final AsyncNodeManager nodeManager;
     private final RenderGenerationService renderGen;
+    private final VulkanBerylNodeMetadataStore nodeMetadataStore;
     private boolean freed;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
         this.nodeManager = nodeManager;
         this.renderGen = renderGen;
+        this.nodeMetadataStore = new VulkanBerylNodeMetadataStore(nodeManager.maxNodeCount);
     }
 
     @Override
@@ -34,8 +36,16 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         debug.add("Vulkan/Beryl backend runtime: initialized");
     }
 
+    VulkanBerylNodeMetadataStore getNodeMetadataStore() {
+        return this.nodeMetadataStore;
+    }
+
     @Override
     public void free() {
+        if (this.freed) {
+            return;
+        }
+        this.nodeMetadataStore.free();
         this.freed = true;
     }
 }
