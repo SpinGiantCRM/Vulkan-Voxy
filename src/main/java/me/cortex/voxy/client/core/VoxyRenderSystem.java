@@ -24,7 +24,7 @@ import me.cortex.voxy.client.core.rendering.hierachical.NodeCleaner;
 import me.cortex.voxy.client.core.rendering.section.IUsesMeshlets;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendSelector;
-import me.cortex.voxy.client.core.rendering.section.geometry.BasicSectionGeometryData;
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICSectionGeometryData;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import me.cortex.voxy.client.core.rendering.util.DownloadStream;
 import me.cortex.voxy.client.core.rendering.util.PrintfDebugUtil;
@@ -110,7 +110,7 @@ public class VoxyRenderSystem {
                 this.modelService = new ModelBakerySubsystem(world.getMapper());
                 this.renderGen = new RenderGenerationService(world, this.modelService, sm, IUsesMeshlets.class.isAssignableFrom(backendFactory.clz()));
 
-                this.geometryData = new BasicSectionGeometryData(1<<20, RenderResourceReuse.getOrCreateGeometryBuffer());
+                this.geometryData = new MDICSectionGeometryData(1<<20, RenderResourceReuse.getOrCreateGeometryBuffer());
 
                 this.nodeManager = new AsyncNodeManager(1 << 21, this.geometryData, this.renderGen);
                 this.nodeCleaner = new NodeCleaner(this.nodeManager);
@@ -506,8 +506,8 @@ public class VoxyRenderSystem {
             this.traversal.free();
             this.nodeCleaner.free();
             this.geometryData.free();
-            if (((BasicSectionGeometryData)this.geometryData).isExternalGeometryBuffer) {
-                RenderResourceReuse.giveBackGeometryBuffer(((BasicSectionGeometryData)this.geometryData).getGeometryBuffer());
+            if (((MDICSectionGeometryData)this.geometryData).isExternalGeometryBuffer) {
+                RenderResourceReuse.giveBackGeometryBuffer(((MDICSectionGeometryData)this.geometryData).getGeometryBuffer());
             }
 
             this.chunkBoundRenderer.free();

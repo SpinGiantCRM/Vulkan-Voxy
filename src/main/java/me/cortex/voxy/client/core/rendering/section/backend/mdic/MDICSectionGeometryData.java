@@ -1,4 +1,6 @@
-package me.cortex.voxy.client.core.rendering.section.geometry;
+package me.cortex.voxy.client.core.rendering.section.backend.mdic;
+
+import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 
 import me.cortex.voxy.client.core.gl.Capabilities;
 import me.cortex.voxy.client.core.gl.GlBuffer;
@@ -10,7 +12,7 @@ import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.opengl.GL15C.GL_ARRAY_BUFFER;
 import static org.lwjgl.opengl.GL15C.glBindBuffer;
 
-public class BasicSectionGeometryData implements IGeometryData {
+public class MDICSectionGeometryData implements IGeometryData {
     public static final int SECTION_METADATA_SIZE = 32;
     private final GlBuffer sectionMetadataBuffer;
     private final GlBuffer geometryBuffer;
@@ -19,7 +21,7 @@ public class BasicSectionGeometryData implements IGeometryData {
     private final int maxSectionCount;
     private int currentSectionCount;
 
-    public BasicSectionGeometryData(int maxSectionCount, GlBuffer geometryBuffer) {
+    public MDICSectionGeometryData(int maxSectionCount, GlBuffer geometryBuffer) {
         this.maxSectionCount = maxSectionCount;
         this.sectionMetadataBuffer = new GlBuffer((long) maxSectionCount * SECTION_METADATA_SIZE);
         //8 Cause a quad is 8 bytes
@@ -30,7 +32,7 @@ public class BasicSectionGeometryData implements IGeometryData {
         this.isExternalGeometryBuffer = true;
     }
 
-    public BasicSectionGeometryData(int maxSectionCount, long geometryCapacity) {
+    public MDICSectionGeometryData(int maxSectionCount, long geometryCapacity) {
         this.isExternalGeometryBuffer = false;
         this.maxSectionCount = maxSectionCount;
         this.sectionMetadataBuffer = new GlBuffer((long) maxSectionCount * SECTION_METADATA_SIZE);
