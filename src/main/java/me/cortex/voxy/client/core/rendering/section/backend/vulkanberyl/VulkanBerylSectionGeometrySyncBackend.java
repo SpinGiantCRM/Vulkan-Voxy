@@ -95,6 +95,35 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
         if (!results.hasScatterWriteWork()) {
             return;
         }
+
+        int scatterWriteCount = results.getScatterWriteCount();
+        if (scatterWriteCount <= 0) {
+            throw new IllegalStateException("Scatter write work reported but scatter write count is " + scatterWriteCount);
+        }
+
+        long scatterWriteBufferAddress = results.getScatterWriteBufferAddress();
+        if (scatterWriteBufferAddress == 0L) {
+            throw new IllegalStateException("Scatter write buffer address is null");
+        }
+
+        long encodedStreamSizeBytes = results.getScatterWriteEncodedStreamSizeBytes();
+        if (encodedStreamSizeBytes <= 0L) {
+            throw new IllegalStateException("Scatter write encoded stream size is non-positive: " + encodedStreamSizeBytes);
+        }
+
+        long scatterWriteBufferSizeBytes = results.getScatterWriteBufferSizeBytes();
+        if (encodedStreamSizeBytes > scatterWriteBufferSizeBytes) {
+            throw new IllegalStateException("Scatter write encoded stream exceeds buffer size: streamSize=" + encodedStreamSizeBytes + ", bufferSize=" + scatterWriteBufferSizeBytes);
+        }
+
+        results.forEachScatterWrite((encodedLocation, dataAddress, dataSizeBytes) -> {
+            if (dataAddress == 0L) {
+                throw new IllegalStateException("Scatter write data address is null for encoded location: " + encodedLocation);
+            }
+            if (dataSizeBytes != 16) {
+                throw new IllegalStateException("Scatter write payload size must be 16 bytes: " + dataSizeBytes);
+            }
+        });
         throw new UnsupportedOperationException("Vulkan/Beryl node/metadata scatter writes are not implemented yet");
     }
 
