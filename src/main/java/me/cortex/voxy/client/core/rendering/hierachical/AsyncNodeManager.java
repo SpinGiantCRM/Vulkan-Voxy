@@ -489,7 +489,7 @@ public class AsyncNodeManager {
 
     private IntConsumer tlnAddCallback; private IntConsumer tlnRemoveCallback;
     //Render thread synchronization
-    public void tick(NodeMetadataStore nodeMetadataStore, NodeCleaner cleaner) {//TODO: dont pass node metadata store here??, do something else thats better
+    public void tick(NodeMetadataStore nodeMetadataStore, NodeCleanupSink cleanupSink) {//TODO: dont pass node metadata store here??, do something else thats better
         if (this.uncaughtException != null) {
             throw new RuntimeException(this.uncaughtException);//Propagate internal exception
         }
@@ -520,7 +520,7 @@ public class AsyncNodeManager {
 
         TimingStatistics.C.start();
         if (!results.cleanerOperations.isEmpty()) {
-            cleaner.updateIds(results.cleanerOperations);
+            cleanupSink.updateIds(results.cleanerOperations);
         }
         TimingStatistics.C.stop();
 
