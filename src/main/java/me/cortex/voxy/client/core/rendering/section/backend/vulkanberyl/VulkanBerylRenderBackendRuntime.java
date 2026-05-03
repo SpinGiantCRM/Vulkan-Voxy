@@ -16,6 +16,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
     private final VulkanBerylTopLevelNodeStore topLevelNodeStore;
     private final VulkanBerylNodeCleanupSink nodeCleanupSink;
+    private final VulkanBerylTraversalResources traversalResources;
     private boolean freed;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
@@ -24,6 +25,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.nodeMetadataStore = new VulkanBerylNodeMetadataStore(nodeManager.maxNodeCount);
         this.topLevelNodeStore = new VulkanBerylTopLevelNodeStore();
         this.nodeCleanupSink = new VulkanBerylNodeCleanupSink();
+        this.traversalResources = new VulkanBerylTraversalResources();
         this.nodeManager.setTLNAddRemoveCallbacks(this.topLevelNodeStore::addTopLevelNode, this.topLevelNodeStore::removeTopLevelNode);
     }
 
@@ -45,6 +47,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         do {
             this.nodeManager.tick(this.nodeMetadataStore, this.nodeCleanupSink);
         } while (frexStillHasWork.getAsBoolean());
+
+        this.traversalResources.initializeQueueMetadata(this.topLevelNodeStore.getTopNodeCount());
     }
 
     @Override
@@ -61,6 +65,10 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         return this.topLevelNodeStore;
     }
 
+    VulkanBerylTraversalResources getTraversalResources() {
+        return this.traversalResources;
+    }
+
     @Override
     public void free() {
         if (this.freed) {
@@ -68,6 +76,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         }
         this.nodeMetadataStore.free();
         this.topLevelNodeStore.free();
+        this.traversalResources.free();
         this.freed = true;
     }
 }
