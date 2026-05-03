@@ -4,6 +4,7 @@ import me.cortex.voxy.client.core.AbstractRenderPipeline;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
+import me.cortex.voxy.client.core.rendering.section.backend.PrimaryRenderWorkContext;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 
 import java.util.List;
@@ -29,9 +30,12 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     }
 
     @Override
-    public void doPrimaryWork(Viewport<?> viewport, int depthBuffer, BooleanSupplier frexStillHasWork) {
+    public void doPrimaryWork(Viewport<?> viewport, PrimaryRenderWorkContext workContext, BooleanSupplier frexStillHasWork) {
         if (this.freed) {
             throw new IllegalStateException("Cannot execute runtime work after free");
+        }
+        if (!(workContext instanceof VulkanBerylPrimaryRenderWorkContext)) {
+            throw new IllegalArgumentException("VULKANMOD_BERYL runtime requires VulkanBerylPrimaryRenderWorkContext");
         }
         VulkanBerylViewport.require(viewport);
 

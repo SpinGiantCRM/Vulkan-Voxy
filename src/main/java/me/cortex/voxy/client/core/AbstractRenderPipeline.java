@@ -16,6 +16,7 @@ import me.cortex.voxy.client.core.rendering.section.backend.RenderFrameContext;
 import me.cortex.voxy.client.core.rendering.section.backend.RenderBackendStateGuard;
 import me.cortex.voxy.client.core.rendering.section.backend.RenderViewportSize;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
+import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICPrimaryRenderWorkContext;
 import me.cortex.voxy.client.core.rendering.section.backend.mdic.MDICViewport;
 import me.cortex.voxy.client.core.rendering.util.DepthFramebuffer;
 import me.cortex.voxy.client.core.rendering.util.UploadStream;
@@ -297,7 +298,7 @@ public abstract class AbstractRenderPipeline extends TrackedObject implements Se
     }
 
     protected void innerPrimaryWork(Viewport<?> viewport, int depthBuffer) {
-        this.backendRuntime.doPrimaryWork(viewport, depthBuffer, this.frexStillHasWork);
+        this.backendRuntime.doPrimaryWork(viewport, new MDICPrimaryRenderWorkContext(depthBuffer), this.frexStillHasWork);
     }
 
     @Override

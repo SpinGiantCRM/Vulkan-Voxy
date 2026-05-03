@@ -139,15 +139,31 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
     @Override
     public void runPipeline(Viewport<?> viewport, RenderFrameContext frame) {
-        if (!(frame instanceof VulkanBerylRenderFrameContext)) {
+        if (this.freed) {
+            throw new IllegalStateException("VULKANMOD_BERYL pipeline is freed");
+        }
+        if (this.sectionRenderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL section renderer is not set");
+        }
+        if (!(viewport instanceof VulkanBerylViewport)) {
+            throw new IllegalArgumentException("VULKANMOD_BERYL requires VulkanBerylViewport");
+        }
+        if (!(frame instanceof VulkanBerylRenderFrameContext vulkanFrame)) {
             throw new IllegalArgumentException("Expected VulkanBerylRenderFrameContext");
         }
-        throw new UnsupportedOperationException("VULKANMOD_BERYL pipeline rendering is not implemented yet");
+
+        Renderer renderer = this.requireRenderer();
+        SwapChain swapChain = this.requireSwapChain(renderer);
+        VkExtent2D extent = this.requireExtent(swapChain);
+        this.requireValidExtent(extent);
+        this.requireCompatibleViewport(viewport, extent.width(), extent.height());
+
+        this.backendRuntime.doPrimaryWork(viewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
     }
 
     @Override
     public void addDebug(List<String> debug) {
-        debug.add("Vulkan/Beryl section pipeline: initialized (rendering unimplemented)");
+        debug.add("Vulkan/Beryl section pipeline: sync-only primary work enabled, rendering unimplemented");
     }
 
     @Override
