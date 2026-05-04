@@ -29,6 +29,12 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
     private AbstractSectionRenderer<?, ?> sectionRenderer;
     private boolean freed;
+    private long runPipelineEnterCount;
+    private long doPrimaryWorkCompletedCount;
+    private long buildDrawCallsAttemptedCount;
+    private long renderOpaqueAttemptedCount;
+    private String lastRenderPhaseReached = "none";
+    private String lastRenderFailure = "none";
 
     public VulkanBerylSectionRenderPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
         this.properties = properties;
@@ -136,6 +142,9 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
     @Override
     public void runPipeline(Viewport<?> viewport, RenderFrameContext frame) {
+        this.runPipelineEnterCount++;
+        this.lastRenderPhaseReached = "runPipeline_enter";
+        this.lastRenderFailure = "none";
         if (this.freed) {
             throw new IllegalStateException("VULKANMOD_BERYL pipeline is freed");
         }
@@ -154,21 +163,45 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         this.requireCompatibleViewport(vulkanViewport, extent.width(), extent.height());
         VulkanBerylViewportRenderList renderList = VulkanBerylViewportRenderList.require(vulkanViewport.getRenderList());
         renderList.clearCounter();
+        this.lastRenderPhaseReached = "renderList_cleared";
 
-        this.backendRuntime.doPrimaryWork(vulkanViewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
+        try {
+            this.backendRuntime.doPrimaryWork(vulkanViewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
+            this.doPrimaryWorkCompletedCount++;
+            this.lastRenderPhaseReached = "doPrimaryWork_completed";
 
-        if (!FORCE_SYNC_ONLY_SECTION_PIPELINE) {
-            @SuppressWarnings("unchecked")
-            AbstractSectionRenderer<VulkanBerylViewport, ?> activeSectionRenderer = (AbstractSectionRenderer<VulkanBerylViewport, ?>) this.sectionRenderer;
-            activeSectionRenderer.buildDrawCalls(vulkanViewport);
-            activeSectionRenderer.renderOpaque(vulkanViewport);
-            activeSectionRenderer.renderTranslucent(vulkanViewport);
-            activeSectionRenderer.renderTemporal(vulkanViewport);
+            if (!FORCE_SYNC_ONLY_SECTION_PIPELINE) {
+                @SuppressWarnings("unchecked")
+                AbstractSectionRenderer<VulkanBerylViewport, ?> activeSectionRenderer = (AbstractSectionRenderer<VulkanBerylViewport, ?>) this.sectionRenderer;
+                this.buildDrawCallsAttemptedCount++;
+                activeSectionRenderer.buildDrawCalls(vulkanViewport);
+                this.lastRenderPhaseReached = "buildDrawCalls_completed";
+                this.renderOpaqueAttemptedCount++;
+                activeSectionRenderer.renderOpaque(vulkanViewport);
+                this.lastRenderPhaseReached = "renderOpaque_completed";
+                activeSectionRenderer.renderTranslucent(vulkanViewport);
+                this.lastRenderPhaseReached = "renderTranslucent_completed";
+                activeSectionRenderer.renderTemporal(vulkanViewport);
+                this.lastRenderPhaseReached = "renderTemporal_completed";
+            } else {
+                this.lastRenderPhaseReached = "syncOnly_forced";
+            }
+        } catch (RuntimeException | Error ex) {
+            this.lastRenderFailure = this.lastRenderPhaseReached + ": " + ex.getClass().getSimpleName() + ": " + ex.getMessage();
+            this.lastRenderPhaseReached = "failed";
+            throw ex;
         }
     }
 
     @Override
     public void addDebug(List<String> debug) {
+        debug.add("Vulkan/Beryl forceSyncOnlySectionPipeline: " + FORCE_SYNC_ONLY_SECTION_PIPELINE);
+        debug.add("Vulkan/Beryl runPipeline enter count: " + this.runPipelineEnterCount);
+        debug.add("Vulkan/Beryl doPrimaryWork completed count: " + this.doPrimaryWorkCompletedCount);
+        debug.add("Vulkan/Beryl buildDrawCalls attempted count: " + this.buildDrawCallsAttemptedCount);
+        debug.add("Vulkan/Beryl renderOpaque attempted count: " + this.renderOpaqueAttemptedCount);
+        debug.add("Vulkan/Beryl last render phase reached: " + this.lastRenderPhaseReached);
+        debug.add("Vulkan/Beryl last render exception/failure: " + this.lastRenderFailure);
         if (FORCE_SYNC_ONLY_SECTION_PIPELINE) {
             debug.add("Vulkan/Beryl section pipeline: sync-only fallback forced via -Dvoxy.vulkanberyl.forceSyncOnlySectionPipeline=true");
         } else {
