@@ -1,9 +1,13 @@
 package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
+import me.cortex.voxy.client.config.VoxyConfig;
+import me.cortex.voxy.client.core.rendering.Viewport;
+import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.common.world.WorldEngine;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -73,6 +77,69 @@ public final class VulkanBerylTraversalResources {
 
             VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
             uploader.upload(this.queueMetaBuffer, 0L, memAddress(queueMetadata), QUEUE_META_BUFFER_SIZE_BYTES);
+            uploader.flush();
+        }
+    }
+
+    public void uploadTraversalUniforms(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen) {
+        requireNotFreed();
+        if (viewport == null) {
+            throw new IllegalArgumentException("viewport must not be null");
+        }
+        if (renderList == null) {
+            throw new IllegalArgumentException("renderList must not be null");
+        }
+        if (renderList.isFreed()) {
+            throw new IllegalStateException("renderList is freed");
+        }
+        if (topLevelNodeStore == null) {
+            throw new IllegalArgumentException("topLevelNodeStore must not be null");
+        }
+        if (topLevelNodeStore.isFreed()) {
+            throw new IllegalStateException("topLevelNodeStore is freed");
+        }
+        if (renderGen == null) {
+            throw new IllegalArgumentException("renderGen must not be null");
+        }
+        if (this.uniformBuffer.getBufferSize() < UNIFORM_BUFFER_SIZE_BYTES) {
+            throw new IllegalStateException("uniformBuffer must be at least 1024 bytes");
+        }
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var uniformData = stack.calloc((int) UNIFORM_BUFFER_SIZE_BYTES);
+            long ptr = memAddress(uniformData);
+
+            viewport.MVP.getToAddress(ptr); ptr += 4L * 4L * 4L;
+            viewport.section.getToAddress(ptr); ptr += 4L * 3L;
+
+            // Hi-Z packed levels is 0 until Vulkan/Beryl depth pre-pass resources exist.
+            MemoryUtil.memPutInt(ptr, 0); ptr += Integer.BYTES;
+
+            viewport.innerTranslation.getToAddress(ptr); ptr += 4L * 3L;
+
+            final float screenspaceAreaDecreasingSize = VoxyConfig.CONFIG.subDivisionSize * VoxyConfig.CONFIG.subDivisionSize;
+            MemoryUtil.memPutFloat(ptr, screenspaceAreaDecreasingSize / (viewport.width * (float) viewport.height)); ptr += Float.BYTES;
+
+            for (int i = 0; i < 6; i++) {
+                viewport.frustumPlanes[i].getToAddress(ptr);
+                ptr += 4L * 4L;
+            }
+
+            MemoryUtil.memPutInt(ptr, renderList.getMaxEntryCount()); ptr += Integer.BYTES;
+
+            // visibilityId is 0 until Vulkan/Beryl visibility tracking exists.
+            MemoryUtil.memPutInt(ptr, 0); ptr += Integer.BYTES;
+
+            final double targetCount = 4000.0;
+            double fillness = Math.max(0.0, (targetCount - renderGen.getTaskCount()) / targetCount);
+            fillness *= fillness;
+            final int requestSize = (int) Math.ceil(fillness * MAX_REQUEST_QUEUE_SIZE);
+            MemoryUtil.memPutInt(ptr, Math.max(0, Math.min(MAX_REQUEST_QUEUE_SIZE, requestSize))); ptr += Integer.BYTES;
+
+            MemoryUtil.memPutFloat(ptr, (float) Math.pow(VoxyConfig.CONFIG.sectionRenderDistance * 16 * 32, 2));
+
+            VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+            uploader.upload(this.uniformBuffer, 0L, memAddress(uniformData), UNIFORM_BUFFER_SIZE_BYTES);
             uploader.flush();
         }
     }

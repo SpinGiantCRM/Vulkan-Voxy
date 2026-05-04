@@ -42,13 +42,15 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         if (!(workContext instanceof VulkanBerylPrimaryRenderWorkContext)) {
             throw new IllegalArgumentException("VULKANMOD_BERYL runtime requires VulkanBerylPrimaryRenderWorkContext");
         }
-        VulkanBerylViewport.require(viewport);
+        VulkanBerylViewport vulkanViewport = VulkanBerylViewport.require(viewport);
+        VulkanBerylViewportRenderList renderList = VulkanBerylViewportRenderList.require(vulkanViewport.getRenderList());
 
         do {
             this.nodeManager.tick(this.nodeMetadataStore, this.nodeCleanupSink);
         } while (frexStillHasWork.getAsBoolean());
 
         this.traversalResources.initializeQueueMetadata(this.topLevelNodeStore.getTopNodeCount());
+        this.traversalResources.uploadTraversalUniforms(vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen);
     }
 
     @Override
