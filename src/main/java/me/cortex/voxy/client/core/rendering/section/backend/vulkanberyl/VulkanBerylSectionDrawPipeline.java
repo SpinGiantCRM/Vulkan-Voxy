@@ -3,9 +3,14 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
+import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.shader.GraphicsPipeline;
 import net.vulkanmod.vulkan.shader.Pipeline;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VK10;
+import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkMemoryBarrier;
 
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -62,6 +67,53 @@ public final class VulkanBerylSectionDrawPipeline {
 
     public boolean isReady() {
         return this.graphicsPipeline != null && this.resourcesBound && !this.freed;
+    }
+
+    public int renderOpaque(Renderer renderer,
+                            VulkanBerylViewport viewport,
+                            VulkanBerylSectionGeometryData geometryData,
+                            VulkanBerylViewportRenderList renderList) {
+        if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
+        if (renderer == null) throw new IllegalArgumentException("renderer must not be null");
+        if (viewport == null) throw new IllegalArgumentException("viewport must not be null");
+        if (geometryData == null) throw new IllegalArgumentException("geometryData must not be null");
+        if (renderList == null) throw new IllegalArgumentException("renderList must not be null");
+        if (this.graphicsPipeline == null || !this.resourcesBound) {
+            throw new IllegalStateException("section draw pipeline/resources are not initialized");
+        }
+
+        int maxEntryCount = renderList.getMaxEntryCount();
+        int rawVisibleCount = renderList.getLastVisibleCount();
+        int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
+        if (visibleCount <= 0) {
+            return 0;
+        }
+
+        VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
+        if (commandBuffer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL command buffer is unavailable");
+        }
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
+                    .sType$Default()
+                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(
+                    commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                    0,
+                    barrier,
+                    null,
+                    null
+            );
+        }
+
+        renderer.bindGraphicsPipeline(this.graphicsPipeline);
+        this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
+        VK10.vkCmdDraw(commandBuffer, 4, visibleCount, 0, 0);
+        return visibleCount;
     }
 
     public void free() {
