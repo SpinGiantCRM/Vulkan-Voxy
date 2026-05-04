@@ -62,6 +62,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             );
         }
         this.traversalExecutor.prepareTraversal(vulkanViewport);
+        this.traversalExecutor.ensureTraversalPipeline();
         this.traversalExecutor.requireDispatchSupport();
     }
 
@@ -88,7 +89,10 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         if (this.freed) {
             return;
         }
-        this.traversalExecutor = null;
+        if (this.traversalExecutor != null) {
+            this.traversalExecutor.free();
+            this.traversalExecutor = null;
+        }
         this.nodeMetadataStore.free();
         this.topLevelNodeStore.free();
         this.traversalResources.free();
