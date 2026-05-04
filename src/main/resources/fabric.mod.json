@@ -11,20 +11,13 @@
   "authors": [
     "Cortex"
   ],
-  "contact": {
-  },
+  "contact": {},
   "license": "All-Rights-Reserved",
   "icon": "assets/voxy/icon.png",
   "environment": "*",
   "entrypoints": {
     "client": [
       "me.cortex.voxy.client.VoxyClient"
-    ],
-    "modmenu": [
-      "me.cortex.voxy.client.config.ModMenuIntegration"
-    ],
-    "sodium:config_api_user": [
-      "me.cortex.voxy.client.config.VoxyConfigMenu"
     ],
     "main": [
       "me.cortex.voxy.commonImpl.VoxyCommon"
@@ -38,10 +31,13 @@
     "common.voxy.mixins.json"
   ],
   "depends": {
-    "minecraft": ["~26.1"],
+    "minecraft": [
+      "~26.1"
+    ],
     "fabricloader": ">=0.14.22",
     "fabric-api": ">=0.91.1",
-    "sodium": ["=0.8.9","=0.8.10"]
+    "vulkanmod": "*",
+    "beryl": "*"
   },
   "breaks": {
     "voxyworldgenv2": "=2.2.2"
