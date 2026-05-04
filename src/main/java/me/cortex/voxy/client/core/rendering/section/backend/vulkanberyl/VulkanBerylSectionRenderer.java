@@ -19,6 +19,7 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     private int lastSampledOpaqueCommandCount;
     private int lastInvalidSampledOpaqueCommandCount;
     private long lastSampledOpaqueQuadCount = -1L;
+    private boolean lastOpaqueSamplePending;
     private String lastOpaqueSkippedReason = "not_drawn";
 
     public VulkanBerylSectionRenderer(SectionRenderPipeline pipeline, ModelStore modelStore, VulkanBerylSectionGeometryData geometryData) {
@@ -59,6 +60,7 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
         this.lastSampledOpaqueCommandCount = submission.sampledCommandCount();
         this.lastInvalidSampledOpaqueCommandCount = submission.invalidSampledCommandCount();
         this.lastSampledOpaqueQuadCount = submission.sampledQuadCount();
+        this.lastOpaqueSamplePending = submission.samplePending();
         this.lastOpaqueSkippedReason = submission.skippedReason() == null ? "none" : submission.skippedReason();
     }
 
@@ -82,6 +84,8 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
 
     @Override
     public void addDebug(List<String> lines) {
+        this.drawPipeline.pollDebugReadback();
+        this.lastOpaqueSamplePending = this.drawPipeline.isDebugSamplePending();
         lines.add("Vulkan/Beryl section renderer: opaque draw submission active");
         lines.add("Vulkan/Beryl section draw pipeline ready: " + this.drawPipeline.isReady());
         lines.add("Vulkan/Beryl opaque scene uniform bound: " + this.drawPipeline.isSceneUniformBound());
@@ -92,6 +96,7 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
         lines.add("Vulkan/Beryl last opaque submitted draw command count: " + this.lastSubmittedOpaqueDrawCommandCount);
         lines.add("Vulkan/Beryl last opaque sampled command count: " + this.lastSampledOpaqueCommandCount);
         lines.add("Vulkan/Beryl last opaque invalid sampled commands: " + this.lastInvalidSampledOpaqueCommandCount);
+        lines.add("Vulkan/Beryl last opaque sampled command pending: " + this.lastOpaqueSamplePending);
         lines.add("Vulkan/Beryl last opaque submitted quad count: " + this.lastSubmittedOpaqueQuadCount);
         lines.add("Vulkan/Beryl last opaque sampled quad count: " + this.lastSampledOpaqueQuadCount);
         lines.add("Vulkan/Beryl last opaque skipped reason: " + this.lastOpaqueSkippedReason);

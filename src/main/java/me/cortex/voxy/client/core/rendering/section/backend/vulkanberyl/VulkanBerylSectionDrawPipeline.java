@@ -52,6 +52,11 @@ public final class VulkanBerylSectionDrawPipeline {
     private Buffer drawCommandDebugReadbackBuffer;
     private int drawCommandBufferUsageFlags;
     private int drawCommandCapacity;
+    private int pendingDebugSampleCommandCount;
+    private int pendingDebugSampleVisibleCount;
+    private long pendingDebugSampleGeometryBufferBytes;
+    private boolean debugSamplePending;
+    private DrawCommandDebugSample lastCompletedDebugSample = new DrawCommandDebugSample(0, 0, -1L);
     private boolean resourcesBound;
     private boolean sceneUniformBound;
     private boolean freed;
@@ -101,11 +106,13 @@ public final class VulkanBerylSectionDrawPipeline {
     public boolean isReady() {
         return this.graphicsPipeline != null && this.resourcesBound && !this.freed;
     }
+    public void pollDebugReadback() { this.consumePendingDebugCommandSampleIfReady(); }
     public boolean isSceneUniformBound() { return this.sceneUniformBound; }
     public boolean isDepthSamplingEnabled() { return false; }
     public boolean isModelLightPathEnabled() { return false; }
+    public boolean isDebugSamplePending() { return this.debugSamplePending; }
 
-    public record OpaqueDrawSubmission(int submittedVisibleCount, String drawMode, long submittedQuadCount, int submittedDrawCommandCount, int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, String skippedReason) {}
+    public record OpaqueDrawSubmission(int submittedVisibleCount, String drawMode, long submittedQuadCount, int submittedDrawCommandCount, int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, boolean samplePending, String skippedReason) {}
 
     public OpaqueDrawSubmission renderOpaque(Renderer renderer,
                             VulkanBerylViewport viewport,
@@ -124,7 +131,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int rawVisibleCount = renderList.getLastVisibleCount();
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
         if (visibleCount <= 0) {
-            return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, 0, 0, -1L, "visible_count_zero_or_negative");
+            return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
         }
 
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
@@ -154,15 +161,16 @@ public final class VulkanBerylSectionDrawPipeline {
             );
         }
 
+        this.consumePendingDebugCommandSampleIfReady();
         int sampledCommandCount = Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount);
-        scheduleDebugCommandReadback(commandBuffer, sampledCommandCount);
+        scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(viewport);
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, visibleCount, DRAW_COMMAND_STRIDE_BYTES);
-        DrawCommandDebugSample sample = readDebugCommandSample(sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
+        DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
-        return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, visibleCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, null);
+        return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, visibleCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
     }
 
     public void free() {
@@ -216,13 +224,24 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer.getBufferSize() < requiredBytes) throw new IllegalStateException("drawCommandBuffer is too small for visible draws");
     }
 
-    private void scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int sampledCommandCount) {
+    private void scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int sampledCommandCount, int visibleCount, long geometryBufferBytes) {
         if (sampledCommandCount <= 0 || this.drawCommandDebugReadbackBuffer == null) return;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
             copyRegion.srcOffset(0L).dstOffset(0L).size((long) sampledCommandCount * DRAW_COMMAND_STRIDE_BYTES);
             VK10.vkCmdCopyBuffer(commandBuffer, this.drawCommandBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), copyRegion);
         }
+        this.pendingDebugSampleCommandCount = sampledCommandCount;
+        this.pendingDebugSampleVisibleCount = visibleCount;
+        this.pendingDebugSampleGeometryBufferBytes = geometryBufferBytes;
+        this.debugSamplePending = true;
+    }
+
+    private void consumePendingDebugCommandSampleIfReady() {
+        if (!this.debugSamplePending) return;
+        if (Renderer.getInstance() == null || Renderer.getCommandBuffer() != null) return;
+        this.lastCompletedDebugSample = readDebugCommandSample(this.pendingDebugSampleCommandCount, this.pendingDebugSampleVisibleCount, this.pendingDebugSampleGeometryBufferBytes);
+        this.debugSamplePending = false;
     }
 
     private DrawCommandDebugSample readDebugCommandSample(int sampledCommandCount, int visibleCount, long geometryBufferBytes) {
@@ -236,9 +255,9 @@ public final class VulkanBerylSectionDrawPipeline {
             int instanceCount = MemoryUtil.memGetInt(base + 4L);
             int firstVertex = MemoryUtil.memGetInt(base + 8L);
             int firstInstance = MemoryUtil.memGetInt(base + 12L);
-            boolean valid = (vertexCount & 3) == 0 && instanceCount == 1 && firstInstance >= 0 && firstInstance < visibleCount;
+            boolean valid = (vertexCount & 3) == 0 && instanceCount == 1 && (firstVertex & 3) == 0 && firstInstance >= 0 && firstInstance < visibleCount;
             if (valid && firstVertex >= 0 && geometryBufferBytes > 0L) {
-                long maxFirstVertex = geometryBufferBytes >>> 3;
+                long maxFirstVertex = (geometryBufferBytes >>> 3) * 4L;
                 valid = Integer.toUnsignedLong(firstVertex) < maxFirstVertex;
             }
             if (!valid) invalid++;
