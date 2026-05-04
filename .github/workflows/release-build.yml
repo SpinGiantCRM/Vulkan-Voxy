@@ -1,0 +1,124 @@
+name: release-build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload the built jar to, e.g. v1.0.0"
+        required: true
+        type: string
+      draft:
+        description: "Mark release as draft when creating via workflow dispatch"
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark release as prerelease when creating via workflow dispatch"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-release-jar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Gradle build
+        run: ./gradlew -I init.gradle build
+
+      - name: Select installable mod jar
+        id: select_jar
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t jars < <(
+            find build/libs -maxdepth 1 -type f -name "*.jar" \
+              ! -name "*-sources.jar" \
+              ! -name "*-dev.jar" \
+              ! -name "*-dev-shadow.jar" \
+              | sort
+          )
+
+          printf 'Candidate release jars:\n'
+          printf ' - %s\n' "${jars[@]:-}"
+
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No installable jar found in build/libs"
+            exit 1
+          fi
+
+          if [ "${#jars[@]}" -gt 1 ]; then
+            echo "Multiple possible installable jars found; refusing to guess."
+            exit 1
+          fi
+
+          echo "jar=${jars[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure release exists for workflow dispatch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${{ steps.release_tag.outputs.tag }}"
+
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag already exists"
+          else
+            flags=(--title "$tag")
+
+            if [ "${{ inputs.draft }}" = "true" ]; then
+              flags+=(--draft)
+            fi
+
+            if [ "${{ inputs.prerelease }}" = "true" ]; then
+              flags+=(--prerelease)
+            fi
+
+            gh release create "$tag" "${flags[@]}"
+          fi
+
+      - name: Upload jar to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.release_tag.outputs.tag }}" \
+            "${{ steps.select_jar.outputs.jar }}" \
+            --clobber
