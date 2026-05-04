@@ -93,6 +93,37 @@ public final class VulkanBerylTraversalResources {
         }
     }
 
+    public void seedInitialTraversalQueue(VulkanBerylTopLevelNodeStore topLevelNodeStore) {
+        requireNotFreed();
+        if (topLevelNodeStore == null) {
+            throw new IllegalArgumentException("topLevelNodeStore must not be null");
+        }
+        if (topLevelNodeStore.isFreed()) {
+            throw new IllegalStateException("topLevelNodeStore is freed");
+        }
+
+        int topNodeCount = topLevelNodeStore.getTopNodeCount();
+        if (topNodeCount < 0) {
+            throw new IllegalStateException("topNodeCount must be non-negative");
+        }
+        if (topNodeCount > MAX_QUEUE_SIZE) {
+            throw new IllegalStateException("topNodeCount exceeds traversal queue capacity: " + topNodeCount + " > " + MAX_QUEUE_SIZE);
+        }
+
+        VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            long queueIndexPtr = memAddress(stack.ints(0));
+            uploader.upload(this.queueIndexBuffer, 0L, queueIndexPtr, QUEUE_INDEX_BUFFER_SIZE_BYTES);
+
+            if (topNodeCount > 0) {
+                var topNodeIds = stack.mallocInt(topNodeCount);
+                topLevelNodeStore.copyTopNodeIdsToAddress(memAddress(topNodeIds), topNodeCount);
+                uploader.upload(this.scratchQueueA, 0L, memAddress(topNodeIds), (long) topNodeCount * Integer.BYTES);
+            }
+            uploader.flush();
+        }
+    }
+
     public void uploadTraversalUniforms(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen) {
         requireNotFreed();
         if (viewport == null) {

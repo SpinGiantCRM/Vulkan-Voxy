@@ -7,6 +7,7 @@ import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
 import org.lwjgl.vulkan.VK10;
+import org.lwjgl.vulkan.VkCommandBuffer;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -135,6 +136,33 @@ public final class VulkanBerylTraversalExecutor {
         this.descriptorsBound = true;
     }
 
+
+    public void dispatchFirstTraversalIteration(Renderer renderer) {
+        if (this.freed) throw new IllegalStateException("traversal executor is freed");
+        requireLiveResources();
+        if (renderer == null) throw new IllegalArgumentException("renderer must not be null");
+        if (this.traversalPipeline == null) throw new IllegalStateException("traversal pipeline is not initialized");
+        if (!this.descriptorsBound) throw new IllegalStateException("traversal descriptors must be bound before dispatch");
+
+        int topNodeCount = this.topLevelNodeStore.getTopNodeCount();
+        if (topNodeCount < 0) throw new IllegalStateException("topNodeCount must be non-negative");
+        if (topNodeCount == 0) return;
+
+        int groupCountX = (topNodeCount + 31) >>> 5;
+        if (groupCountX <= 0) {
+            throw new IllegalStateException("Invalid traversal dispatch group count: " + groupCountX);
+        }
+
+        VkCommandBuffer commandBuffer = renderer.getCommandBuffer();
+        if (commandBuffer == null) {
+            throw new IllegalStateException("Renderer returned null Vulkan command buffer");
+        }
+
+        VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, this.traversalPipeline.getId());
+        this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
+        VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
+    }
+
     public void free() {
         if (this.freed) return;
         this.freed = true;
@@ -148,6 +176,7 @@ public final class VulkanBerylTraversalExecutor {
         List<String> missing = new ArrayList<>();
         requireMethod(Renderer.class, "getCommandBuffer", missing);
         requireMethod(ComputePipeline.class, "bindDescriptorSets", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class);
+        requireMethod(VK10.class, "vkCmdBindPipeline", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, long.class);
         requireMethod(VK10.class, "vkCmdDispatch", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, int.class, int.class);
 
         if (!missing.isEmpty()) {
