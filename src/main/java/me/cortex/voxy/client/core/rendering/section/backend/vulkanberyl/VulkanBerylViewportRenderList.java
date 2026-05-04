@@ -16,6 +16,7 @@ public final class VulkanBerylViewportRenderList implements ViewportRenderList {
 
     private final int maxEntryCount;
     private final Buffer buffer;
+    private int lastVisibleCount = -1;
     private boolean freed;
 
     public VulkanBerylViewportRenderList() {
@@ -49,6 +50,14 @@ public final class VulkanBerylViewportRenderList implements ViewportRenderList {
 
     public boolean isFreed() {
         return this.freed;
+    }
+
+    public int getLastVisibleCount() {
+        return this.lastVisibleCount;
+    }
+
+    void setLastVisibleCount(int lastVisibleCount) {
+        this.lastVisibleCount = lastVisibleCount;
     }
 
     public void clearCounter() {

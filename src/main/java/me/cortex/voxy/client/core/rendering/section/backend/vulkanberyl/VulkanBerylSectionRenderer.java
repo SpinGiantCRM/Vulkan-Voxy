@@ -22,22 +22,27 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
 
     @Override
     public void buildDrawCalls(VulkanBerylViewport viewport) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL draw call build is not implemented yet");
+        this.requireActive();
+        VulkanBerylViewportRenderList renderList = this.requireRenderList(viewport);
+        this.validateRenderListLayout(renderList);
     }
 
     @Override
     public void renderOpaque(VulkanBerylViewport viewport) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL opaque rendering is not implemented yet");
+        this.requireActive();
+        this.validateRenderListLayout(this.requireRenderList(viewport));
     }
 
     @Override
     public void renderTemporal(VulkanBerylViewport viewport) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL temporal rendering is not implemented yet");
+        this.requireActive();
+        this.requireRenderList(viewport);
     }
 
     @Override
     public void renderTranslucent(VulkanBerylViewport viewport) {
-        throw new UnsupportedOperationException("VULKANMOD_BERYL translucent rendering is not implemented yet");
+        this.requireActive();
+        this.requireRenderList(viewport);
     }
 
     @Override
@@ -47,6 +52,26 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
 
     @Override
     public void addDebug(List<String> lines) {
-        lines.add("Vulkan/Beryl section renderer: initialized (rendering unimplemented)");
+        lines.add("Vulkan/Beryl section renderer: initialized (draw submission pending)");
+    }
+
+    private void requireActive() {
+        if (this.freed) {
+            throw new IllegalStateException("Cannot render with a freed Vulkan/Beryl section renderer");
+        }
+    }
+
+    private VulkanBerylViewportRenderList requireRenderList(VulkanBerylViewport viewport) {
+        if (viewport == null) {
+            throw new IllegalArgumentException("Viewport must not be null");
+        }
+        return VulkanBerylViewportRenderList.require(viewport.getRenderList());
+    }
+
+    private void validateRenderListLayout(VulkanBerylViewportRenderList renderList) {
+        long sizeBytes = renderList.getBuffer().getBufferSize();
+        if (sizeBytes < Integer.BYTES) {
+            throw new IllegalStateException("Vulkan/Beryl render list buffer is structurally invalid (" + sizeBytes + " bytes)");
+        }
     }
 }
