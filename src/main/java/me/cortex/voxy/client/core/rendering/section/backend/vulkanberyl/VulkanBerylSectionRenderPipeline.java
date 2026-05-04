@@ -21,6 +21,7 @@ import java.util.function.BooleanSupplier;
 
 public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipeline {
     private static final float[] RENDER_SCALING_FACTOR = new float[] {1.0f, 1.0f};
+    private static final boolean FORCE_SYNC_ONLY_SECTION_PIPELINE = Boolean.getBoolean("voxy.vulkanberyl.forceSyncOnlySectionPipeline");
 
     private final RenderProperties properties;
     private final SectionRenderBackendRuntime backendRuntime;
@@ -155,11 +156,26 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         renderList.clearCounter();
 
         this.backendRuntime.doPrimaryWork(vulkanViewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
+
+        if (!FORCE_SYNC_ONLY_SECTION_PIPELINE) {
+            @SuppressWarnings("unchecked")
+            AbstractSectionRenderer<VulkanBerylViewport, ?> activeSectionRenderer = (AbstractSectionRenderer<VulkanBerylViewport, ?>) this.sectionRenderer;
+            activeSectionRenderer.buildDrawCalls(vulkanViewport);
+            activeSectionRenderer.renderOpaque(vulkanViewport);
+            activeSectionRenderer.renderTranslucent(vulkanViewport);
+            activeSectionRenderer.renderTemporal(vulkanViewport);
+        }
     }
 
     @Override
     public void addDebug(List<String> debug) {
-        debug.add("Vulkan/Beryl section pipeline: sync-only primary work enabled, rendering unimplemented");
+        if (FORCE_SYNC_ONLY_SECTION_PIPELINE) {
+            debug.add("Vulkan/Beryl section pipeline: sync-only fallback forced via -Dvoxy.vulkanberyl.forceSyncOnlySectionPipeline=true");
+        } else {
+            this.sectionRenderer.addDebug(debug);
+            this.backendRuntime.addDebug(debug);
+            debug.add("Vulkan/Beryl section pipeline: primary traversal + section renderer draw path active");
+        }
     }
 
     @Override
