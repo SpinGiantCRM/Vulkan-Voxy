@@ -7,7 +7,7 @@ import me.cortex.voxy.client.core.VoxyRenderSystem;
 import me.cortex.voxy.client.core.util.IrisUtil;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackend;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendSelector;
-import net.caffeinemc.mods.sodium.client.util.FogStorage;
+import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.world.WorldEngine;
 import me.cortex.voxy.commonImpl.VoxyCommon;
@@ -33,6 +33,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MixinLevelRenderer implements IGetVoxyRenderSystem {
     @Shadow private @Nullable ClientLevel level;
     @Unique private VoxyRenderSystem renderer;
+    @Unique private String voxy$lastFogSource = "uninitialized";
 
     @Override
     public VoxyRenderSystem voxy$getRenderSystem() {
@@ -71,8 +72,39 @@ public abstract class MixinLevelRenderer implements IGetVoxyRenderSystem {
             return;
         }
         var pos = cameraState.pos;
-        var fogParameters = ((FogStorage) net.minecraft.client.Minecraft.getInstance().gameRenderer).sodium$getFogParameters();
-        this.renderer.renderOpaque(this.renderer.setupViewport(cameraState.projectionMatrix, cameraState.viewRotationMatrix, fogParameters, pos.x, pos.y, pos.z));
+        var fogParameters = voxy$tryGetSodiumFogParameters();
+        if (fogParameters != null) {
+            this.voxy$logFogSource("sodium");
+            this.renderer.renderOpaque(this.renderer.setupViewport(cameraState.projectionMatrix, cameraState.viewRotationMatrix, fogParameters, pos.x, pos.y, pos.z));
+            return;
+        }
+
+        this.voxy$logFogSource("vanilla/default");
+        this.renderer.renderOpaque(this.renderer.setupViewportVanillaFallback(cameraState.projectionMatrix, cameraState.viewRotationMatrix, pos.x, pos.y, pos.z));
+    }
+
+    @Unique
+    private static FogParameters voxy$tryGetSodiumFogParameters() {
+        try {
+            var gameRenderer = net.minecraft.client.Minecraft.getInstance().gameRenderer;
+            var method = gameRenderer.getClass().getMethod("sodium$getFogParameters");
+            var fogParameters = method.invoke(gameRenderer);
+            if (fogParameters instanceof FogParameters sodiumFogParameters) {
+                return sodiumFogParameters;
+            }
+            return null;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+
+    @Unique
+    private void voxy$logFogSource(String source) {
+        if (!source.equals(this.voxy$lastFogSource)) {
+            this.voxy$lastFogSource = source;
+            Logger.info("[voxy] Vulkan/Beryl fog source: " + source);
+        }
     }
 
     @Override

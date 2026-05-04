@@ -206,6 +206,26 @@ public class VoxyRenderSystem {
         return viewport;
     }
 
+
+
+    public Viewport<?> setupViewportVanillaFallback(Matrix4fc vanillaProjection, Matrix4fc modelView, double cameraX, double cameraY, double cameraZ) {
+        return this.setupViewport(vanillaProjection, modelView, createNeutralFogParameters(), cameraX, cameraY, cameraZ);
+    }
+
+    private static FogParameters createNeutralFogParameters() {
+        // Sodium-independent fallback: keep fog effectively disabled but valid.
+        try {
+            for (var constructor : FogParameters.class.getDeclaredConstructors()) {
+                var types = constructor.getParameterTypes();
+                if (types.length == 6) {
+                    constructor.setAccessible(true);
+                    return (FogParameters) constructor.newInstance(0.0f, Float.MAX_VALUE, 1.0f, 1.0f, 1.0f, 1.0f);
+                }
+            }
+        } catch (ReflectiveOperationException ignored) {
+        }
+        throw new IllegalStateException("Could not construct fallback FogParameters");
+    }
     public void renderOpaque(Viewport<?> viewport) {
         this.renderEntryCount++;
         if (viewport == null) {
