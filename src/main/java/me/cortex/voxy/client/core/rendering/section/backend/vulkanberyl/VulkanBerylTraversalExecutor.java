@@ -110,13 +110,25 @@ public final class VulkanBerylTraversalExecutor {
             throw new IllegalStateException("Failed to load traversal compute shader config: " + TRAVERSAL_SHADER_CONFIG, e);
         }
 
+        validateTraversalBindings(config);
+
         try {
             builder.parseBindings(config);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to parse traversal compute bindings from " + TRAVERSAL_SHADER_CONFIG + ": " + describeTraversalBindings(config), e);
         }
-        builder.compileShader(shaderRootUrl.toExternalForm(), TRAVERSAL_SHADER_NAME);
-        ComputePipeline pipeline = builder.createPipeline();
+        try {
+            builder.compileShader(shaderRootUrl.toExternalForm(), TRAVERSAL_SHADER_NAME);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Failed to compile traversal compute shader: " + TRAVERSAL_SHADER_NAME + " from " + TRAVERSAL_SHADER_RESOURCE, e);
+        }
+
+        ComputePipeline pipeline;
+        try {
+            pipeline = builder.createPipeline();
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Failed to create traversal compute pipeline for shader " + TRAVERSAL_SHADER_NAME, e);
+        }
         if (pipeline == null || pipeline.getId() == 0L) {
             throw new IllegalStateException("Failed to create traversal compute pipeline");
         }
@@ -168,7 +180,11 @@ public final class VulkanBerylTraversalExecutor {
         }
 
         VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, this.traversalPipeline.getId());
-        this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
+        try {
+            this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Failed to bind traversal descriptor sets for initial dispatch", e);
+        }
         VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
         this.dispatchIterationZeroRan = true;
         this.dispatchIterationZeroSkipped = false;
@@ -205,7 +221,11 @@ public final class VulkanBerylTraversalExecutor {
             bindStorageBinding(NODE_QUEUE_SINK_BINDING, sink, "traversalResources.scratchQueueSink");
 
             VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, this.traversalPipeline.getId());
-            this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
+            try {
+                this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
+            } catch (RuntimeException e) {
+                throw new IllegalStateException("Failed to bind traversal descriptor sets for iteration " + iter, e);
+            }
 
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 VkMemoryBarrier.Buffer memoryBarrier = VkMemoryBarrier.calloc(1, stack)
@@ -262,6 +282,45 @@ public final class VulkanBerylTraversalExecutor {
         }
     }
 
+
+
+    private static void validateTraversalBindings(JsonObject config) {
+        java.util.Map<Integer, String> expectedTypesByBinding = java.util.Map.of(
+                SCENE_UNIFORM_BINDING, "uniformBuffer",
+                REQUEST_QUEUE_BINDING, "storageBuffer",
+                RENDER_QUEUE_BINDING, "storageBuffer",
+                NODE_DATA_BINDING, "storageBuffer",
+                NODE_QUEUE_INDEX_BINDING, "storageBuffer",
+                NODE_QUEUE_META_BINDING, "storageBuffer",
+                NODE_QUEUE_SOURCE_BINDING, "storageBuffer",
+                NODE_QUEUE_SINK_BINDING, "storageBuffer",
+                RENDER_TRACKER_BINDING, "storageBuffer"
+        );
+
+        if (config == null || !config.has("UBOs") || !config.get("UBOs").isJsonArray()) {
+            throw new IllegalStateException("Traversal shader config must contain a UBOs array");
+        }
+
+        java.util.Map<Integer, String> foundTypesByBinding = new java.util.HashMap<>();
+        config.getAsJsonArray("UBOs").forEach(node -> {
+            if (!node.isJsonObject()) return;
+            JsonObject binding = node.getAsJsonObject();
+            if (!binding.has("binding") || !binding.has("type")) return;
+            foundTypesByBinding.put(binding.get("binding").getAsInt(), binding.get("type").getAsString());
+        });
+
+        for (java.util.Map.Entry<Integer, String> expected : expectedTypesByBinding.entrySet()) {
+            int binding = expected.getKey();
+            String expectedType = expected.getValue();
+            String actualType = foundTypesByBinding.get(binding);
+            if (actualType == null) {
+                throw new IllegalStateException("Traversal descriptor binding " + binding + " is missing from traversal config");
+            }
+            if (!expectedType.equals(actualType)) {
+                throw new IllegalStateException("Traversal descriptor binding " + binding + " must be type " + expectedType + " but was " + actualType);
+            }
+        }
+    }
 
     private static String describeTraversalBindings(JsonObject config) {
         if (config == null || !config.has("UBOs") || !config.get("UBOs").isJsonArray()) {
@@ -323,6 +382,10 @@ public final class VulkanBerylTraversalExecutor {
         if (bufferSize <= 0L || bufferSize > Integer.MAX_VALUE) {
             throw new IllegalStateException(label + " has invalid descriptor size: " + bufferSize);
         }
-        ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
+        try {
+            ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Failed to bind traversal descriptor binding " + binding + " (" + label + ")", e);
+        }
     }
 }
