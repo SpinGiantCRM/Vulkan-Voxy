@@ -5,12 +5,22 @@ import me.cortex.voxy.client.config.VoxyConfig;
 import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
 import me.cortex.voxy.client.core.VoxyRenderSystem;
 import me.cortex.voxy.client.core.util.IrisUtil;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackend;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendSelector;
+import net.caffeinemc.mods.sodium.client.util.FogStorage;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.world.WorldEngine;
 import me.cortex.voxy.commonImpl.VoxyCommon;
 import me.cortex.voxy.commonImpl.WorldIdentifier;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
+import org.joml.Matrix4fc;
+import org.joml.Vector4f;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -47,6 +57,22 @@ public abstract class MixinLevelRenderer implements IGetVoxyRenderSystem {
     @Inject(method = "close", at = @At("HEAD"))
     private void voxy$injectClose(CallbackInfo ci) {
         this.voxy$shutdownRenderer();
+    }
+
+    @Inject(method = "renderLevel", at = @At("TAIL"))
+    private void voxy$renderVulkanBerylPipeline(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci) {
+        if (IrisUtil.irisShaderPackEnabled()) {
+            return;
+        }
+        if (SectionRendererBackendSelector.getActiveBackend() != SectionRendererBackend.VULKANMOD_BERYL) {
+            return;
+        }
+        if (this.renderer == null) {
+            return;
+        }
+        var pos = cameraState.pos;
+        var fogParameters = ((FogStorage) net.minecraft.client.Minecraft.getInstance().gameRenderer).sodium$getFogParameters();
+        this.renderer.renderOpaque(this.renderer.setupViewport(cameraState.projectionMatrix, cameraState.viewRotationMatrix, fogParameters, pos.x, pos.y, pos.z));
     }
 
     @Override

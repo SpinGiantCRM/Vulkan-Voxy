@@ -335,7 +335,7 @@ public class VoxyCommands {
             boolean vulkanRendererLinesPresent = runtimeDebug.stream().anyMatch(line -> line.startsWith("Vulkan/Beryl section renderer:"));
             lines.add("[Voxy Vulkan Debug] VulkanBerylSectionRenderer exists: " + vulkanRendererLinesPresent);
             for (String line : runtimeDebug) {
-                if (line.startsWith("Vulkan/Beryl ")) {
+                if (line.startsWith("Vulkan/Beryl ") || line.startsWith("VoxyRenderSystem ")) {
                     lines.add("[Voxy Vulkan Debug] " + line);
                 }
             }
