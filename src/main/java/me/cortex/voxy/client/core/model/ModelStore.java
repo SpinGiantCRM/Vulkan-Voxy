@@ -20,15 +20,23 @@ import static org.lwjgl.opengl.GL45.glBindTextureUnit;
 
 public class ModelStore {
     public static final int MODEL_SIZE = 64;
-    final GlBuffer modelBuffer;
-    final GlBuffer modelColourBuffer;
-    final GlTexture textures;
-    public final int blockSampler = glGenSamplers();
+    private GlBuffer modelBuffer;
+    private GlBuffer modelColourBuffer;
+    private GlTexture textures;
+    private int blockSampler = -1;
+    private boolean initialized;
 
     public ModelStore() {
+    }
+
+    private void ensureInitialized() {
+        if (this.initialized) {
+            return;
+        }
         this.modelBuffer = new GlBuffer(MODEL_SIZE * (1<<16)).name("ModelData");
         this.modelColourBuffer = new GlBuffer(4 * (1<<16)).name("ModelColour");
         this.textures = RenderResourceReuse.getOrCreateModelStoreTextureAtlas();
+        this.blockSampler = glGenSamplers();
 
         //Limit the mips of the texture to match that of the terrain atlas
         int mipLvl = ((TextureAtlas) Minecraft.getInstance().getTextureManager()
@@ -39,18 +47,28 @@ public class ModelStore {
         glSamplerParameteri(this.blockSampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glSamplerParameteri(this.blockSampler, GL_TEXTURE_MIN_LOD, 0);
         glSamplerParameteri(this.blockSampler, GL_TEXTURE_MAX_LOD, mipLvl);//Integer.numberOfTrailingZeros(ModelFactory.MODEL_TEXTURE_SIZE)
+        this.initialized = true;
     }
 
 
     public void free() {
+        if (!this.initialized) {
+            return;
+        }
         this.modelBuffer.free();
         this.modelColourBuffer.free();
         RenderResourceReuse.giveBackModelStoreTextureAtlas(this.textures);
         glDeleteSamplers(this.blockSampler);
+        this.modelBuffer = null;
+        this.modelColourBuffer = null;
+        this.textures = null;
+        this.blockSampler = -1;
+        this.initialized = false;
     }
 
 
     public void bind(int modelBindingIndex, int colourBindingIndex, int textureBindingIndex) {
+        this.ensureInitialized();
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, modelBindingIndex, this.modelBuffer.id);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, colourBindingIndex, this.modelColourBuffer.id);
         glBindTextureUnit(textureBindingIndex, this.textures.id);
