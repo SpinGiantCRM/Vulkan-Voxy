@@ -12,13 +12,13 @@ struct SectionMeta {
     uvec4 b;
 };
 
-layout(binding = 1, std430) readonly buffer GeometryBuffer {
+layout(binding = 4, std430) readonly buffer GeometryBuffer {
     Quad quadData[];
 };
-layout(binding = 2, std430) readonly buffer MetadataBuffer {
+layout(binding = 5, std430) readonly buffer MetadataBuffer {
     SectionMeta sectionData[];
 };
-layout(binding = 3, std430) readonly buffer RenderListBuffer {
+layout(binding = 6, std430) readonly buffer RenderListBuffer {
     uint visibleCount;
     uint indirectLookup[];
 };

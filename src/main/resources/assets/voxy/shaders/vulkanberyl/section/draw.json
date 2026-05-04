@@ -1,20 +1,26 @@
 {
   "UBOs": [
     {
+      "name": "SceneUniform",
+      "binding": 0,
+      "type": "uniformBuffer",
+      "stages": ["vertex"]
+    },
+    {
       "name": "GeometryBuffer",
-      "binding": 1,
+      "binding": 4,
       "type": "storageBuffer",
       "stages": ["vertex"]
     },
     {
       "name": "MetadataBuffer",
-      "binding": 2,
+      "binding": 5,
       "type": "storageBuffer",
       "stages": ["vertex"]
     },
     {
       "name": "RenderListBuffer",
-      "binding": 3,
+      "binding": 6,
       "type": "storageBuffer",
       "stages": ["vertex"]
     }

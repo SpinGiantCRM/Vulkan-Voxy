@@ -34,9 +34,10 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String CMDGEN_SHADER_NAME = "vulkanberyl/section/cmdgen";
     private static final String CMDGEN_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/section/cmdgen.json";
 
-    private static final int GEOMETRY_BINDING = 1;
-    private static final int METADATA_BINDING = 2;
-    private static final int RENDER_LIST_BINDING = 3;
+    private static final int GEOMETRY_BINDING = 4;
+    private static final int METADATA_BINDING = 5;
+    private static final int RENDER_LIST_BINDING = 6;
+    private static final int SCENE_UNIFORM_BINDING = 0;
     private static final int CMDGEN_METADATA_BINDING = 1;
     private static final int CMDGEN_RENDER_LIST_BINDING = 2;
     private static final int CMDGEN_DRAW_COMMAND_BINDING = 3;
@@ -52,6 +53,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private int drawCommandBufferUsageFlags;
     private int drawCommandCapacity;
     private boolean resourcesBound;
+    private boolean sceneUniformBound;
     private boolean freed;
 
     public void ensureDrawPipeline() {
@@ -99,6 +101,9 @@ public final class VulkanBerylSectionDrawPipeline {
     public boolean isReady() {
         return this.graphicsPipeline != null && this.resourcesBound && !this.freed;
     }
+    public boolean isSceneUniformBound() { return this.sceneUniformBound; }
+    public boolean isDepthSamplingEnabled() { return false; }
+    public boolean isModelLightPathEnabled() { return false; }
 
     public record OpaqueDrawSubmission(int submittedVisibleCount, String drawMode, long submittedQuadCount, int submittedDrawCommandCount, int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, String skippedReason) {}
 
@@ -152,6 +157,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int sampledCommandCount = Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount);
         scheduleDebugCommandReadback(commandBuffer, sampledCommandCount);
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
+        this.bindSceneUniform(viewport);
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, visibleCount, DRAW_COMMAND_STRIDE_BYTES);
         DrawCommandDebugSample sample = readDebugCommandSample(sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
@@ -285,5 +291,25 @@ public final class VulkanBerylSectionDrawPipeline {
         UBO ubo = this.commandGenPipeline.getUBO(candidate -> candidate.binding == binding);
         if (ubo == null) throw new IllegalStateException("Section cmdgen descriptor binding " + binding + " is missing from cmdgen.json");
         ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
+    }
+
+    private void bindSceneUniform(VulkanBerylViewport viewport) {
+        UBO ubo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == SCENE_UNIFORM_BINDING);
+        if (ubo == null) throw new IllegalStateException("Section draw descriptor binding 0 (SceneUniform) is missing from draw.json");
+        long ptr = ubo.getBuffer().data.getPtr();
+        var mat = new org.joml.Matrix4f(viewport.MVP);
+        mat.translate(-viewport.innerTranslation.x, -viewport.innerTranslation.y, -viewport.innerTranslation.z);
+        mat.getToAddress(ptr);
+        ptr += 4L * 4L * 4L;
+        MemoryUtil.memPutInt(ptr, viewport.section.x);
+        MemoryUtil.memPutInt(ptr + 4L, viewport.section.y);
+        MemoryUtil.memPutInt(ptr + 8L, viewport.section.z);
+        ptr += 16L;
+        MemoryUtil.memPutInt(ptr, viewport.frameId & 0x7fffffff);
+        ptr += 4L;
+        MemoryUtil.memPutFloat(ptr, viewport.innerTranslation.x);
+        MemoryUtil.memPutFloat(ptr + 4L, viewport.innerTranslation.y);
+        MemoryUtil.memPutFloat(ptr + 8L, viewport.innerTranslation.z);
+        this.sceneUniformBound = true;
     }
 }
