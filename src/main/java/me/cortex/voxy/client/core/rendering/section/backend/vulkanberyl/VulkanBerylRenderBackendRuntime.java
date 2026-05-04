@@ -366,7 +366,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     @Override
     public void addDebug(List<String> debug) {
-        debug.add("Vulkan/Beryl backend runtime: initialized (sync-only primary work; node metadata + TLN stores active)");
+        debug.add("Vulkan/Beryl backend runtime: initialized (primary traversal work; node metadata + TLN stores active)");
         debug.add("Vulkan/Beryl TLN: " + this.topLevelNodeStore.getTopNodeCount() + "/" + this.topLevelNodeStore.getMaxTopLevelNodeCount());
         debug.add("Vulkan/Beryl render list visible sections: " + this.lastVisibleSectionCount + "/" + this.lastVisibleSectionCapacity);
         debug.add("Vulkan/Beryl render-list sample: " + this.lastSampledRenderListEntryCount + "/" + this.lastSampledVisibleSectionCount
