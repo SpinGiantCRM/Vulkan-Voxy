@@ -22,6 +22,13 @@ public class VoxyClient implements ClientModInitializer {
     private static final HashSet<String> FREX = new HashSet<>();
     private static FileLock EXCLUSIVE_LOCK;
     public static void initVoxyClient() {
+        var loader = FabricLoader.getInstance();
+        if (loader.isModLoaded("vulkanmod") && loader.isModLoaded("beryl")) {
+            Logger.info("Vulkan-Voxy: VulkanMod/Beryl runtime detected; skipping OpenGL capability initialization");
+            VoxyCommon.setInstanceFactory(VoxyClientInstance::new);
+            return;
+        }
+
         Capabilities.init();//Ensure clinit is called
 
         if (Capabilities.INSTANCE.hasBrokenDepthSampler) {
