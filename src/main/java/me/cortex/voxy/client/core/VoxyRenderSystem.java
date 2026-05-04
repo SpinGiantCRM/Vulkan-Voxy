@@ -14,6 +14,7 @@ import me.cortex.voxy.client.core.model.ModelStore;
 import me.cortex.voxy.client.core.rendering.ChunkBoundsRenderer;
 import me.cortex.voxy.client.core.rendering.RenderDistanceTracker;
 import me.cortex.voxy.client.core.rendering.Viewport;
+import me.cortex.voxy.client.core.rendering.VoxyFogParameters;
 import me.cortex.voxy.client.core.rendering.ViewportSelector;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
@@ -31,7 +32,6 @@ import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.thread.ServiceManager;
 import me.cortex.voxy.common.world.WorldEngine;
 import me.cortex.voxy.commonImpl.VoxyCommon;
-import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.joml.Matrix4f;
@@ -153,7 +153,7 @@ public class VoxyRenderSystem {
     }
 
 
-    public Viewport<?> setupViewport(Matrix4fc vanillaProjection, Matrix4fc modelView, FogParameters fogParameters, double cameraX, double cameraY, double cameraZ) {
+    public Viewport<?> setupViewport(Matrix4fc vanillaProjection, Matrix4fc modelView, VoxyFogParameters fogParameters, double cameraX, double cameraY, double cameraZ) {
         var viewport = this.getViewport();
         if (viewport == null) {
             this.viewportCreateFailureCount++;
@@ -212,19 +212,8 @@ public class VoxyRenderSystem {
         return this.setupViewport(vanillaProjection, modelView, createNeutralFogParameters(), cameraX, cameraY, cameraZ);
     }
 
-    private static FogParameters createNeutralFogParameters() {
-        // Sodium-independent fallback: keep fog effectively disabled but valid.
-        try {
-            for (var constructor : FogParameters.class.getDeclaredConstructors()) {
-                var types = constructor.getParameterTypes();
-                if (types.length == 6) {
-                    constructor.setAccessible(true);
-                    return (FogParameters) constructor.newInstance(0.0f, Float.MAX_VALUE, 1.0f, 1.0f, 1.0f, 1.0f);
-                }
-            }
-        } catch (ReflectiveOperationException ignored) {
-        }
-        throw new IllegalStateException("Could not construct fallback FogParameters");
+    private static VoxyFogParameters createNeutralFogParameters() {
+        return VoxyFogParameters.NEUTRAL;
     }
     public void renderOpaque(Viewport<?> viewport) {
         this.renderEntryCount++;
