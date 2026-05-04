@@ -13,7 +13,9 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     private final VulkanBerylSectionDrawPipeline drawPipeline;
     private boolean freed;
     private int lastSubmittedOpaqueVisibleCount;
-    private boolean lastOpaqueDrawSkippedZeroCount = true;
+    private String lastOpaqueDrawMode = "none";
+    private long lastSubmittedOpaqueQuadCount;
+    private String lastOpaqueSkippedReason = "not_drawn";
 
     public VulkanBerylSectionRenderer(SectionRenderPipeline pipeline, ModelStore modelStore, VulkanBerylSectionGeometryData geometryData) {
         super(pipeline.getRenderProperties(), modelStore, geometryData);
@@ -45,9 +47,11 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
             throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
         }
 
-        int submittedVisibleCount = this.drawPipeline.renderOpaque(renderer, viewport, this.geometryData, renderList);
-        this.lastSubmittedOpaqueVisibleCount = submittedVisibleCount;
-        this.lastOpaqueDrawSkippedZeroCount = submittedVisibleCount <= 0;
+        VulkanBerylSectionDrawPipeline.OpaqueDrawSubmission submission = this.drawPipeline.renderOpaque(renderer, viewport, this.geometryData, renderList);
+        this.lastSubmittedOpaqueVisibleCount = submission.submittedVisibleCount();
+        this.lastOpaqueDrawMode = submission.drawMode();
+        this.lastSubmittedOpaqueQuadCount = submission.submittedQuadCount();
+        this.lastOpaqueSkippedReason = submission.skippedReason() == null ? "none" : submission.skippedReason();
     }
 
     @Override
@@ -72,8 +76,10 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     public void addDebug(List<String> lines) {
         lines.add("Vulkan/Beryl section renderer: opaque draw submission active");
         lines.add("Vulkan/Beryl section draw pipeline ready: " + this.drawPipeline.isReady());
+        lines.add("Vulkan/Beryl last opaque draw mode: " + this.lastOpaqueDrawMode);
         lines.add("Vulkan/Beryl last opaque submitted visible count: " + this.lastSubmittedOpaqueVisibleCount);
-        lines.add("Vulkan/Beryl last opaque draw skipped (count<=0): " + this.lastOpaqueDrawSkippedZeroCount);
+        lines.add("Vulkan/Beryl last opaque submitted quad count: " + this.lastSubmittedOpaqueQuadCount);
+        lines.add("Vulkan/Beryl last opaque skipped reason: " + this.lastOpaqueSkippedReason);
     }
 
     private void requireActive() {

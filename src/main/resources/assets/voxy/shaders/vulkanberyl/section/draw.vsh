@@ -2,83 +2,54 @@
 #extension GL_ARB_gpu_shader_int64 : enable
 
 #ifdef GL_ARB_gpu_shader_int64
-#define QUAD_DATA_USE_64_BIT
+#define Quad uint64_t
+#else
+#define Quad uvec2
 #endif
 
+struct SectionMeta {
+    uvec4 a;
+    uvec4 b;
+};
 
-#ifdef USE_NV_JANK
-#extension GL_NV_gpu_shader5 : enable
-#endif
+layout(binding = 1, std430) readonly buffer GeometryBuffer {
+    Quad quadData[];
+};
+layout(binding = 2, std430) readonly buffer MetadataBuffer {
+    SectionMeta sectionData[];
+};
+layout(binding = 3, std430) readonly buffer RenderListBuffer {
+    uint visibleCount;
+    uint indirectLookup[];
+};
 
-#define QUAD_BUFFER_BINDING 1
-#define MODEL_BUFFER_BINDING 3
-#define MODEL_COLOUR_BUFFER_BINDING 4
-#define POSITION_SCRATCH_BINDING 5
-#define LIGHTING_SAMPLER_BINDING 1
-
-#ifdef USE_SINGLE_TRI
-#define USE_NV_BARRY
-#endif
+layout(location = 0) out flat uvec4 interData;
+layout(location = 1) out vec2 uv;
 
 #import <voxy:lod/quad_format.glsl>
 #import <voxy:lod/block_model.glsl>
-#import <voxy:lod/gl46/bindings.glsl>
+#import <voxy:lod/section.glsl>
 #import <voxy:lod/quad_util.glsl>
-
-layout(location = 0) out flat uvec4 interData;
-#ifndef USE_NV_BARRY
-layout(location = 1) out vec2 uv;
-#endif
-
-#ifdef USE_NV_JANK
-#ifdef GL_NV_gpu_shader5
-out gl_PerVertex {
-    f16vec4 gl_Position;
-};
-#endif
-#endif
-
-#ifdef DEBUG_RENDER
-layout(location = 7) out flat uint quadDebug;
-#endif
 
 vec2 taaShift();
 
-//TODO: add a mechanism so that some quads can ignore backface culling
-// this would help alot with stuff like crops as they would look kinda weird i think,
-// same with flowers etc
 void main() {
     taaOffset = taaShift();
 
+    uint drawIndex = gl_InstanceIndex;
+    uint sectionId = indirectLookup[drawIndex];
+    SectionMeta meta = sectionData[sectionId];
+
+    uint quadIndex = extractQuadStart(meta);
     QuadData quad;
-    uvec2 pos = positionBuffer[gl_BaseInstance];
-    setupQuad(quad, quadData[uint(gl_VertexID)>>2], pos, (gl_VertexID&3) == 1);
+    setupQuad(quad, quadData[quadIndex], extractRawPos(meta), (gl_VertexIndex & 3u) == 1u);
 
-    uint cornerId = gl_VertexID&3;
-
-    gl_Position =
-    #ifdef USE_NV_JANK
-    #ifdef GL_NV_gpu_shader5
-    f16vec4
-    #endif
-    #endif
-    (getQuadCornerPos(quad, cornerId));
-
-
-    #ifndef USE_NV_BARRY
+    uint cornerId = gl_VertexIndex & 3u;
+    gl_Position = getQuadCornerPos(quad, cornerId);
     uv = getCornerUV(quad, cornerId);
-    #endif
-
-    //Note: other data is automatically discarded as it is undefiend and has not been generated
     interData = quad.attributeData;
-
-
-    #ifdef DEBUG_RENDER
-    //quadDebug = uint(extractDetail(pos));
-    quadDebug = uint(gl_VertexID)>>2;
-    #endif
 }
 
 #ifndef TAA_PATCH
-vec2 taaShift() {return vec2(0.0);}
+vec2 taaShift() { return vec2(0.0); }
 #endif

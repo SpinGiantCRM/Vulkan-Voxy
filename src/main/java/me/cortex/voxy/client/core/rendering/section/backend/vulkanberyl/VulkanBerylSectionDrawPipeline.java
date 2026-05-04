@@ -69,7 +69,9 @@ public final class VulkanBerylSectionDrawPipeline {
         return this.graphicsPipeline != null && this.resourcesBound && !this.freed;
     }
 
-    public int renderOpaque(Renderer renderer,
+    public record OpaqueDrawSubmission(int submittedVisibleCount, String drawMode, long submittedQuadCount, String skippedReason) {}
+
+    public OpaqueDrawSubmission renderOpaque(Renderer renderer,
                             VulkanBerylViewport viewport,
                             VulkanBerylSectionGeometryData geometryData,
                             VulkanBerylViewportRenderList renderList) {
@@ -86,7 +88,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int rawVisibleCount = renderList.getLastVisibleCount();
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
         if (visibleCount <= 0) {
-            return 0;
+            return new OpaqueDrawSubmission(0, "direct", 0L, "visible_count_zero_or_negative");
         }
 
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
@@ -113,7 +115,7 @@ public final class VulkanBerylSectionDrawPipeline {
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDraw(commandBuffer, 4, visibleCount, 0, 0);
-        return visibleCount;
+        return new OpaqueDrawSubmission(visibleCount, "direct", visibleCount, null);
     }
 
     public void free() {
