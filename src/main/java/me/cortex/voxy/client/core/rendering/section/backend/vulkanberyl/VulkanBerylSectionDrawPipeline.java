@@ -9,8 +9,10 @@ import net.vulkanmod.vulkan.shader.GraphicsPipeline;
 import net.vulkanmod.vulkan.shader.Pipeline;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkBufferCopy;
 import org.lwjgl.vulkan.VkMemoryBarrier;
 
 import java.io.InputStreamReader;
@@ -39,11 +41,15 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int CMDGEN_RENDER_LIST_BINDING = 2;
     private static final int CMDGEN_DRAW_COMMAND_BINDING = 3;
     private static final int CMDGEN_DRAW_COUNT_BINDING = 4;
+    private static final int DRAW_COMMAND_STRIDE_BYTES = 16;
+    private static final int DRAW_COMMAND_DEBUG_SAMPLE_LIMIT = 16;
 
     private GraphicsPipeline graphicsPipeline;
     private ComputePipeline commandGenPipeline;
     private Buffer drawCommandBuffer;
     private Buffer drawCountBuffer;
+    private Buffer drawCommandDebugReadbackBuffer;
+    private int drawCommandBufferUsageFlags;
     private int drawCommandCapacity;
     private boolean resourcesBound;
     private boolean freed;
@@ -94,7 +100,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return this.graphicsPipeline != null && this.resourcesBound && !this.freed;
     }
 
-    public record OpaqueDrawSubmission(int submittedVisibleCount, String drawMode, long submittedQuadCount, String skippedReason) {}
+    public record OpaqueDrawSubmission(int submittedVisibleCount, String drawMode, long submittedQuadCount, int submittedDrawCommandCount, int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, String skippedReason) {}
 
     public OpaqueDrawSubmission renderOpaque(Renderer renderer,
                             VulkanBerylViewport viewport,
@@ -113,7 +119,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int rawVisibleCount = renderList.getLastVisibleCount();
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
         if (visibleCount <= 0) {
-            return new OpaqueDrawSubmission(0, "direct", 0L, "visible_count_zero_or_negative");
+            return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, 0, 0, -1L, "visible_count_zero_or_negative");
         }
 
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
@@ -121,24 +127,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("VULKANMOD_BERYL command buffer is unavailable");
         }
 
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
-                    .sType$Default()
-                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
-                    .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT);
-            VK10.vkCmdPipelineBarrier(
-                    commandBuffer,
-                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-                    0,
-                    barrier,
-                    null,
-                    null
-            );
-        }
-
-        renderer.bindGraphicsPipeline(this.graphicsPipeline);
-        this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
+        validateDrawCommandBuffer(visibleCount);
         VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, this.commandGenPipeline.getId());
         this.commandGenPipeline.bindDescriptorSets(commandBuffer, 0);
         int groupCountX = (visibleCount + 127) >>> 7;
@@ -160,8 +149,14 @@ public final class VulkanBerylSectionDrawPipeline {
             );
         }
 
-        VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, visibleCount, 16);
-        return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", visibleCount, null);
+        int sampledCommandCount = Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount);
+        scheduleDebugCommandReadback(commandBuffer, sampledCommandCount);
+        renderer.bindGraphicsPipeline(this.graphicsPipeline);
+        this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
+        VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, visibleCount, DRAW_COMMAND_STRIDE_BYTES);
+        DrawCommandDebugSample sample = readDebugCommandSample(sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
+        long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
+        return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, visibleCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, null);
     }
 
     public void free() {
@@ -183,6 +178,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCountBuffer.scheduleFree();
             this.drawCountBuffer = null;
         }
+        if (this.drawCommandDebugReadbackBuffer != null) {
+            this.drawCommandDebugReadbackBuffer.scheduleFree();
+            this.drawCommandDebugReadbackBuffer = null;
+        }
         this.resourcesBound = false;
     }
 
@@ -191,13 +190,58 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer != null && this.drawCommandCapacity == maxEntryCount) return;
         if (this.drawCommandBuffer != null) this.drawCommandBuffer.scheduleFree();
         if (this.drawCountBuffer != null) this.drawCountBuffer.scheduleFree();
-        long commandBytes = Math.multiplyExact((long) maxEntryCount, 16L);
-        this.drawCommandBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        long commandBytes = Math.multiplyExact((long) maxEntryCount, DRAW_COMMAND_STRIDE_BYTES);
+        this.drawCommandBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        this.drawCommandBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands", this.drawCommandBufferUsageFlags, MemoryTypes.GPU_MEM);
         this.drawCommandBuffer.createBuffer(commandBytes);
         this.drawCountBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_count", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
         this.drawCountBuffer.createBuffer(4L);
+        if (this.drawCommandDebugReadbackBuffer != null) this.drawCommandDebugReadbackBuffer.scheduleFree();
+        this.drawCommandDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
+        this.drawCommandDebugReadbackBuffer.createBuffer((long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
         this.drawCommandCapacity = maxEntryCount;
     }
+
+    private void validateDrawCommandBuffer(int visibleCount) {
+        if (this.drawCommandBuffer == null) throw new IllegalStateException("drawCommandBuffer must not be null");
+        if (this.drawCommandBuffer.getId() == 0L) throw new IllegalStateException("drawCommandBuffer has invalid Vulkan buffer id");
+        if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) == 0) throw new IllegalStateException("drawCommandBuffer missing VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT");
+        long requiredBytes = Math.multiplyExact((long) visibleCount, DRAW_COMMAND_STRIDE_BYTES);
+        if (this.drawCommandBuffer.getBufferSize() < requiredBytes) throw new IllegalStateException("drawCommandBuffer is too small for visible draws");
+    }
+
+    private void scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int sampledCommandCount) {
+        if (sampledCommandCount <= 0 || this.drawCommandDebugReadbackBuffer == null) return;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
+            copyRegion.srcOffset(0L).dstOffset(0L).size((long) sampledCommandCount * DRAW_COMMAND_STRIDE_BYTES);
+            VK10.vkCmdCopyBuffer(commandBuffer, this.drawCommandBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), copyRegion);
+        }
+    }
+
+    private DrawCommandDebugSample readDebugCommandSample(int sampledCommandCount, int visibleCount, long geometryBufferBytes) {
+        long readbackPtr = this.drawCommandDebugReadbackBuffer == null ? 0L : this.drawCommandDebugReadbackBuffer.getDataPtr();
+        if (sampledCommandCount <= 0 || readbackPtr == 0L) return new DrawCommandDebugSample(0, 0, -1L);
+        int invalid = 0;
+        long quadCount = 0L;
+        for (int i = 0; i < sampledCommandCount; i++) {
+            long base = readbackPtr + (long) i * DRAW_COMMAND_STRIDE_BYTES;
+            int vertexCount = MemoryUtil.memGetInt(base);
+            int instanceCount = MemoryUtil.memGetInt(base + 4L);
+            int firstVertex = MemoryUtil.memGetInt(base + 8L);
+            int firstInstance = MemoryUtil.memGetInt(base + 12L);
+            boolean valid = (vertexCount & 3) == 0 && instanceCount == 1 && firstInstance >= 0 && firstInstance < visibleCount;
+            if (valid && firstVertex >= 0 && geometryBufferBytes > 0L) {
+                long maxFirstVertex = geometryBufferBytes >>> 3;
+                valid = Integer.toUnsignedLong(firstVertex) < maxFirstVertex;
+            }
+            if (!valid) invalid++;
+            if ((vertexCount & 3) == 0 && vertexCount >= 0) quadCount += (vertexCount >>> 2);
+        }
+        return new DrawCommandDebugSample(sampledCommandCount, invalid, quadCount);
+    }
+
+    private record DrawCommandDebugSample(int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount) {}
 
     private void ensureCommandGenPipeline() {
         if (this.commandGenPipeline != null) return;
