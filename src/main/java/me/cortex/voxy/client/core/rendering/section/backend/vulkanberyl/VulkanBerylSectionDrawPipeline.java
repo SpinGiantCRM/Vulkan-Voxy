@@ -29,6 +29,7 @@ import net.vulkanmod.vulkan.memory.MemoryTypes;
 public final class VulkanBerylSectionDrawPipeline {
     public static final String DRAW_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/draw.vsh";
     private static final String DRAW_SHADER_NAME = "vulkanberyl/section/draw";
+    private static final String DRAW_DEBUG_FRAGMENT_SHADER_NAME = "vulkanberyl/section/draw_debug";
     private static final String DRAW_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/section/draw.json";
     private static final String CMDGEN_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen.comp";
     private static final String CMDGEN_SHADER_NAME = "vulkanberyl/section/cmdgen";
@@ -44,6 +45,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int CMDGEN_DRAW_COUNT_BINDING = 4;
     private static final int DRAW_COMMAND_STRIDE_BYTES = 16;
     private static final int DRAW_COMMAND_DEBUG_SAMPLE_LIMIT = 16;
+    private static final boolean DEBUG_COLOUR_MODE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DEBUG_COLOUR", "false"));
 
     private GraphicsPipeline graphicsPipeline;
     private ComputePipeline commandGenPipeline;
@@ -59,6 +61,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private DrawCommandDebugSample lastCompletedDebugSample = new DrawCommandDebugSample(0, 0, -1L);
     private boolean resourcesBound;
     private boolean sceneUniformBound;
+    private boolean graphicsPipelineCreated;
+    private boolean commandGenPipelineCreated;
     private boolean freed;
 
     public void ensureDrawPipeline() {
@@ -79,10 +83,21 @@ public final class VulkanBerylSectionDrawPipeline {
 
         Pipeline.Builder builder = new Pipeline.Builder();
         builder.parseBindings(config);
-        builder.compileShaders(shaderRootUrl.toExternalForm(), DRAW_SHADER_NAME, DRAW_SHADER_NAME);
-        GraphicsPipeline pipeline = builder.createGraphicsPipeline();
+        String fragmentShaderName = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME;
+        try {
+            builder.compileShaders(shaderRootUrl.toExternalForm(), DRAW_SHADER_NAME, fragmentShaderName);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")", e);
+        }
+        GraphicsPipeline pipeline;
+        try {
+            pipeline = builder.createGraphicsPipeline();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create section draw graphics pipeline (config=" + DRAW_SHADER_CONFIG + ", debugMode=" + DEBUG_COLOUR_MODE + ")", e);
+        }
         if (pipeline == null) throw new IllegalStateException("Failed to create section draw graphics pipeline");
         this.graphicsPipeline = pipeline;
+        this.graphicsPipelineCreated = true;
     }
 
     public void ensureDrawResourcesBound(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
@@ -108,6 +123,9 @@ public final class VulkanBerylSectionDrawPipeline {
     }
     public void pollDebugReadback() { this.consumePendingDebugCommandSampleIfReady(); }
     public boolean isSceneUniformBound() { return this.sceneUniformBound; }
+    public boolean isGraphicsPipelineCreated() { return this.graphicsPipelineCreated; }
+    public boolean isCommandGenPipelineCreated() { return this.commandGenPipelineCreated; }
+    public boolean isDebugColourModeEnabled() { return DEBUG_COLOUR_MODE; }
     public boolean isDepthSamplingEnabled() { return false; }
     public boolean isModelLightPathEnabled() { return false; }
     public boolean isDebugSamplePending() { return this.debugSamplePending; }
@@ -282,11 +300,20 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to load section cmdgen shader config: " + CMDGEN_SHADER_CONFIG, e);
         }
         builder.parseBindings(config);
-        builder.compileShader(shaderRootUrl.toExternalForm(), CMDGEN_SHADER_NAME);
-        this.commandGenPipeline = builder.createPipeline();
+        try {
+            builder.compileShader(shaderRootUrl.toExternalForm(), CMDGEN_SHADER_NAME);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to compile section cmdgen shader (compute=" + CMDGEN_SHADER_NAME + ", config=" + CMDGEN_SHADER_CONFIG + ")", e);
+        }
+        try {
+            this.commandGenPipeline = builder.createPipeline();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create section cmdgen compute pipeline (config=" + CMDGEN_SHADER_CONFIG + ")", e);
+        }
         if (this.commandGenPipeline == null || this.commandGenPipeline.getId() == 0L) {
             throw new IllegalStateException("Failed to create section cmdgen compute pipeline");
         }
+        this.commandGenPipelineCreated = true;
     }
 
     private void bindStorageBinding(int binding, Buffer buffer, String label) {
@@ -298,7 +325,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
         UBO ubo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == binding);
         if (ubo == null) {
-            throw new IllegalStateException("Section draw descriptor binding " + binding + " is missing from draw.json");
+            throw new IllegalStateException("Section draw descriptor missing: name=" + label + ", binding=" + binding + ", config=" + DRAW_SHADER_CONFIG);
         }
         ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
     }
@@ -308,13 +335,13 @@ public final class VulkanBerylSectionDrawPipeline {
         long bufferSize = buffer.getBufferSize();
         if (bufferSize <= 0L || bufferSize > Integer.MAX_VALUE) throw new IllegalStateException(label + " has invalid descriptor size: " + bufferSize);
         UBO ubo = this.commandGenPipeline.getUBO(candidate -> candidate.binding == binding);
-        if (ubo == null) throw new IllegalStateException("Section cmdgen descriptor binding " + binding + " is missing from cmdgen.json");
+        if (ubo == null) throw new IllegalStateException("Section cmdgen descriptor missing: name=" + label + ", binding=" + binding + ", config=" + CMDGEN_SHADER_CONFIG);
         ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
     }
 
     private void bindSceneUniform(VulkanBerylViewport viewport) {
         UBO ubo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == SCENE_UNIFORM_BINDING);
-        if (ubo == null) throw new IllegalStateException("Section draw descriptor binding 0 (SceneUniform) is missing from draw.json");
+        if (ubo == null) throw new IllegalStateException("Section draw descriptor missing: name=SceneUniform, binding=0, config=" + DRAW_SHADER_CONFIG);
         long ptr = ubo.getBuffer().data.getPtr();
         var mat = new org.joml.Matrix4f(viewport.MVP);
         mat.translate(-viewport.innerTranslation.x, -viewport.innerTranslation.y, -viewport.innerTranslation.z);

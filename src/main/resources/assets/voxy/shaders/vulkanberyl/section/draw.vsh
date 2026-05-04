@@ -25,6 +25,7 @@ layout(binding = 6, std430) readonly buffer RenderListBuffer {
 
 layout(location = 0) out flat uvec4 interData;
 layout(location = 1) out vec2 uv;
+layout(location = 2) out flat uvec2 debugIds;
 
 #import <voxy:lod/quad_format.glsl>
 #import <voxy:lod/block_model.glsl>
@@ -51,6 +52,7 @@ void main() {
     gl_Position = getQuadCornerPos(quad, cornerId);
     uv = getCornerUV(quad, cornerId);
     interData = quad.attributeData;
+    debugIds = uvec2(drawIndex, quadIndex);
 }
 
 #ifndef TAA_PATCH
