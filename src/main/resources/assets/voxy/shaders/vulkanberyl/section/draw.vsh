@@ -40,6 +40,9 @@ void main() {
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
 
+    // Vulkan GLSL convention: gl_VertexIndex already includes DrawIndirectCommand.firstVertex.
+    // cmdgen writes firstVertex = extractQuadStart(meta) * 4, so shifting gl_VertexIndex by 2
+    // yields a global quad index directly.
     uint quadIndex = (uint(gl_VertexIndex) >> 2u);
     QuadData quad;
     setupQuad(quad, quadData[quadIndex], extractRawPos(meta), (gl_VertexIndex & 3u) == 1u);
