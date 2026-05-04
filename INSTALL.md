@@ -4,8 +4,10 @@
 
 - Minecraft **26.1.x** instance using **Fabric Loader**
 - **Fabric API**
-- **Sodium 0.8.10** (or 0.8.9 where compatible)
-- **VulkanMod/Beryl** if you plan to use the Vulkan/Beryl backend
+- **VulkanMod 0.6.5**
+- **Beryl 0.1.3-alpha+1** (if separate in your runtime/modpack)
+- **Vulkan-Voxy** jar
+- **No Sodium** for current Vulkan/Beryl testing
 
 ## Install
 
@@ -13,5 +15,3 @@
 2. In Prism Launcher, open the instance folder and go to `mods/`.
 3. Place `vulkan-voxy-<version>.jar` into `mods/`.
 4. Ensure required runtime mods above are installed in the same instance.
-
-If Sodium is missing, Fabric Loader will block launch with a clear dependency error.
