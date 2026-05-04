@@ -1,10 +1,17 @@
 package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
 import me.cortex.voxy.client.core.rendering.Viewport;
+import net.minecraft.resources.ResourceLocation;
 import net.beryl.render.ComputePipeline;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import org.lwjgl.vulkan.VK10;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -13,6 +20,8 @@ import java.util.Objects;
 
 public final class VulkanBerylTraversalExecutor {
     public static final String TRAVERSAL_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/hierarchical/traversal.comp";
+    private static final String TRAVERSAL_SHADER_NAME = "vulkanberyl/hierarchical/traversal";
+    private static final String TRAVERSAL_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.json";
 
     public static final int SCENE_UNIFORM_BINDING = 1;
     public static final int REQUEST_QUEUE_BINDING = 2;
@@ -28,6 +37,8 @@ public final class VulkanBerylTraversalExecutor {
     private final VulkanBerylTopLevelNodeStore topLevelNodeStore;
     private final VulkanBerylViewportRenderList renderList;
     private final Buffer sectionMetadataBuffer;
+    private ComputePipeline traversalPipeline;
+    private boolean freed;
 
     public VulkanBerylTraversalExecutor(VulkanBerylTraversalResources traversalResources,
                                         VulkanBerylNodeMetadataStore nodeMetadataStore,
@@ -69,6 +80,48 @@ public final class VulkanBerylTraversalExecutor {
 
     public String getTraversalShaderResource() {
         return TRAVERSAL_SHADER_RESOURCE;
+    }
+
+    public ResourceLocation getTraversalShaderResourceLocation() {
+        return ResourceLocation.parse(TRAVERSAL_SHADER_RESOURCE);
+    }
+
+    public void ensureTraversalPipeline() {
+        if (this.freed) throw new IllegalStateException("traversal executor is freed");
+        requireLiveResources();
+        if (this.traversalPipeline != null) {
+            return;
+        }
+
+        URL shaderRootUrl = VulkanBerylTraversalExecutor.class.getResource("/assets/voxy/shaders");
+        if (shaderRootUrl == null) throw new IllegalStateException("Unable to locate /assets/voxy/shaders for traversal compute pipeline");
+        URL configUrl = VulkanBerylTraversalExecutor.class.getResource(TRAVERSAL_SHADER_CONFIG);
+        if (configUrl == null) throw new IllegalStateException("Missing traversal compute shader config: " + TRAVERSAL_SHADER_CONFIG);
+
+        ComputePipeline.Builder builder = new ComputePipeline.Builder(TRAVERSAL_SHADER_RESOURCE);
+        JsonObject config;
+        try (InputStreamReader reader = new InputStreamReader(configUrl.openStream(), StandardCharsets.UTF_8)) {
+            config = JsonParser.parseReader(reader).getAsJsonObject();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load traversal compute shader config: " + TRAVERSAL_SHADER_CONFIG, e);
+        }
+
+        builder.parseBindings(config);
+        builder.compileShader(shaderRootUrl.toExternalForm(), TRAVERSAL_SHADER_NAME);
+        ComputePipeline pipeline = builder.createPipeline();
+        if (pipeline == null || pipeline.getId() == 0L) {
+            throw new IllegalStateException("Failed to create traversal compute pipeline");
+        }
+        this.traversalPipeline = pipeline;
+    }
+
+    public void free() {
+        if (this.freed) return;
+        this.freed = true;
+        if (this.traversalPipeline != null) {
+            this.traversalPipeline.cleanUp();
+            this.traversalPipeline = null;
+        }
     }
 
     public void requireDispatchSupport() {
