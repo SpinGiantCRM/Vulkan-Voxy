@@ -4,6 +4,7 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -88,6 +89,22 @@ public final class VulkanBerylTopLevelNodeStore {
 
     public int getMaxTopLevelNodeCount() {
         return this.maxTopLevelNodeCount;
+    }
+
+    public void copyTopNodeIdsToAddress(long destinationAddress, int count) {
+        this.requireNotFreed();
+        if (destinationAddress == 0L) {
+            throw new IllegalArgumentException("destinationAddress must be non-zero");
+        }
+        if (count < 0 || count > this.topNodeCount) {
+            throw new IllegalArgumentException("count must be in range [0, topNodeCount]");
+        }
+
+        long ptr = destinationAddress;
+        for (int i = 0; i < count; i++) {
+            MemoryUtil.memPutInt(ptr, this.indexToTopNode[i]);
+            ptr += Integer.BYTES;
+        }
     }
 
     public boolean isFreed() {
