@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 public final class VulkanBerylRenderBackendRuntime implements SectionRenderBackendRuntime {
+    private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
+    private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private final AsyncNodeManager nodeManager;
     private final RenderGenerationService renderGen;
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
@@ -30,11 +32,19 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private final VulkanBerylTraversalResources traversalResources;
     private final Buffer requestReadbackBuffer;
     private final Buffer renderListCounterReadbackBuffer;
+    private final Buffer renderListSampleReadbackBuffer;
     private boolean requestReadbackPending;
     private boolean renderListCounterReadbackPending;
+    private boolean renderListSampleReadbackPending;
     private VulkanBerylViewportRenderList pendingRenderListCounterSource;
+    private VulkanBerylViewportRenderList pendingRenderListSampleSource;
+    private VulkanBerylSectionGeometryData pendingRenderListSampleGeometry;
     private int lastVisibleSectionCount = -1;
     private int lastVisibleSectionCapacity = -1;
+    private int lastSampledRenderListEntryCount;
+    private int lastInvalidSampledRenderListEntryCount;
+    private int lastSampledVisibleSectionCount = -1;
+    private String lastSampledRenderListFirstEntries = "[]";
     private VulkanBerylTraversalExecutor traversalExecutor;
     private boolean freed;
 
@@ -49,6 +59,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.requestReadbackBuffer.createBuffer(VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES);
         this.renderListCounterReadbackBuffer = new Buffer("voxy_vulkanberyl_render_list_count_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
         this.renderListCounterReadbackBuffer.createBuffer(Integer.BYTES);
+        this.renderListSampleReadbackBuffer = new Buffer("voxy_vulkanberyl_render_list_sample_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
+        this.renderListSampleReadbackBuffer.createBuffer(Integer.BYTES + (long) RENDER_LIST_SAMPLE_LIMIT * Integer.BYTES);
         this.nodeManager.setTLNAddRemoveCallbacks(this.topLevelNodeStore::addTopLevelNode, this.topLevelNodeStore::removeTopLevelNode);
     }
 
@@ -71,6 +83,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
         this.submitPendingRequestReadback();
         this.submitPendingRenderListCounterReadback();
+        this.submitPendingRenderListSampleReadback();
 
         do {
             this.nodeManager.tick(this.nodeMetadataStore, this.nodeCleanupSink);
@@ -96,7 +109,15 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer());
         this.scheduleRequestReadback(vulkanWorkContext.frame().renderer().getCommandBuffer());
         this.scheduleRenderListCounterReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
+        this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList, this.requireGeometryData(vulkanWorkContext));
         this.resetRequestQueueCounter();
+    }
+
+    private VulkanBerylSectionGeometryData requireGeometryData(VulkanBerylPrimaryRenderWorkContext workContext) {
+        if (!(workContext.frame().renderer().sectionRenderer instanceof VulkanBerylSectionRenderer sectionRenderer)) {
+            throw new IllegalStateException("Expected VulkanBerylSectionRenderer on Vulkan renderer");
+        }
+        return sectionRenderer.getGeometryManager();
     }
 
     private void scheduleRequestReadback(VkCommandBuffer commandBuffer) {
@@ -231,6 +252,99 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.pendingRenderListCounterSource = null;
     }
 
+    private void scheduleRenderListSampleReadback(VkCommandBuffer commandBuffer, VulkanBerylViewportRenderList renderList, VulkanBerylSectionGeometryData geometryData) {
+        if (commandBuffer == null) {
+            throw new IllegalStateException("Cannot read render-list sample without a valid command buffer");
+        }
+        long sampleRegionSize = Integer.BYTES + (long) RENDER_LIST_SAMPLE_LIMIT * Integer.BYTES;
+        if (renderList.getBuffer().getBufferSize() < sampleRegionSize) {
+            throw new IllegalStateException("Render list buffer is structurally invalid for sample readback");
+        }
+        try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            VkMemoryBarrier.Buffer toTransfer = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0, toTransfer, null, null);
+
+            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack).srcOffset(0L).dstOffset(0L).size(sampleRegionSize);
+            VK10.vkCmdCopyBuffer(commandBuffer, renderList.getBuffer().getId(), this.renderListSampleReadbackBuffer.getId(), copyRegion);
+
+            VkMemoryBarrier.Buffer toHost = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_HOST_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_HOST_BIT,
+                    0, toHost, null, null);
+        }
+        this.pendingRenderListSampleSource = renderList;
+        this.pendingRenderListSampleGeometry = geometryData;
+        this.renderListSampleReadbackPending = true;
+    }
+
+    private void submitPendingRenderListSampleReadback() {
+        if (!this.renderListSampleReadbackPending) {
+            return;
+        }
+        long readbackPtr = this.renderListSampleReadbackBuffer.getDataPtr();
+        VulkanBerylViewportRenderList renderList = this.pendingRenderListSampleSource;
+        VulkanBerylSectionGeometryData geometryData = this.pendingRenderListSampleGeometry;
+        if (readbackPtr == 0L || renderList == null || geometryData == null) {
+            this.renderListSampleReadbackPending = false;
+            this.pendingRenderListSampleSource = null;
+            this.pendingRenderListSampleGeometry = null;
+            return;
+        }
+
+        int visibleCount = MemoryUtil.memGetInt(readbackPtr);
+        int maxEntryCount = renderList.getMaxEntryCount();
+        if (visibleCount < 0) {
+            Logger.error("Vulkan/Beryl render-list sample had negative visible count: " + visibleCount);
+            visibleCount = 0;
+        } else if (visibleCount > maxEntryCount) {
+            Logger.error("Vulkan/Beryl render-list sample exceeded render-list capacity: " + visibleCount + " > " + maxEntryCount);
+            visibleCount = maxEntryCount;
+        }
+
+        int sampledCount = Math.min(visibleCount, RENDER_LIST_SAMPLE_LIMIT);
+        int invalidCount = 0;
+        int maxSectionCount = geometryData.getMaxSectionCount();
+        long metadataCapacityBytes = geometryData.getMetadataCapacityBytes();
+        boolean geometryFreed = geometryData.isFreed();
+        int[] firstIds = new int[Math.min(sampledCount, RENDER_LIST_DEBUG_FIRST_IDS)];
+        for (int i = 0; i < sampledCount; i++) {
+            int sectionId = MemoryUtil.memGetInt(readbackPtr + Integer.BYTES + (long) i * Integer.BYTES);
+            if (i < firstIds.length) {
+                firstIds[i] = sectionId;
+            }
+            boolean valid = !geometryFreed
+                    && sectionId >= 0
+                    && sectionId < maxSectionCount
+                    && ((long) (sectionId + 1) * VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE) <= metadataCapacityBytes;
+            if (!valid) {
+                invalidCount++;
+            }
+        }
+
+        this.lastSampledVisibleSectionCount = visibleCount;
+        this.lastSampledRenderListEntryCount = sampledCount;
+        this.lastInvalidSampledRenderListEntryCount = invalidCount;
+        this.lastSampledRenderListFirstEntries = java.util.Arrays.toString(firstIds);
+        if (invalidCount > 0) {
+            Logger.error("Vulkan/Beryl render-list sample validation found invalid entries: " + invalidCount + "/" + sampledCount +
+                    " (visible=" + visibleCount + ", geometryFreed=" + geometryFreed + ", maxSectionCount=" + maxSectionCount + ")");
+        }
+
+        this.renderListSampleReadbackPending = false;
+        this.pendingRenderListSampleSource = null;
+        this.pendingRenderListSampleGeometry = null;
+    }
+
     private void resetRequestQueueCounter() {
         ByteBuffer zeroCounter = MemoryUtil.memCalloc(4);
         try {
@@ -247,6 +361,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         debug.add("Vulkan/Beryl backend runtime: initialized (sync-only primary work; node metadata + TLN stores active)");
         debug.add("Vulkan/Beryl TLN: " + this.topLevelNodeStore.getTopNodeCount() + "/" + this.topLevelNodeStore.getMaxTopLevelNodeCount());
         debug.add("Vulkan/Beryl render list visible sections: " + this.lastVisibleSectionCount + "/" + this.lastVisibleSectionCapacity);
+        debug.add("Vulkan/Beryl render-list sample: " + this.lastSampledRenderListEntryCount + "/" + this.lastSampledVisibleSectionCount
+                + " entries, invalid=" + this.lastInvalidSampledRenderListEntryCount + ", first=" + this.lastSampledRenderListFirstEntries);
     }
 
     VulkanBerylNodeMetadataStore getNodeMetadataStore() {
@@ -275,6 +391,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.traversalResources.free();
         this.requestReadbackBuffer.scheduleFree();
         this.renderListCounterReadbackBuffer.scheduleFree();
+        this.renderListSampleReadbackBuffer.scheduleFree();
         this.freed = true;
     }
 }
