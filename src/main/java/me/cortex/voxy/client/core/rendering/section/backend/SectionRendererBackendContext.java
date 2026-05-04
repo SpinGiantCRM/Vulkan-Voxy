@@ -11,6 +11,10 @@ import java.util.function.BooleanSupplier;
 public interface SectionRendererBackendContext {
     RenderBackendStateGuard enterConstructionStateGuard();
 
+    default boolean supportsGlModelBaking() {
+        return true;
+    }
+
     boolean usesMeshlets();
 
     AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRendererFactory();
