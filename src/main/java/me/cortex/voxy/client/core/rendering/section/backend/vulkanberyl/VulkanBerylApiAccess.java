@@ -1,5 +1,6 @@
 package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
+import net.beryl.render.ComputePipeline;
 import net.beryl.render.RenderingPipeline;
 import net.beryl.render.RenderingStage;
 import net.beryl.render.ShaderMainPass;
@@ -22,7 +23,8 @@ public final class VulkanBerylApiAccess {
                 RenderingPipeline.class,
                 ShaderRenderPipeline.class,
                 ShaderMainPass.class,
-                RenderingStage.class
+                RenderingStage.class,
+                ComputePipeline.class
         };
     }
 
