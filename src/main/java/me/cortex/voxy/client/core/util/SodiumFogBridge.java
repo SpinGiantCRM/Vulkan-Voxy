@@ -20,8 +20,23 @@ public final class SodiumFogBridge {
             var gameRenderer = Minecraft.getInstance().gameRenderer;
             Method getFogMethod = gameRenderer.getClass().getMethod("sodium$getFogParameters");
             Object fogParameters = getFogMethod.invoke(gameRenderer);
-            if (fogParameters == null || !SODIUM_FOG_PARAMETERS_CLASS.equals(fogParameters.getClass().getName())) {
+            if (fogParameters == null) {
                 return null;
+            }
+            return fromSodiumFogParameters(fogParameters);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            Logger.warn("[voxy] Failed to reflect Sodium fog parameters", e);
+            return null;
+        }
+    }
+
+    public static VoxyFogParameters fromSodiumFogParameters(Object fogParameters) {
+        if (fogParameters == null) {
+            return VoxyFogParameters.NEUTRAL;
+        }
+        try {
+            if (!SODIUM_FOG_PARAMETERS_CLASS.equals(fogParameters.getClass().getName())) {
+                return VoxyFogParameters.NEUTRAL;
             }
             Class<?> fogClass = fogParameters.getClass();
             return new VoxyFogParameters(
@@ -33,8 +48,8 @@ public final class SodiumFogBridge {
                     ((Number) fogClass.getMethod("alpha").invoke(fogParameters)).floatValue()
             );
         } catch (ReflectiveOperationException | RuntimeException e) {
-            Logger.warn("[voxy] Failed to reflect Sodium fog parameters", e);
-            return null;
+            Logger.warn("[voxy] Failed to convert Sodium fog parameters", e);
+            return VoxyFogParameters.NEUTRAL;
         }
     }
 }

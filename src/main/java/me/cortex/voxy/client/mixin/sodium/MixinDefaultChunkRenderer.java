@@ -5,6 +5,7 @@ import me.cortex.voxy.client.VoxyClient;
 import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.util.IrisUtil;
+import me.cortex.voxy.client.core.util.SodiumFogBridge;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.gl.device.RenderDevice;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
@@ -54,7 +55,7 @@ public abstract class MixinDefaultChunkRenderer extends ShaderChunkRenderer {
                 if (IrisUtil.irisShaderPackEnabled()) {
                     viewport = renderer.getViewport();
                 } else {
-                    viewport = renderer.setupViewport(matrices.projection(), matrices.modelView(), fogParameters, camera.x, camera.y, camera.z);
+                    viewport = renderer.setupViewport(matrices.projection(), matrices.modelView(), SodiumFogBridge.fromSodiumFogParameters(fogParameters), camera.x, camera.y, camera.z);
                 }
                 renderer.renderOpaque(viewport);
             }
