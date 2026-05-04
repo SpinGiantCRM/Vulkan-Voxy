@@ -353,7 +353,7 @@ public class ModelFactory {
         public @Nullable MemoryBuffer biomeUpload;
 
         public void upload(ModelStore store) {//Uploads and resets for reuse
-            this.upload(store.modelBuffer, store.modelColourBuffer, store.textures);
+            this.upload(store.getModelBuffer(), store.getModelColourBuffer(), store.getTextures());
         }
 
         public void upload(GlBuffer modelBuffer, GlBuffer colourBuffer, GlTexture atlas) {//Uploads and resets for reuse
@@ -737,7 +737,7 @@ public class ModelFactory {
         }
 
         public void upload(ModelStore store) {
-            this.upload(store.modelBuffer, store.modelColourBuffer);
+            this.upload(store.getModelBuffer(), store.getModelColourBuffer());
         }
 
         public void upload(GlBuffer modelBuffer, GlBuffer modelColourBuffer) {
