@@ -1,15 +1,13 @@
 {
   "UBOs": [
-    { "name": "SceneUniform", "stage": "compute", "binding": 1 }
-  ],
-  "ManualUBOs": [
-    { "type": "compute", "binding": 2, "size": 2 },
-    { "type": "compute", "binding": 3, "size": 2 },
-    { "type": "compute", "binding": 4, "size": 2 },
-    { "type": "compute", "binding": 5, "size": 2 },
-    { "type": "compute", "binding": 6, "size": 2 },
-    { "type": "compute", "binding": 7, "size": 2 },
-    { "type": "compute", "binding": 8, "size": 2 },
-    { "type": "compute", "binding": 9, "size": 2 }
+    { "name": "SceneUniform", "type": "compute", "binding": 1, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "RequestQueue", "type": "compute", "binding": 2, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "RenderQueue", "type": "compute", "binding": 3, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "NodeData", "type": "compute", "binding": 4, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "NodeQueueIndex", "type": "compute", "binding": 5, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "NodeQueueMeta", "type": "compute", "binding": 6, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "NodeQueueSource", "type": "compute", "binding": 7, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "NodeQueueSink", "type": "compute", "binding": 8, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
+    { "name": "RenderTracker", "type": "compute", "binding": 9, "fields": [{ "name": "data", "type": "uint", "count": 1 }] }
   ]
 }

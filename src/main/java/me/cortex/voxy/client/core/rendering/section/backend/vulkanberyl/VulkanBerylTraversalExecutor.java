@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.beryl.render.ComputePipeline;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
+import net.vulkanmod.vulkan.shader.descriptor.UBO;
 import org.lwjgl.vulkan.VK10;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -38,6 +39,7 @@ public final class VulkanBerylTraversalExecutor {
     private final VulkanBerylViewportRenderList renderList;
     private final Buffer sectionMetadataBuffer;
     private ComputePipeline traversalPipeline;
+    private boolean descriptorsBound;
     private boolean freed;
 
     public VulkanBerylTraversalExecutor(VulkanBerylTraversalResources traversalResources,
@@ -113,6 +115,24 @@ public final class VulkanBerylTraversalExecutor {
             throw new IllegalStateException("Failed to create traversal compute pipeline");
         }
         this.traversalPipeline = pipeline;
+        this.descriptorsBound = false;
+    }
+
+    public void ensureTraversalDescriptorsBound() {
+        if (this.freed) throw new IllegalStateException("traversal executor is freed");
+        requireLiveResources();
+        if (this.traversalPipeline == null) throw new IllegalStateException("traversal pipeline must be created before binding descriptors");
+
+        bindStorageBinding(SCENE_UNIFORM_BINDING, this.traversalResources.getUniformBuffer(), "traversalResources.uniformBuffer");
+        bindStorageBinding(REQUEST_QUEUE_BINDING, this.traversalResources.getRequestBuffer(), "traversalResources.requestBuffer");
+        bindStorageBinding(RENDER_QUEUE_BINDING, this.renderList.getBuffer(), "renderList.buffer");
+        bindStorageBinding(NODE_DATA_BINDING, this.nodeMetadataStore.getNodeBuffer(), "nodeMetadataStore.nodeBuffer");
+        bindStorageBinding(NODE_QUEUE_INDEX_BINDING, this.traversalResources.getQueueIndexBuffer(), "traversalResources.queueIndexBuffer");
+        bindStorageBinding(NODE_QUEUE_META_BINDING, this.traversalResources.getQueueMetaBuffer(), "traversalResources.queueMetaBuffer");
+        bindStorageBinding(NODE_QUEUE_SOURCE_BINDING, this.traversalResources.getScratchQueueA(), "traversalResources.scratchQueueA");
+        bindStorageBinding(NODE_QUEUE_SINK_BINDING, this.traversalResources.getScratchQueueB(), "traversalResources.scratchQueueB");
+        bindStorageBinding(RENDER_TRACKER_BINDING, this.traversalResources.getRenderTrackerBuffer(), "traversalResources.renderTrackerBuffer");
+        this.descriptorsBound = true;
     }
 
     public void free() {
@@ -157,5 +177,18 @@ public final class VulkanBerylTraversalExecutor {
         } catch (NoSuchMethodException e) {
             missing.add(owner.getName() + "#" + methodName);
         }
+    }
+
+    private void bindStorageBinding(int binding, Buffer buffer, String label) {
+        requireBuffer(label, buffer);
+        UBO ubo = this.traversalPipeline.getUBO(candidate -> candidate.binding == binding);
+        if (ubo == null) {
+            throw new IllegalStateException("Traversal descriptor binding " + binding + " is missing from traversal.json");
+        }
+        long bufferSize = buffer.getBufferSize();
+        if (bufferSize <= 0L || bufferSize > Integer.MAX_VALUE) {
+            throw new IllegalStateException(label + " has invalid descriptor size: " + bufferSize);
+        }
+        ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
     }
 }
