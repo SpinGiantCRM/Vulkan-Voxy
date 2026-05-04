@@ -22,9 +22,9 @@ public class ModelBakerySubsystem {
     private final Thread processingThread;
     private volatile boolean isRunning = true;
     private volatile Throwable processingThreadException;
-    public ModelBakerySubsystem(Mapper mapper) {
+    public ModelBakerySubsystem(Mapper mapper, boolean glModelBakingEnabled) {
         this.mapper = mapper;
-        this.factory = new ModelFactory(mapper, this.storage);
+        this.factory = new ModelFactory(mapper, this.storage, glModelBakingEnabled);
         this.processingThread = new Thread(()->{//TODO replace this with something good/integrate it into the async processor so that we just have less threads overall
             while (this.isRunning) {
                 while (this.factory.processAllThings());

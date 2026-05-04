@@ -86,7 +86,7 @@ public class VoxyRenderSystem {
             this.properties = RenderProperties.getRenderProperties();
             var backendContext = getRenderBackendContext();
             try (var stateGuard = backendContext.enterConstructionStateGuard()) {
-                this.modelService = new ModelBakerySubsystem(world.getMapper());
+                this.modelService = new ModelBakerySubsystem(world.getMapper(), backendContext.supportsGlModelBaking());
                 this.renderGen = new RenderGenerationService(world, this.modelService, sm, backendContext.usesMeshlets());
 
                 this.geometryData = backendContext.createGeometryData();

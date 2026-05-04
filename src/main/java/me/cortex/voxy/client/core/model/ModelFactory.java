@@ -75,6 +75,7 @@ public class ModelFactory {
     private final Biome DEFAULT_BIOME = Minecraft.getInstance().level.registryAccess().lookupOrThrow(Registries.BIOME).getValue(Biomes.PLAINS);
 
     public final SoftwareModelTextureBakery bakery2;
+    private final boolean glModelBakingEnabled;
     private final long bakeScratchBuffer = MemoryUtil.nmemAlloc(MODEL_TEXTURE_SIZE*MODEL_TEXTURE_SIZE*8*6);
 
 
@@ -133,11 +134,14 @@ public class ModelFactory {
 
     //TODO: NOTE!!! is it worth even uploading as a 16x16 texture, since automatic lod selection... doing 8x8 textures might be perfectly ok!!!
     // this _quarters_ the memory requirements for the texture atlas!!! WHICH IS HUGE saving
-    public ModelFactory(Mapper mapper, ModelStore storage) {
+    public ModelFactory(Mapper mapper, ModelStore storage, boolean glModelBakingEnabled) {
         this.mapper = mapper;
         this.storage = storage;
-        this.bakery2 = new SoftwareModelTextureBakery();
-        this.bakery2.setupTexture();
+        this.glModelBakingEnabled = glModelBakingEnabled;
+        this.bakery2 = glModelBakingEnabled ? new SoftwareModelTextureBakery() : null;
+        if (this.bakery2 != null) {
+            this.bakery2.setupTexture();
+        }
 
         this.metadataCache = new long[1<<16];
         this.fluidStateLUT = new int[1<<16];
@@ -222,6 +226,13 @@ public class ModelFactory {
     }
 
     private boolean processModelResult() {
+        if (!this.glModelBakingEnabled) {
+            if (!this.bakeQueue.isEmpty()) {
+                throw new UnsupportedOperationException("Model baking requires an OpenGL context and is disabled for this backend (VULKANMOD_BERYL)");
+            }
+            return false;
+        }
+
         var bake = this.bakeQueue.poll();
         if (bake == null) return false;
         ColourDepthTextureData[] textureData = new ColourDepthTextureData[6];
@@ -989,7 +1000,9 @@ public class ModelFactory {
 
 
     public void free() {
-        this.bakery2.free();
+        if (this.bakery2 != null) {
+            this.bakery2.free();
+        }
         MemoryUtil.nmemFree(this.bakeScratchBuffer);
         while (!this.uploadResults.isEmpty()) {
             this.uploadResults.poll().free();
