@@ -345,7 +345,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.lastSampledRenderListFirstEntries = java.util.Arrays.toString(firstIds);
         if (invalidCount > 0) {
             Logger.error("Vulkan/Beryl render-list sample validation found invalid entries: " + invalidCount + "/" + sampledCount +
-                    " (visible=" + visibleCount + ", geometryFreed=" + geometryFreed + ", maxSectionCount=" + maxSectionCount + ")");
+                    " (visible=" + visibleCount + ", renderListCapacity=" + maxEntryCount + ")");
         }
 
         this.renderListSampleReadbackPending = false;
