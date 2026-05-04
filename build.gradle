@@ -252,6 +252,7 @@ dependencies {
     implementation platform("org.lwjgl:lwjgl-bom:$lwjglVersion")
 
     implementation "org.lwjgl:lwjgl"
+    implementation "org.lwjgl:lwjgl-vulkan"
     include(implementation "org.lwjgl:lwjgl-lmdb")
     include(implementation "org.lwjgl:lwjgl-zstd")
     runtimeOnly "org.lwjgl:lwjgl:$lwjglVersion:natives-windows"

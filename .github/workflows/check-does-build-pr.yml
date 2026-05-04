@@ -21,4 +21,4 @@ jobs:
           cache-read-only: true
 
       - name: Gradle build
-        run: ./gradlew build
+        run: ./gradlew -I init.gradle build

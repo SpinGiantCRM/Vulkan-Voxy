@@ -1,7 +1,6 @@
 package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
 import me.cortex.voxy.client.core.rendering.Viewport;
-import net.minecraft.resources.ResourceLocation;
 import net.beryl.render.ComputePipeline;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
@@ -90,9 +89,6 @@ public final class VulkanBerylTraversalExecutor {
         return TRAVERSAL_SHADER_RESOURCE;
     }
 
-    public ResourceLocation getTraversalShaderResourceLocation() {
-        return ResourceLocation.parse(TRAVERSAL_SHADER_RESOURCE);
-    }
 
     public void ensureTraversalPipeline() {
         if (this.freed) throw new IllegalStateException("traversal executor is freed");
