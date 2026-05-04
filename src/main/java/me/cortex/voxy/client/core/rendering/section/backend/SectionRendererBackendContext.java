@@ -15,6 +15,10 @@ public interface SectionRendererBackendContext {
         return true;
     }
 
+    default boolean supportsGlDownloadStream() {
+        return true;
+    }
+
     boolean usesMeshlets();
 
     AbstractSectionRenderer.Factory<?, ? extends IGeometryData> getRendererFactory();

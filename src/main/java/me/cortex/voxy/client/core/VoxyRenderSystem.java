@@ -396,8 +396,11 @@ public class VoxyRenderSystem {
     }
 
     public void shutdown() {
-        Logger.info("Flushing download stream");
-        DownloadStream.INSTANCE.flushWaitClear();
+        var backendContext = getRenderBackendContext();
+        if (backendContext.supportsGlDownloadStream()) {
+            Logger.info("Flushing download stream");
+            DownloadStream.INSTANCE.flushWaitClear();
+        }
         Logger.info("Shutting down rendering");
         try {
             //Cleanup callbacks
@@ -411,7 +414,7 @@ public class VoxyRenderSystem {
             this.renderGen.shutdown();
             this.backendRuntime.free();
             this.geometryData.free();
-            getRenderBackendContext().releaseGeometryData(this.geometryData);
+            backendContext.releaseGeometryData(this.geometryData);
 
             this.chunkBoundRenderer.free();
 
@@ -422,8 +425,10 @@ public class VoxyRenderSystem {
 
 
 
-        Logger.info("Flushing download stream");
-        DownloadStream.INSTANCE.flushWaitClear();
+        if (backendContext.supportsGlDownloadStream()) {
+            Logger.info("Flushing download stream");
+            DownloadStream.INSTANCE.flushWaitClear();
+        }
 
         //Release hold on the world
         this.worldIn.releaseRef();
