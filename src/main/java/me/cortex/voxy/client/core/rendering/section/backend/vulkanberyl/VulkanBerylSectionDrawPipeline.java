@@ -342,7 +342,9 @@ public final class VulkanBerylSectionDrawPipeline {
     private void bindSceneUniform(VulkanBerylViewport viewport) {
         UBO ubo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == SCENE_UNIFORM_BINDING);
         if (ubo == null) throw new IllegalStateException("Section draw descriptor missing: name=SceneUniform, binding=0, config=" + DRAW_SHADER_CONFIG);
-        long ptr = ubo.getBuffer().data.getPtr();
+        Buffer uniformBuffer = ubo.getBufferSlice().getBuffer();
+        if (uniformBuffer == null) throw new IllegalStateException("Section draw SceneUniform buffer is not bound");
+        long ptr = uniformBuffer.getDataPtr() + ubo.getBufferSlice().getOffset();
         var mat = new org.joml.Matrix4f(viewport.MVP);
         mat.translate(-viewport.innerTranslation.x, -viewport.innerTranslation.y, -viewport.innerTranslation.z);
         mat.getToAddress(ptr);
