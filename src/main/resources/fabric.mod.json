@@ -6,8 +6,8 @@
     "commit": "${commit}",
     "buildtime": "${buildtime}"
   },
-  "name": "Voxy",
-  "description": "Far distance rendering mod utilising LoDs",
+  "name": "Vulkan-Voxy",
+  "description": "Vulkan/Beryl fork of Voxy for far distance LoD rendering",
   "authors": [
     "Cortex"
   ],

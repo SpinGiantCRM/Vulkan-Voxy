@@ -6,7 +6,7 @@ def INCLUDE_OTHER_ARCHS = "true".equalsIgnoreCase(project.findProperty("includeO
 
 def isInGHA = System.getenv("GITHUB_ACTIONS") == "true"
 
-version = project.mod_version
+version = project.findProperty("modVersion") ?: project.mod_version
 group = project.maven_group
 
 base {

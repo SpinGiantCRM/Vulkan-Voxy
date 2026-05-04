@@ -45,8 +45,37 @@ jobs:
         with:
           cache-read-only: false
 
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Derive mod version from tag
+        id: mod_version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          VERSION="${TAG#v}"
+
+          if [ -z "$VERSION" ]; then
+            echo "Failed to derive version from tag: $TAG"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Gradle build
-        run: ./gradlew -I init.gradle build
+        run: ./gradlew -I init.gradle -PmodVersion="${{ steps.mod_version.outputs.version }}" build
 
       - name: Select installable mod jar
         id: select_jar
@@ -77,17 +106,6 @@ jobs:
 
           echo "jar=${jars[0]}" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve release tag
-        id: release_tag
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Ensure release exists for workflow dispatch
         if: github.event_name == 'workflow_dispatch'
