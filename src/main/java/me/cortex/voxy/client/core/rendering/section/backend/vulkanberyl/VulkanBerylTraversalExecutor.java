@@ -59,8 +59,8 @@ public final class VulkanBerylTraversalExecutor {
     public void requireDispatchSupport() {
         List<String> missing = new ArrayList<>();
         requireMethod(Renderer.class, "getCommandBuffer", missing);
-        requireMethod(ComputePipeline.class, "bindDescriptorSets", org.lwjgl.vulkan.VkCommandBuffer.class, int.class, missing);
-        requireMethod(VK10.class, "vkCmdDispatch", org.lwjgl.vulkan.VkCommandBuffer.class, int.class, int.class, int.class, missing);
+        requireMethod(ComputePipeline.class, "bindDescriptorSets", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class);
+        requireMethod(VK10.class, "vkCmdDispatch", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, int.class, int.class);
 
         if (!missing.isEmpty()) {
             throw new UnsupportedOperationException("Vulkan/Beryl traversal compute dispatch integration missing required API: " + String.join(", ", missing));
