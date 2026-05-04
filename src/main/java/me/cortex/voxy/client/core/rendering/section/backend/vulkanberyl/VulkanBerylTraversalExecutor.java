@@ -12,6 +12,17 @@ import java.util.List;
 import java.util.Objects;
 
 public final class VulkanBerylTraversalExecutor {
+    public static final String TRAVERSAL_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/hierarchical/traversal.comp";
+
+    public static final int SCENE_UNIFORM_BINDING = 1;
+    public static final int REQUEST_QUEUE_BINDING = 2;
+    public static final int RENDER_QUEUE_BINDING = 3;
+    public static final int NODE_DATA_BINDING = 4;
+    public static final int NODE_QUEUE_INDEX_BINDING = 5;
+    public static final int NODE_QUEUE_META_BINDING = 6;
+    public static final int NODE_QUEUE_SOURCE_BINDING = 7;
+    public static final int NODE_QUEUE_SINK_BINDING = 8;
+    public static final int RENDER_TRACKER_BINDING = 9;
     private final VulkanBerylTraversalResources traversalResources;
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
     private final VulkanBerylTopLevelNodeStore topLevelNodeStore;
@@ -54,6 +65,10 @@ public final class VulkanBerylTraversalExecutor {
 
         if (this.renderList.getMaxEntryCount() <= 0) throw new IllegalStateException("renderList maxEntryCount must be > 0");
         if (this.topLevelNodeStore.getTopNodeCount() < 0) throw new IllegalStateException("topNodeCount must be non-negative");
+    }
+
+    public String getTraversalShaderResource() {
+        return TRAVERSAL_SHADER_RESOURCE;
     }
 
     public void requireDispatchSupport() {
