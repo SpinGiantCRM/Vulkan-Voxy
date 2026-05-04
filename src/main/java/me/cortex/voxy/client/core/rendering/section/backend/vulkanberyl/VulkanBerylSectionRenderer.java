@@ -3,6 +3,7 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 import me.cortex.voxy.client.core.model.ModelStore;
 import me.cortex.voxy.client.core.rendering.section.backend.AbstractSectionRenderer;
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderPipeline;
+import net.vulkanmod.vulkan.Renderer;
 
 import java.util.List;
 
@@ -11,6 +12,8 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
 
     private final VulkanBerylSectionDrawPipeline drawPipeline;
     private boolean freed;
+    private int lastSubmittedOpaqueVisibleCount;
+    private boolean lastOpaqueDrawSkippedZeroCount = true;
 
     public VulkanBerylSectionRenderer(SectionRenderPipeline pipeline, ModelStore modelStore, VulkanBerylSectionGeometryData geometryData) {
         super(pipeline.getRenderProperties(), modelStore, geometryData);
@@ -33,7 +36,18 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     @Override
     public void renderOpaque(VulkanBerylViewport viewport) {
         this.requireActive();
-        this.validateRenderListLayout(this.requireRenderList(viewport));
+        VulkanBerylViewportRenderList renderList = this.requireRenderList(viewport);
+        this.validateRenderListLayout(renderList);
+        this.ensureDrawResources(renderList);
+
+        Renderer renderer = Renderer.getInstance();
+        if (renderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
+        }
+
+        int submittedVisibleCount = this.drawPipeline.renderOpaque(renderer, viewport, this.geometryData, renderList);
+        this.lastSubmittedOpaqueVisibleCount = submittedVisibleCount;
+        this.lastOpaqueDrawSkippedZeroCount = submittedVisibleCount <= 0;
     }
 
     @Override
@@ -56,8 +70,10 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
 
     @Override
     public void addDebug(List<String> lines) {
-        lines.add("Vulkan/Beryl section renderer: initialized (draw submission pending)");
+        lines.add("Vulkan/Beryl section renderer: opaque draw submission active");
         lines.add("Vulkan/Beryl section draw pipeline ready: " + this.drawPipeline.isReady());
+        lines.add("Vulkan/Beryl last opaque submitted visible count: " + this.lastSubmittedOpaqueVisibleCount);
+        lines.add("Vulkan/Beryl last opaque draw skipped (count<=0): " + this.lastOpaqueDrawSkippedZeroCount);
     }
 
     private void requireActive() {
