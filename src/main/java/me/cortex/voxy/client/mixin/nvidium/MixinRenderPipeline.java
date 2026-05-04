@@ -3,6 +3,7 @@ package me.cortex.voxy.client.mixin.nvidium;
 import com.mojang.blaze3d.textures.GpuSampler;
 import me.cortex.nvidium.RenderPipeline;
 import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
+import me.cortex.voxy.client.core.util.SodiumFogBridge;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
@@ -19,7 +20,7 @@ public class MixinRenderPipeline {
     private void voxy$injectRender(TerrainRenderPass pass, Viewport frustum, FogParameters fogParameters, ChunkRenderMatrices crm, double px, double py, double pz, GpuSampler terrainSampler, CallbackInfo ci) {
         var renderer = ((IGetVoxyRenderSystem) Minecraft.getInstance().levelRenderer).voxy$getRenderSystem();
         if (renderer != null) {
-            renderer.renderOpaque(renderer.setupViewport(crm.projection(), crm.modelView(), fogParameters, px, py, pz));
+            renderer.renderOpaque(renderer.setupViewport(crm.projection(), crm.modelView(), SodiumFogBridge.fromSodiumFogParameters(fogParameters), px, py, pz));
         }
     }
 }
