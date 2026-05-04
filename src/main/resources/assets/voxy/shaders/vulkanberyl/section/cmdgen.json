@@ -1,0 +1,8 @@
+{
+  "UBOs": [
+    {"name":"MetadataBuffer","binding":1,"type":"storageBuffer","stages":["compute"]},
+    {"name":"RenderListBuffer","binding":2,"type":"storageBuffer","stages":["compute"]},
+    {"name":"DrawCommandsBuffer","binding":3,"type":"storageBuffer","stages":["compute"]},
+    {"name":"DrawCountBuffer","binding":4,"type":"storageBuffer","stages":["compute"]}
+  ]
+}
