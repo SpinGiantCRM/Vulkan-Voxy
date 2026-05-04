@@ -9,10 +9,12 @@ import java.util.List;
 public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<VulkanBerylViewport, VulkanBerylSectionGeometryData> {
     public static final Factory<VulkanBerylViewport, VulkanBerylSectionGeometryData> FACTORY = Factory.create(VulkanBerylSectionRenderer.class);
 
+    private final VulkanBerylSectionDrawPipeline drawPipeline;
     private boolean freed;
 
     public VulkanBerylSectionRenderer(SectionRenderPipeline pipeline, ModelStore modelStore, VulkanBerylSectionGeometryData geometryData) {
         super(pipeline.getRenderProperties(), modelStore, geometryData);
+        this.drawPipeline = new VulkanBerylSectionDrawPipeline();
     }
 
     @Override
@@ -25,6 +27,7 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
         this.requireActive();
         VulkanBerylViewportRenderList renderList = this.requireRenderList(viewport);
         this.validateRenderListLayout(renderList);
+        this.ensureDrawResources(renderList);
     }
 
     @Override
@@ -47,12 +50,14 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
 
     @Override
     public void free() {
+        this.drawPipeline.free();
         this.freed = true;
     }
 
     @Override
     public void addDebug(List<String> lines) {
         lines.add("Vulkan/Beryl section renderer: initialized (draw submission pending)");
+        lines.add("Vulkan/Beryl section draw pipeline ready: " + this.drawPipeline.isReady());
     }
 
     private void requireActive() {
@@ -73,5 +78,13 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
         if (sizeBytes < Integer.BYTES) {
             throw new IllegalStateException("Vulkan/Beryl render list buffer is structurally invalid (" + sizeBytes + " bytes)");
         }
+    }
+
+    private void ensureDrawResources(VulkanBerylViewportRenderList renderList) {
+        if (this.geometryData == null) {
+            throw new IllegalStateException("Vulkan/Beryl section geometry data is missing");
+        }
+        this.drawPipeline.ensureDrawPipeline();
+        this.drawPipeline.ensureDrawResourcesBound(this.geometryData, renderList);
     }
 }
