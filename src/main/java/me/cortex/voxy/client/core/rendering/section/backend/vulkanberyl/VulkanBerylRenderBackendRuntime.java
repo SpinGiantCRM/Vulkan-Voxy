@@ -17,6 +17,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private final VulkanBerylTopLevelNodeStore topLevelNodeStore;
     private final VulkanBerylNodeCleanupSink nodeCleanupSink;
     private final VulkanBerylTraversalResources traversalResources;
+    private VulkanBerylTraversalExecutor traversalExecutor;
     private boolean freed;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
@@ -51,6 +52,17 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
         this.traversalResources.initializeQueueMetadata(this.topLevelNodeStore.getTopNodeCount());
         this.traversalResources.uploadTraversalUniforms(vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen);
+        if (this.traversalExecutor == null) {
+            this.traversalExecutor = new VulkanBerylTraversalExecutor(
+                    this.traversalResources,
+                    this.nodeMetadataStore,
+                    this.topLevelNodeStore,
+                    renderList,
+                    null
+            );
+        }
+        this.traversalExecutor.prepareTraversal(vulkanViewport);
+        this.traversalExecutor.requireDispatchSupport();
     }
 
     @Override
@@ -76,6 +88,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         if (this.freed) {
             return;
         }
+        this.traversalExecutor = null;
         this.nodeMetadataStore.free();
         this.topLevelNodeStore.free();
         this.traversalResources.free();
