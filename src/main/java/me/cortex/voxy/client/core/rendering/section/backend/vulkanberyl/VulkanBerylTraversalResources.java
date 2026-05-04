@@ -10,6 +10,7 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 import static org.lwjgl.system.MemoryUtil.memAddress;
+import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -50,7 +51,7 @@ public final class VulkanBerylTraversalResources {
         this.requestBuffer = new Buffer("voxy_vulkanberyl_traversal_request", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, MemoryTypes.GPU_MEM);
         this.requestBuffer.createBuffer(REQUEST_BUFFER_SIZE_BYTES);
 
-        this.queueMetaBuffer = new Buffer("voxy_vulkanberyl_traversal_queue_meta", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        this.queueMetaBuffer = new Buffer("voxy_vulkanberyl_traversal_queue_meta", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, MemoryTypes.GPU_MEM);
         this.queueMetaBuffer.createBuffer(QUEUE_META_BUFFER_SIZE_BYTES);
 
         this.scratchQueueA = new Buffer("voxy_vulkanberyl_traversal_scratch_a", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
@@ -120,6 +121,22 @@ public final class VulkanBerylTraversalResources {
                 topLevelNodeStore.copyTopNodeIdsToAddress(memAddress(topNodeIds), topNodeCount);
                 uploader.upload(this.scratchQueueA, 0L, memAddress(topNodeIds), (long) topNodeCount * Integer.BYTES);
             }
+            uploader.flush();
+        }
+    }
+
+    public void uploadQueueIndex(int queueIndex, VulkanBerylGeometryUploader uploader) {
+        requireNotFreed();
+        if (queueIndex < 0 || queueIndex >= MAX_ITERATIONS) {
+            throw new IllegalArgumentException("queueIndex out of range: " + queueIndex);
+        }
+        if (uploader == null) {
+            throw new IllegalArgumentException("uploader must not be null");
+        }
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            long queueIndexPtr = memAddress(stack.ints(queueIndex));
+            uploader.upload(this.queueIndexBuffer, 0L, queueIndexPtr, QUEUE_INDEX_BUFFER_SIZE_BYTES);
             uploader.flush();
         }
     }

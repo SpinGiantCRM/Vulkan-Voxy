@@ -8,12 +8,14 @@ import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkMemoryBarrier;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import org.lwjgl.system.MemoryStack;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -163,6 +165,62 @@ public final class VulkanBerylTraversalExecutor {
         VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
     }
 
+    public void dispatchRemainingTraversalIterations(Renderer renderer) {
+        if (this.freed) throw new IllegalStateException("traversal executor is freed");
+        requireLiveResources();
+        if (renderer == null) throw new IllegalArgumentException("renderer must not be null");
+        if (this.traversalPipeline == null) throw new IllegalStateException("traversal pipeline is not initialized");
+        if (!this.descriptorsBound) throw new IllegalStateException("traversal descriptors must be bound before dispatch");
+
+        Buffer queueMetaBuffer = this.traversalResources.getQueueMetaBuffer();
+        requireBuffer("traversalResources.queueMetaBuffer", queueMetaBuffer);
+        long requiredMetaSize = (long) this.traversalResources.getMaxIterations() * 16L;
+        if (queueMetaBuffer.getBufferSize() < requiredMetaSize) {
+            throw new IllegalStateException("queueMetaBuffer too small for dispatch metadata: " + queueMetaBuffer.getBufferSize() + " < " + requiredMetaSize);
+        }
+
+        VkCommandBuffer commandBuffer = renderer.getCommandBuffer();
+        if (commandBuffer == null) {
+            throw new IllegalStateException("Renderer returned null Vulkan command buffer");
+        }
+
+        VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+        int maxIterations = this.traversalResources.getMaxIterations();
+        for (int iter = 1; iter < maxIterations; iter++) {
+            this.traversalResources.uploadQueueIndex(iter, uploader);
+
+            Buffer source = (iter & 1) == 0 ? this.traversalResources.getScratchQueueA() : this.traversalResources.getScratchQueueB();
+            Buffer sink = (iter & 1) == 0 ? this.traversalResources.getScratchQueueB() : this.traversalResources.getScratchQueueA();
+            bindStorageBinding(NODE_QUEUE_SOURCE_BINDING, source, "traversalResources.scratchQueueSource");
+            bindStorageBinding(NODE_QUEUE_SINK_BINDING, sink, "traversalResources.scratchQueueSink");
+
+            VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, this.traversalPipeline.getId());
+            this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
+
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                VkMemoryBarrier.Buffer memoryBarrier = VkMemoryBarrier.calloc(1, stack)
+                        .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                        .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                        .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT | VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+                VK10.vkCmdPipelineBarrier(
+                        commandBuffer,
+                        VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                        0,
+                        memoryBarrier,
+                        null,
+                        null
+                );
+            }
+
+            long indirectOffset = iter * 16L;
+            if (indirectOffset + 16L > queueMetaBuffer.getBufferSize()) {
+                throw new IllegalStateException("Indirect dispatch offset out of bounds: " + indirectOffset + " for queueMetaBuffer size " + queueMetaBuffer.getBufferSize());
+            }
+            VK10.vkCmdDispatchIndirect(commandBuffer, queueMetaBuffer.getId(), indirectOffset);
+        }
+    }
+
     public void free() {
         if (this.freed) return;
         this.freed = true;
@@ -178,6 +236,8 @@ public final class VulkanBerylTraversalExecutor {
         requireMethod(ComputePipeline.class, "bindDescriptorSets", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class);
         requireMethod(VK10.class, "vkCmdBindPipeline", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, long.class);
         requireMethod(VK10.class, "vkCmdDispatch", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, int.class, int.class);
+        requireMethod(VK10.class, "vkCmdPipelineBarrier", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, int.class, int.class, org.lwjgl.vulkan.VkMemoryBarrier.Buffer.class, org.lwjgl.vulkan.VkBufferMemoryBarrier.Buffer.class, org.lwjgl.vulkan.VkImageMemoryBarrier.Buffer.class);
+        requireMethod(VK10.class, "vkCmdDispatchIndirect", missing, org.lwjgl.vulkan.VkCommandBuffer.class, long.class, long.class);
 
         if (!missing.isEmpty()) {
             throw new UnsupportedOperationException("Vulkan/Beryl traversal compute dispatch integration missing required API: " + String.join(", ", missing));

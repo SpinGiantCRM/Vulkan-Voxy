@@ -68,6 +68,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.traversalExecutor.ensureTraversalDescriptorsBound();
         this.traversalExecutor.requireDispatchSupport();
         this.traversalExecutor.dispatchFirstTraversalIteration(vulkanWorkContext.frame().renderer());
+        this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer());
     }
 
     @Override
