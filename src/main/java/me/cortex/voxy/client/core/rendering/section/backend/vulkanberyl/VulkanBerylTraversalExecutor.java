@@ -110,7 +110,11 @@ public final class VulkanBerylTraversalExecutor {
             throw new IllegalStateException("Failed to load traversal compute shader config: " + TRAVERSAL_SHADER_CONFIG, e);
         }
 
-        builder.parseBindings(config);
+        try {
+            builder.parseBindings(config);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Failed to parse traversal compute bindings from " + TRAVERSAL_SHADER_CONFIG + ": " + describeTraversalBindings(config), e);
+        }
         builder.compileShader(shaderRootUrl.toExternalForm(), TRAVERSAL_SHADER_NAME);
         ComputePipeline pipeline = builder.createPipeline();
         if (pipeline == null || pipeline.getId() == 0L) {
@@ -258,6 +262,33 @@ public final class VulkanBerylTraversalExecutor {
         }
     }
 
+
+    private static String describeTraversalBindings(JsonObject config) {
+        if (config == null || !config.has("UBOs") || !config.get("UBOs").isJsonArray()) {
+            return "missing or invalid UBOs array";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        config.getAsJsonArray("UBOs").forEach(node -> {
+            if (!node.isJsonObject()) {
+                if (builder.length() != 0) builder.append("; ");
+                builder.append("<non-object binding node>");
+                return;
+            }
+
+            JsonObject binding = node.getAsJsonObject();
+            if (builder.length() != 0) builder.append("; ");
+            builder
+                    .append("binding=")
+                    .append(binding.has("binding") ? binding.get("binding").getAsString() : "<missing>")
+                    .append(", name=")
+                    .append(binding.has("name") ? binding.get("name").getAsString() : "<missing>")
+                    .append(", type=")
+                    .append(binding.has("type") ? binding.get("type").getAsString() : "<missing>");
+        });
+
+        return builder.toString();
+    }
     private void requireLiveResources() {
         if (this.traversalResources.isFreed()) throw new IllegalStateException("traversalResources is freed");
         if (this.nodeMetadataStore.isFreed()) throw new IllegalStateException("nodeMetadataStore is freed");

@@ -1,13 +1,13 @@
 {
   "UBOs": [
-    { "name": "SceneUniform", "type": "compute", "binding": 1, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "RequestQueue", "type": "compute", "binding": 2, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "RenderQueue", "type": "compute", "binding": 3, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "NodeData", "type": "compute", "binding": 4, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "NodeQueueIndex", "type": "compute", "binding": 5, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "NodeQueueMeta", "type": "compute", "binding": 6, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "NodeQueueSource", "type": "compute", "binding": 7, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "NodeQueueSink", "type": "compute", "binding": 8, "fields": [{ "name": "data", "type": "uint", "count": 1 }] },
-    { "name": "RenderTracker", "type": "compute", "binding": 9, "fields": [{ "name": "data", "type": "uint", "count": 1 }] }
+    {"name":"SceneUniform","binding":1,"type":"uniformBuffer","stages":["compute"]},
+    {"name":"RequestQueue","binding":2,"type":"storageBuffer","stages":["compute"]},
+    {"name":"RenderQueue","binding":3,"type":"storageBuffer","stages":["compute"]},
+    {"name":"NodeData","binding":4,"type":"storageBuffer","stages":["compute"]},
+    {"name":"NodeQueueIndex","binding":5,"type":"storageBuffer","stages":["compute"]},
+    {"name":"NodeQueueMeta","binding":6,"type":"storageBuffer","stages":["compute"]},
+    {"name":"NodeQueueSource","binding":7,"type":"storageBuffer","stages":["compute"]},
+    {"name":"NodeQueueSink","binding":8,"type":"storageBuffer","stages":["compute"]},
+    {"name":"RenderTracker","binding":9,"type":"storageBuffer","stages":["compute"]}
   ]
 }
