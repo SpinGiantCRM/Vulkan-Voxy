@@ -107,7 +107,9 @@ public class VoxyRenderSystem {
             this.pipeline.setupExtraModelBakeryData(this.modelService);//Configure the model service
 
             //Late stage traversal compile for shaders with taa
-            this.backendRuntime.lateStageCompile(this.pipeline);
+            if (this.pipeline instanceof AbstractRenderPipeline abstractPipeline) {
+                this.backendRuntime.lateStageCompile(abstractPipeline);
+            }
 
             var backendFactory = backendContext.getRendererFactory();
             var sectionRenderer = backendFactory.create(new AbstractSectionRenderer.CreateContext(this.pipeline, this.modelService.getStore(), this.geometryData));

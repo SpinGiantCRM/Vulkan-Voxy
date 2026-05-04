@@ -13,6 +13,6 @@ public record MDICViewportRenderList(GlBuffer glBuffer) implements ViewportRende
 
     @Override
     public long size() {
-        return this.glBuffer.size;
+        return this.glBuffer.size();
     }
 }

@@ -47,18 +47,17 @@ public class MDICSectionGeometrySyncBackend implements SectionGeometrySyncBacken
         var store = (MDICSectionGeometryData) geometryData;
         store.setSectionCount(results.geometrySectionCount);
 
-        var upload = results.geometryUpload;
-        if (!upload.dataUploadPoints.isEmpty()) {
-            store.ensureAccessable(upload.maxElementAccess);
+        if (results.hasGeometryUploadWork()) {
+            store.ensureAccessable(results.getGeometryUploadMaxElementAccess());
             TimingStatistics.A.start();
 
-            int copies = upload.dataUploadPoints.size();
+            int copies = results.getGeometryUploadCopyCount();
             int upCopies = UploadStream.alignUpAlloc(copies * 16);
-            int scratchSize = (int) upload.arena.getSize() * 8;
+            int scratchSize = (int) (results.getGeometryUploadScratchDataSizeBytes());
             int upScratchSize = UploadStream.alignUpAlloc(scratchSize);
             long ptr = UploadStream.INSTANCE.rawUploadAddress(upScratchSize + upCopies);
-            UnsafeUtil.memcpy(upload.scratchHeaderBuffer.address, UploadStream.INSTANCE.getBaseAddress() + ptr, copies * 16L);
-            UnsafeUtil.memcpy(upload.scratchDataBuffer.address, UploadStream.INSTANCE.getBaseAddress() + ptr + upCopies, scratchSize);
+            UnsafeUtil.memcpy(results.getGeometryUploadScratchHeaderAddress(), UploadStream.INSTANCE.getBaseAddress() + ptr, copies * 16L);
+            UnsafeUtil.memcpy(results.getGeometryUploadScratchDataAddress(), UploadStream.INSTANCE.getBaseAddress() + ptr + upCopies, scratchSize);
             UploadStream.INSTANCE.commit();
 
             this.multiMemcpy.bind();
