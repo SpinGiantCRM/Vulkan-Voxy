@@ -61,6 +61,14 @@ public class VoxyRenderSystem {
     private final SectionRenderPipeline pipeline;
     private final RenderProperties properties;
     private final BooleanSupplier frexWorkSupplier;
+    private long renderEntryCount;
+    private long renderSkippedCount;
+    private String lastRenderSkipReason = "none";
+    private long viewportCreateSuccessCount;
+    private long viewportCreateFailureCount;
+    private long enterRenderFrameAttemptedCount;
+    private long enterRenderFrameSucceededCount;
+    private long runPipelineAttemptedCount;
 
     private static SectionRendererBackendContext getRenderBackendContext() {
         return SectionRendererBackendSelector.getContextForActiveBackend();
@@ -148,6 +156,8 @@ public class VoxyRenderSystem {
     public Viewport<?> setupViewport(Matrix4fc vanillaProjection, Matrix4fc modelView, FogParameters fogParameters, double cameraX, double cameraY, double cameraZ) {
         var viewport = this.getViewport();
         if (viewport == null) {
+            this.viewportCreateFailureCount++;
+            this.lastRenderSkipReason = "viewport_selector_returned_null";
             return null;
         }
 
@@ -174,6 +184,8 @@ public class VoxyRenderSystem {
         }
         if (width == 0 || height == 0) {
             Logger.error("Viewport width or height was zero, this is bad bad bad");
+            this.viewportCreateFailureCount++;
+            this.lastRenderSkipReason = "viewport_dimensions_zero";
             return null;
         }
 
@@ -189,18 +201,25 @@ public class VoxyRenderSystem {
         if (VoxyClient.getOcclusionDebugState()==0) {
             viewport.frameId++;
         }
+        this.viewportCreateSuccessCount++;
 
         return viewport;
     }
 
     public void renderOpaque(Viewport<?> viewport) {
+        this.renderEntryCount++;
         if (viewport == null) {
+            this.renderSkippedCount++;
+            this.lastRenderSkipReason = "viewport_null";
             return;
         }
         if (viewport.width <= 0 || viewport.height <= 0) {
             Logger.error("Viewport width or height was zero, this is bad bad bad, exiting frame");
+            this.renderSkippedCount++;
+            this.lastRenderSkipReason = "viewport_invalid_dimensions";
             return;//Only render on valid viewport
         }
+        this.lastRenderSkipReason = "none";
 
         TimingStatistics.resetSamplers();
 
@@ -208,8 +227,10 @@ public class VoxyRenderSystem {
         GPUTiming.INSTANCE.marker();//Start marker
         TimingStatistics.main.start();
 
+        this.enterRenderFrameAttemptedCount++;
         try (var stateGuard = this.pipeline.enterFrameStateGuard();
              var frame = this.pipeline.enterRenderFrame(viewport)) {
+            this.enterRenderFrameSucceededCount++;
             //this.autoBalanceSubDivSize();
 
             this.pipeline.preSetup(viewport);
@@ -221,6 +242,7 @@ public class VoxyRenderSystem {
 
             GPUTiming.INSTANCE.marker();
             //The entire rendering pipeline (excluding the chunkbound thing)
+            this.runPipelineAttemptedCount++;
             this.pipeline.runPipeline(viewport, frame);
             GPUTiming.INSTANCE.marker();
         }
@@ -378,6 +400,12 @@ public class VoxyRenderSystem {
     }
 
     public void addDebugInfo(List<String> debug) {
+        debug.add("VoxyRenderSystem render entry count: " + this.renderEntryCount);
+        debug.add("VoxyRenderSystem render skipped count: " + this.renderSkippedCount);
+        debug.add("VoxyRenderSystem last render skip reason: " + this.lastRenderSkipReason);
+        debug.add("VoxyRenderSystem viewport creation success/failure: " + this.viewportCreateSuccessCount + "/" + this.viewportCreateFailureCount);
+        debug.add("VoxyRenderSystem enterRenderFrame attempted/succeeded: " + this.enterRenderFrameAttemptedCount + "/" + this.enterRenderFrameSucceededCount);
+        debug.add("VoxyRenderSystem runPipeline attempted: " + this.runPipelineAttemptedCount);
         debug.add("Buf/Tex [#/Mb]: [" + GlBuffer.getCount() + "/" + (GlBuffer.getTotalSize()/1_000_000) + "],[" + GlTexture.getCount() + "/" + (GlTexture.getEstimatedTotalSize()/1_000_000)+"]");
         {
             this.modelService.addDebugData(debug);
