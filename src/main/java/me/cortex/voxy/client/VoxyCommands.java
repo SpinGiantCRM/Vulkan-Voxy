@@ -7,12 +7,15 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
+import me.cortex.voxy.client.core.VoxyRenderSystem;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackend;
+import me.cortex.voxy.client.core.rendering.section.backend.SectionRendererBackendSelector;
+import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.DebugUtils;
 import me.cortex.voxy.commonImpl.VoxyCommon;
 import me.cortex.voxy.commonImpl.WorldIdentifier;
 import me.cortex.voxy.commonImpl.importers.DHImporter;
 import me.cortex.voxy.commonImpl.importers.WorldImporter;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
@@ -66,7 +69,9 @@ public class VoxyCommands {
                         .executes(ctx->verifyTLNs(ctx, false))
                         .then(ClientCommands.argument("attemptRepair", BoolArgumentType.bool())
                                 .executes(ctx->verifyTLNs(ctx, BoolArgumentType.getBool(ctx, "attemptRepair"))))
-                );
+                )
+                .then(ClientCommands.literal("vulkan")
+                        .executes(VoxyCommands::debugVulkan));
 
         return ClientCommands.literal("voxy")//.requires((ctx)-> VoxyCommon.getInstance() != null)
                 .then(ClientCommands.literal("reload")
@@ -300,6 +305,52 @@ public class VoxyCommands {
         return 1;
     }
 
+
+    private static int debugVulkan(CommandContext<FabricClientCommandSource> ctx) {
+        var lines = new java.util.ArrayList<String>();
+
+        var common = VoxyCommon.getInstance();
+        boolean commonExists = common != null;
+        lines.add("[Voxy Vulkan Debug] VoxyCommon instance exists: " + commonExists);
+
+        VoxyRenderSystem renderSystem = IGetVoxyRenderSystem.getNullable();
+        boolean renderSystemExists = renderSystem != null;
+        lines.add("[Voxy Vulkan Debug] VoxyRenderSystem exists: " + renderSystemExists);
+
+        SectionRendererBackend activeBackend = null;
+        String activeBackendName;
+        try {
+            activeBackend = SectionRendererBackendSelector.getActiveBackend();
+            activeBackendName = activeBackend.name();
+        } catch (Exception e) {
+            activeBackendName = "ERROR:" + e.getClass().getSimpleName() + ":" + e.getMessage();
+        }
+        boolean vulkanBerylSelected = activeBackend == SectionRendererBackend.VULKANMOD_BERYL;
+        lines.add("[Voxy Vulkan Debug] Active backend: " + activeBackendName);
+        lines.add("[Voxy Vulkan Debug] Vulkan/Beryl backend selected: " + vulkanBerylSelected);
+
+        if (renderSystemExists) {
+            java.util.List<String> runtimeDebug = new java.util.ArrayList<>();
+            renderSystem.addDebugInfo(runtimeDebug);
+            boolean vulkanRendererLinesPresent = runtimeDebug.stream().anyMatch(line -> line.startsWith("Vulkan/Beryl section renderer:"));
+            lines.add("[Voxy Vulkan Debug] VulkanBerylSectionRenderer exists: " + vulkanRendererLinesPresent);
+            for (String line : runtimeDebug) {
+                if (line.startsWith("Vulkan/Beryl ")) {
+                    lines.add("[Voxy Vulkan Debug] " + line);
+                }
+            }
+        } else {
+            lines.add("[Voxy Vulkan Debug] VulkanBerylSectionRenderer exists: false");
+            lines.add("[Voxy Vulkan Debug] smoke PASS/FAIL reason: FAIL_NO_RENDER_SYSTEM");
+        }
+
+        lines.forEach(line -> {
+            ctx.getSource().sendFeedback(Component.literal(line));
+            Logger.info(line);
+        });
+
+        return 0;
+    }
     private static int cancelImport(CommandContext<FabricClientCommandSource> ctx) {
         var instance = (VoxyClientInstance)VoxyCommon.getInstance();
         if (instance == null) {
