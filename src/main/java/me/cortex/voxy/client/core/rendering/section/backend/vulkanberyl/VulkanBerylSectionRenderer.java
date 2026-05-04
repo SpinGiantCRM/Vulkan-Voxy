@@ -52,7 +52,7 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
             throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
         }
 
-        VulkanBerylSectionDrawPipeline.OpaqueDrawSubmission submission = this.drawPipeline.renderOpaque(renderer, viewport, this.geometryData, renderList);
+        VulkanBerylSectionDrawPipeline.OpaqueDrawSubmission submission = this.drawPipeline.renderOpaque(renderer, viewport, this.geometryManager, renderList);
         this.lastSubmittedOpaqueVisibleCount = submission.submittedVisibleCount();
         this.lastOpaqueDrawMode = submission.drawMode();
         this.lastSubmittedOpaqueQuadCount = submission.submittedQuadCount();
@@ -168,10 +168,10 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     }
 
     private void ensureDrawResources(VulkanBerylViewportRenderList renderList) {
-        if (this.geometryData == null) {
+        if (this.geometryManager == null) {
             throw new IllegalStateException("Vulkan/Beryl section geometry data is missing");
         }
         this.drawPipeline.ensureDrawPipeline();
-        this.drawPipeline.ensureDrawResourcesBound(this.geometryData, renderList);
+        this.drawPipeline.ensureDrawResourcesBound(this.geometryManager, renderList);
     }
 }
