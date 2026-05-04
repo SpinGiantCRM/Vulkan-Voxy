@@ -1,6 +1,9 @@
 name: manual-artifact
 
 on: [ workflow_dispatch ]
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,7 +25,7 @@ jobs:
           cache-cleanup: always
 
       - name: Gradle build
-        run: ./gradlew build
+        run: ./gradlew -I init.gradle build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
