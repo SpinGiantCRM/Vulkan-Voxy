@@ -27,18 +27,7 @@ layout(location = 7) in flat uint quadDebug;
 #endif
 
 
-#ifndef PATCHED_SHADER
 layout(location = 0) out vec4 outColour;
-#else
-
-//Bind the model buffer and import the model system as we need it
-#define MODEL_BUFFER_BINDING 3
-#import <voxy:lod/block_model.glsl>
-
-#endif
-
-#import <voxy:lod/gl46/bindings.glsl>
-#import <voxy:lod/lighting.glsl>
 
 
 #import <voxy:util/depthutils.glsl>
@@ -77,22 +66,6 @@ vec2 getBaseUV() {
 }
 
 
-#ifdef PATCHED_SHADER
-struct VoxyFragmentParameters {
-    //TODO: pass in derivative data
-    vec4 sampledColour;
-    vec2 tile;
-    vec2 uv;
-    uint face;
-    uint modelId;
-    vec2 lightMap;
-    vec4 tinting;
-    uint customId;//Same as iris's modelId
-};
-
-void voxy_emitFragment(VoxyFragmentParameters parameters);
-#else
-
 vec4 computeColour(vec2 texturePos, vec4 colour) {
     //Conditional tinting, TODO: FIXME: this is better but still not great, try encode data into the top bit of alpha so its per pixel
 
@@ -109,8 +82,6 @@ vec4 computeColour(vec2 texturePos, vec4 colour) {
     }
     return (colour * uint2vec4RGBA(interData.y)) + vec4(0,0,0,float(interData.w&0xFFu)/255);
 }
-
-#endif
 
 
 void main() {
@@ -157,10 +128,12 @@ void main() {
     }
 
     //Check the minimum bounding texture and ensure we are greater than it
+    #ifdef VOXY_ENABLE_DEPTH_TEX
     if (DEPTH_SCALAR_COMPARE(gl_FragCoord.z, texelFetch(depthTex, ivec2(gl_FragCoord.xy), 0).r)) {
         discard;
         return;
     }
+    #endif
 
 
     //Also, small quad is really fking over the mipping level somehow
@@ -185,7 +158,6 @@ void main() {
     }
     #endif
 
-    #ifndef PATCHED_SHADER
     colour = computeColour(texPos, colour);
     outColour = colour;
 
@@ -198,27 +170,6 @@ void main() {
     outColour = vec4(float(hash&15u)/15, float((hash>>4)&15u)/15, float((hash>>8)&15u)/15, 0);
     #endif
 
-    #else
-    uint modelId = getModelId();
-    BlockModel model = modelData[modelId];
-    uint tintingFunction = tintingState();
-    bool doTint = tintingFunction==2;//Always tint if function == 2
-    if (tintingFunction==1) {//Partial tint
-        vec4 tintTest = texture(blockModelAtlas, texPos, -2);
-        if (abs(tintTest.r-tintTest.g) < 0.02f && abs(tintTest.g-tintTest.b) < 0.02f) {
-            doTint = true;
-        }
-    }
-    vec4 tint = vec4(1);
-    if (doTint) {
-        tint = uint2vec4RGBA(interData.z).yzwx;
-    }
-
-    uint face = getFace();
-    face ^= uint((face&1u)!=uint(gl_FrontFacing!=((face>>1)!=0u)));
-    voxy_emitFragment(VoxyFragmentParameters(colour, tile, texPos, face, modelId, getLightmapUv(interData.y), tint, model.customId));
-
-    #endif
 }
 
 
@@ -249,4 +200,3 @@ colour = textureGrad(blockModelAtlas, texPos, dx, dy);
 
 //Undefine the depth stuff
 #import <voxy:util/depthutils.glsl>
-

@@ -84,6 +84,9 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     public void addDebug(List<String> lines) {
         lines.add("Vulkan/Beryl section renderer: opaque draw submission active");
         lines.add("Vulkan/Beryl section draw pipeline ready: " + this.drawPipeline.isReady());
+        lines.add("Vulkan/Beryl opaque scene uniform bound: " + this.drawPipeline.isSceneUniformBound());
+        lines.add("Vulkan/Beryl opaque depth sampling enabled: " + this.drawPipeline.isDepthSamplingEnabled());
+        lines.add("Vulkan/Beryl opaque model/light path enabled: " + this.drawPipeline.isModelLightPathEnabled());
         lines.add("Vulkan/Beryl last opaque draw mode: " + this.lastOpaqueDrawMode);
         lines.add("Vulkan/Beryl last opaque submitted visible count: " + this.lastSubmittedOpaqueVisibleCount);
         lines.add("Vulkan/Beryl last opaque submitted draw command count: " + this.lastSubmittedOpaqueDrawCommandCount);
