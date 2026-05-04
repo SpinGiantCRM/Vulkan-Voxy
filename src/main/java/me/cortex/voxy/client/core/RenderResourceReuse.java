@@ -50,7 +50,7 @@ public class RenderResourceReuse {
         MODEL_TEXTURE_CACHE.add(texture);
     }
 
-    static GlBuffer getOrCreateGeometryBuffer() {
+    public static GlBuffer getOrCreateGeometryBuffer() {
         GlBuffer buffer = null;
         if (!GEOMETRY_BUFFER_CACHE.isEmpty()) {
             buffer = GEOMETRY_BUFFER_CACHE.removeFirst();

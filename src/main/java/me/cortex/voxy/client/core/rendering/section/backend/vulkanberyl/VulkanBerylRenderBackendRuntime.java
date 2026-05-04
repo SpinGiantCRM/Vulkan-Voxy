@@ -127,16 +127,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer());
         this.scheduleRequestReadback(vulkanWorkContext.frame().renderer().getCommandBuffer());
         this.scheduleRenderListCounterReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
-        this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList, this.requireGeometryData(vulkanWorkContext));
+        this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
         this.resetRequestQueueCounter();
         this.publishSmokeStatus();
-    }
-
-    private VulkanBerylSectionGeometryData requireGeometryData(VulkanBerylPrimaryRenderWorkContext workContext) {
-        if (!(workContext.frame().renderer().sectionRenderer instanceof VulkanBerylSectionRenderer sectionRenderer)) {
-            throw new IllegalStateException("Expected VulkanBerylSectionRenderer on Vulkan renderer");
-        }
-        return sectionRenderer.getGeometryManager();
     }
 
     private void scheduleRequestReadback(VkCommandBuffer commandBuffer) {
@@ -274,7 +267,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.pendingRenderListCounterSource = null;
     }
 
-    private void scheduleRenderListSampleReadback(VkCommandBuffer commandBuffer, VulkanBerylViewportRenderList renderList, VulkanBerylSectionGeometryData geometryData) {
+    private void scheduleRenderListSampleReadback(VkCommandBuffer commandBuffer, VulkanBerylViewportRenderList renderList) {
         if (commandBuffer == null) {
             throw new IllegalStateException("Cannot read render-list sample without a valid command buffer");
         }
@@ -305,7 +298,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     0, toHost, null, null);
         }
         this.pendingRenderListSampleSource = renderList;
-        this.pendingRenderListSampleGeometry = geometryData;
+        this.pendingRenderListSampleGeometry = null;
         this.renderListSampleReadbackPending = true;
     }
 
@@ -315,8 +308,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         }
         long readbackPtr = this.renderListSampleReadbackBuffer.getDataPtr();
         VulkanBerylViewportRenderList renderList = this.pendingRenderListSampleSource;
-        VulkanBerylSectionGeometryData geometryData = this.pendingRenderListSampleGeometry;
-        if (readbackPtr == 0L || renderList == null || geometryData == null) {
+        if (readbackPtr == 0L || renderList == null) {
             this.renderListSampleReadbackPending = false;
             this.pendingRenderListSampleSource = null;
             this.pendingRenderListSampleGeometry = null;
@@ -335,19 +327,13 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
         int sampledCount = Math.min(visibleCount, RENDER_LIST_SAMPLE_LIMIT);
         int invalidCount = 0;
-        int maxSectionCount = geometryData.getMaxSectionCount();
-        long metadataCapacityBytes = geometryData.getMetadataCapacityBytes();
-        boolean geometryFreed = geometryData.isFreed();
         int[] firstIds = new int[Math.min(sampledCount, RENDER_LIST_DEBUG_FIRST_IDS)];
         for (int i = 0; i < sampledCount; i++) {
             int sectionId = MemoryUtil.memGetInt(readbackPtr + Integer.BYTES + (long) i * Integer.BYTES);
             if (i < firstIds.length) {
                 firstIds[i] = sectionId;
             }
-            boolean valid = !geometryFreed
-                    && sectionId >= 0
-                    && sectionId < maxSectionCount
-                    && ((long) (sectionId + 1) * VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE) <= metadataCapacityBytes;
+            boolean valid = sectionId >= 0 && sectionId < renderList.getMaxEntryCount();
             if (!valid) {
                 invalidCount++;
             }
