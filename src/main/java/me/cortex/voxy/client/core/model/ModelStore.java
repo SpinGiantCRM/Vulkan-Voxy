@@ -51,6 +51,21 @@ public class ModelStore {
     }
 
 
+    public GlBuffer getModelBuffer() {
+        this.ensureInitialized();
+        return this.modelBuffer;
+    }
+
+    public GlBuffer getModelColourBuffer() {
+        this.ensureInitialized();
+        return this.modelColourBuffer;
+    }
+
+    public GlTexture getTextures() {
+        this.ensureInitialized();
+        return this.textures;
+    }
+
     public void free() {
         if (!this.initialized) {
             return;
