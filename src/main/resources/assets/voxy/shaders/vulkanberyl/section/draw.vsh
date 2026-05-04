@@ -36,11 +36,11 @@ vec2 taaShift();
 void main() {
     taaOffset = taaShift();
 
-    uint drawIndex = gl_InstanceIndex;
+    uint drawIndex = gl_BaseInstance;
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
 
-    uint quadIndex = extractQuadStart(meta);
+    uint quadIndex = (uint(gl_VertexIndex) >> 2u);
     QuadData quad;
     setupQuad(quad, quadData[quadIndex], extractRawPos(meta), (gl_VertexIndex & 3u) == 1u);
 
