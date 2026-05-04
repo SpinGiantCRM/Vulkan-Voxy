@@ -22,6 +22,20 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 public final class VulkanBerylRenderBackendRuntime implements SectionRenderBackendRuntime {
+    public record SmokeStatus(
+            boolean runtimeEntered,
+            boolean traversalPipelineCreated,
+            boolean traversalDescriptorsBound,
+            boolean traversalDispatchIterationZeroRan,
+            boolean traversalDispatchIterationZeroSkipped,
+            int traversalIndirectIterationsRan,
+            boolean requestReadbackScheduled,
+            boolean requestReadbackCompleted,
+            int renderListVisibleCount,
+            int renderListInvalidSampledEntries
+    ) {}
+
+    private static volatile SmokeStatus LAST_SMOKE_STATUS = new SmokeStatus(false, false, false, false, false, 0, false, false, -1, 0);
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private final AsyncNodeManager nodeManager;
@@ -47,6 +61,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private String lastSampledRenderListFirstEntries = "[]";
     private VulkanBerylTraversalExecutor traversalExecutor;
     private boolean freed;
+    private boolean runtimeEntered;
+    private boolean requestReadbackScheduled;
+    private boolean requestReadbackCompleted;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
         this.nodeManager = nodeManager;
@@ -71,6 +88,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     @Override
     public void doPrimaryWork(Viewport<?> viewport, PrimaryRenderWorkContext workContext, BooleanSupplier frexStillHasWork) {
+        this.runtimeEntered = true;
         if (this.freed) {
             throw new IllegalStateException("Cannot execute runtime work after free");
         }
@@ -111,6 +129,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.scheduleRenderListCounterReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
         this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList, this.requireGeometryData(vulkanWorkContext));
         this.resetRequestQueueCounter();
+        this.publishSmokeStatus();
     }
 
     private VulkanBerylSectionGeometryData requireGeometryData(VulkanBerylPrimaryRenderWorkContext workContext) {
@@ -151,6 +170,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     0, toHost, null, null);
         }
         this.requestReadbackPending = true;
+        this.requestReadbackScheduled = true;
+        this.requestReadbackCompleted = false;
     }
 
     private void submitPendingRequestReadback() {
@@ -185,6 +206,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             this.nodeManager.submitRequestBatch(batch);
         }
         this.requestReadbackPending = false;
+        this.requestReadbackCompleted = true;
     }
 
     private void scheduleRenderListCounterReadback(VkCommandBuffer commandBuffer, VulkanBerylViewportRenderList renderList) {
@@ -363,6 +385,27 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         debug.add("Vulkan/Beryl render list visible sections: " + this.lastVisibleSectionCount + "/" + this.lastVisibleSectionCapacity);
         debug.add("Vulkan/Beryl render-list sample: " + this.lastSampledRenderListEntryCount + "/" + this.lastSampledVisibleSectionCount
                 + " entries, invalid=" + this.lastInvalidSampledRenderListEntryCount + ", first=" + this.lastSampledRenderListFirstEntries);
+        this.publishSmokeStatus();
+    }
+
+    static SmokeStatus getLastSmokeStatus() {
+        return LAST_SMOKE_STATUS;
+    }
+
+    private void publishSmokeStatus() {
+        VulkanBerylTraversalExecutor traversal = this.traversalExecutor;
+        LAST_SMOKE_STATUS = new SmokeStatus(
+                this.runtimeEntered,
+                traversal != null && traversal.isTraversalPipelineCreated(),
+                traversal != null && traversal.areDescriptorsBound(),
+                traversal != null && traversal.didDispatchIterationZeroRun(),
+                traversal != null && traversal.wasDispatchIterationZeroSkipped(),
+                traversal == null ? 0 : traversal.getIndirectDispatchIterationCount(),
+                this.requestReadbackScheduled,
+                this.requestReadbackCompleted,
+                this.lastVisibleSectionCount,
+                this.lastInvalidSampledRenderListEntryCount
+        );
     }
 
     VulkanBerylNodeMetadataStore getNodeMetadataStore() {

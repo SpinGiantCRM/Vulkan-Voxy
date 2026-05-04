@@ -43,6 +43,9 @@ public final class VulkanBerylTraversalExecutor {
     private final Buffer sectionMetadataBuffer;
     private ComputePipeline traversalPipeline;
     private boolean descriptorsBound;
+    private boolean dispatchIterationZeroRan;
+    private boolean dispatchIterationZeroSkipped;
+    private int indirectDispatchIterationCount;
     private boolean freed;
 
     public VulkanBerylTraversalExecutor(VulkanBerylTraversalResources traversalResources,
@@ -148,7 +151,11 @@ public final class VulkanBerylTraversalExecutor {
 
         int topNodeCount = this.topLevelNodeStore.getTopNodeCount();
         if (topNodeCount < 0) throw new IllegalStateException("topNodeCount must be non-negative");
-        if (topNodeCount == 0) return;
+        if (topNodeCount == 0) {
+            this.dispatchIterationZeroSkipped = true;
+            this.dispatchIterationZeroRan = false;
+            return;
+        }
 
         int groupCountX = (topNodeCount + 31) >>> 5;
         if (groupCountX <= 0) {
@@ -163,6 +170,8 @@ public final class VulkanBerylTraversalExecutor {
         VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, this.traversalPipeline.getId());
         this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
+        this.dispatchIterationZeroRan = true;
+        this.dispatchIterationZeroSkipped = false;
     }
 
     public void dispatchRemainingTraversalIterations(Renderer renderer) {
@@ -186,6 +195,7 @@ public final class VulkanBerylTraversalExecutor {
 
         VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
         int maxIterations = this.traversalResources.getMaxIterations();
+        int iterations = 0;
         for (int iter = 1; iter < maxIterations; iter++) {
             this.traversalResources.uploadQueueIndex(iter, uploader);
 
@@ -218,8 +228,16 @@ public final class VulkanBerylTraversalExecutor {
                 throw new IllegalStateException("Indirect dispatch offset out of bounds: " + indirectOffset + " for queueMetaBuffer size " + queueMetaBuffer.getBufferSize());
             }
             VK10.vkCmdDispatchIndirect(commandBuffer, queueMetaBuffer.getId(), indirectOffset);
+            iterations++;
         }
+        this.indirectDispatchIterationCount = iterations;
     }
+
+    public boolean isTraversalPipelineCreated() { return this.traversalPipeline != null; }
+    public boolean areDescriptorsBound() { return this.descriptorsBound; }
+    public boolean didDispatchIterationZeroRun() { return this.dispatchIterationZeroRan; }
+    public boolean wasDispatchIterationZeroSkipped() { return this.dispatchIterationZeroSkipped; }
+    public int getIndirectDispatchIterationCount() { return this.indirectDispatchIterationCount; }
 
     public void free() {
         if (this.freed) return;

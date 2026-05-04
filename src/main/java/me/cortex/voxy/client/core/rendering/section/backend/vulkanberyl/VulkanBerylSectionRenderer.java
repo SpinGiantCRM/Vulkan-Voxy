@@ -103,6 +103,48 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
         lines.add("Vulkan/Beryl last opaque submitted quad count: " + this.lastSubmittedOpaqueQuadCount);
         lines.add("Vulkan/Beryl last opaque sampled quad count: " + this.lastSampledOpaqueQuadCount);
         lines.add("Vulkan/Beryl last opaque skipped reason: " + this.lastOpaqueSkippedReason);
+        VulkanBerylRenderBackendRuntime.SmokeStatus runtimeSmoke = VulkanBerylRenderBackendRuntime.getLastSmokeStatus();
+        boolean drawSubmitted = this.lastSubmittedOpaqueDrawCommandCount > 0;
+        boolean drawCommandSampleCompleted = !this.lastOpaqueSamplePending && this.lastSampledOpaqueCommandCount > 0;
+        String failReason = smokeFailReason(runtimeSmoke, drawSubmitted, drawCommandSampleCompleted);
+        if (failReason == null) {
+            lines.add("Vulkan/Beryl smoke: PASS_DRAW_SUBMITTED visible=" + this.lastSubmittedOpaqueVisibleCount
+                    + " cmds=" + this.lastSubmittedOpaqueDrawCommandCount
+                    + " invalidRenderList=" + runtimeSmoke.renderListInvalidSampledEntries()
+                    + " invalidCmds=" + this.lastInvalidSampledOpaqueCommandCount
+                    + " debugColour=" + this.drawPipeline.isDebugColourModeEnabled());
+        } else {
+            lines.add("Vulkan/Beryl smoke: FAIL_" + failReason
+                    + " visible=" + this.lastSubmittedOpaqueVisibleCount
+                    + " cmds=" + this.lastSubmittedOpaqueDrawCommandCount
+                    + " invalidRenderList=" + runtimeSmoke.renderListInvalidSampledEntries()
+                    + " invalidCmds=" + this.lastInvalidSampledOpaqueCommandCount
+                    + " debugColour=" + this.drawPipeline.isDebugColourModeEnabled());
+        }
+        lines.add("Vulkan/Beryl smoke detail: runtimeEntered=" + runtimeSmoke.runtimeEntered()
+                + ", traversalPipeline=" + runtimeSmoke.traversalPipelineCreated()
+                + ", traversalDescriptors=" + runtimeSmoke.traversalDescriptorsBound()
+                + ", iter0Ran/skipped=" + runtimeSmoke.traversalDispatchIterationZeroRan() + "/" + runtimeSmoke.traversalDispatchIterationZeroSkipped()
+                + ", indirectIterations=" + runtimeSmoke.traversalIndirectIterationsRan()
+                + ", requestReadbackScheduled/completed=" + runtimeSmoke.requestReadbackScheduled() + "/" + runtimeSmoke.requestReadbackCompleted()
+                + ", drawCmdSamplePending/completed=" + this.lastOpaqueSamplePending + "/" + drawCommandSampleCompleted);
+        // Smoke test quick-run:
+        // 1) set VOXY_VULKAN_BERYL_DEBUG_COLOUR=true
+        // 2) select/use Vulkan/Beryl backend
+        // 3) confirm this "Vulkan/Beryl smoke" line in the debug overlay/log
+    }
+
+    private String smokeFailReason(VulkanBerylRenderBackendRuntime.SmokeStatus runtimeSmoke, boolean drawSubmitted, boolean drawCommandSampleCompleted) {
+        if (!runtimeSmoke.runtimeEntered()) return "NO_RUNTIME_WORK";
+        if (!runtimeSmoke.traversalPipelineCreated()) return "NO_TRAVERSAL_PIPELINE";
+        if (runtimeSmoke.renderListVisibleCount() <= 0) return "NO_RENDER_LIST_VISIBLE_ENTRIES";
+        if (runtimeSmoke.renderListInvalidSampledEntries() > 0) return "RENDER_LIST_SAMPLE_INVALID";
+        if (!this.drawPipeline.isGraphicsPipelineCreated()) return "NO_GRAPHICS_PIPELINE";
+        if (!this.drawPipeline.isCommandGenPipelineCreated()) return "NO_CMDGEN_PIPELINE";
+        if (!this.drawPipeline.isSceneUniformBound()) return "NO_SCENE_UNIFORM";
+        if (!drawSubmitted) return "DRAW_SKIPPED";
+        if (drawCommandSampleCompleted && this.lastInvalidSampledOpaqueCommandCount > 0) return "DRAW_COMMAND_SAMPLE_INVALID";
+        return null;
     }
 
     private void requireActive() {
