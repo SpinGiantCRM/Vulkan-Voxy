@@ -24,12 +24,16 @@ public final class VulkanBerylTraversalResources {
     public static final long QUEUE_META_BUFFER_SIZE_BYTES = 4L * 4L * MAX_ITERATIONS;
     public static final long SCRATCH_QUEUE_SIZE_BYTES = MAX_QUEUE_SIZE * 4L;
     public static final long UNIFORM_BUFFER_SIZE_BYTES = 1024L;
+    public static final long QUEUE_INDEX_BUFFER_SIZE_BYTES = Integer.BYTES;
+    public static final long RENDER_TRACKER_BUFFER_SIZE_BYTES = MAX_QUEUE_SIZE * Integer.BYTES;
 
     private final Buffer requestBuffer;
     private final Buffer queueMetaBuffer;
     private final Buffer scratchQueueA;
     private final Buffer scratchQueueB;
     private final Buffer uniformBuffer;
+    private final Buffer queueIndexBuffer;
+    private final Buffer renderTrackerBuffer;
     private boolean freed;
 
     public VulkanBerylTraversalResources() {
@@ -40,6 +44,8 @@ public final class VulkanBerylTraversalResources {
         requirePositive("QUEUE_META_BUFFER_SIZE_BYTES", QUEUE_META_BUFFER_SIZE_BYTES);
         requirePositive("SCRATCH_QUEUE_SIZE_BYTES", SCRATCH_QUEUE_SIZE_BYTES);
         requirePositive("UNIFORM_BUFFER_SIZE_BYTES", UNIFORM_BUFFER_SIZE_BYTES);
+        requirePositive("QUEUE_INDEX_BUFFER_SIZE_BYTES", QUEUE_INDEX_BUFFER_SIZE_BYTES);
+        requirePositive("RENDER_TRACKER_BUFFER_SIZE_BYTES", RENDER_TRACKER_BUFFER_SIZE_BYTES);
 
         this.requestBuffer = new Buffer("voxy_vulkanberyl_traversal_request", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, MemoryTypes.GPU_MEM);
         this.requestBuffer.createBuffer(REQUEST_BUFFER_SIZE_BYTES);
@@ -55,6 +61,12 @@ public final class VulkanBerylTraversalResources {
 
         this.uniformBuffer = new Buffer("voxy_vulkanberyl_traversal_uniform", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
         this.uniformBuffer.createBuffer(UNIFORM_BUFFER_SIZE_BYTES);
+
+        this.queueIndexBuffer = new Buffer("voxy_vulkanberyl_traversal_queue_index", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        this.queueIndexBuffer.createBuffer(QUEUE_INDEX_BUFFER_SIZE_BYTES);
+
+        this.renderTrackerBuffer = new Buffer("voxy_vulkanberyl_traversal_render_tracker", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        this.renderTrackerBuffer.createBuffer(RENDER_TRACKER_BUFFER_SIZE_BYTES);
     }
 
     public void initializeQueueMetadata(int topNodeCount) {
@@ -149,6 +161,8 @@ public final class VulkanBerylTraversalResources {
     public Buffer getScratchQueueA() { return this.scratchQueueA; }
     public Buffer getScratchQueueB() { return this.scratchQueueB; }
     public Buffer getUniformBuffer() { return this.uniformBuffer; }
+    public Buffer getQueueIndexBuffer() { return this.queueIndexBuffer; }
+    public Buffer getRenderTrackerBuffer() { return this.renderTrackerBuffer; }
 
     public int getMaxRequestQueueSize() { return MAX_REQUEST_QUEUE_SIZE; }
     public int getMaxQueueSize() { return MAX_QUEUE_SIZE; }
@@ -165,6 +179,8 @@ public final class VulkanBerylTraversalResources {
         this.scratchQueueA.scheduleFree();
         this.scratchQueueB.scheduleFree();
         this.uniformBuffer.scheduleFree();
+        this.queueIndexBuffer.scheduleFree();
+        this.renderTrackerBuffer.scheduleFree();
         this.freed = true;
     }
 
