@@ -159,11 +159,11 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
 
         if (!FORCE_SYNC_ONLY_SECTION_PIPELINE) {
             @SuppressWarnings("unchecked")
-            AbstractSectionRenderer<VulkanBerylViewport, ?> renderer = (AbstractSectionRenderer<VulkanBerylViewport, ?>) this.sectionRenderer;
-            renderer.buildDrawCalls(vulkanViewport);
-            renderer.renderOpaque(vulkanViewport);
-            renderer.renderTranslucent(vulkanViewport);
-            renderer.renderTemporal(vulkanViewport);
+            AbstractSectionRenderer<VulkanBerylViewport, ?> activeSectionRenderer = (AbstractSectionRenderer<VulkanBerylViewport, ?>) this.sectionRenderer;
+            activeSectionRenderer.buildDrawCalls(vulkanViewport);
+            activeSectionRenderer.renderOpaque(vulkanViewport);
+            activeSectionRenderer.renderTranslucent(vulkanViewport);
+            activeSectionRenderer.renderTemporal(vulkanViewport);
         }
     }
 
