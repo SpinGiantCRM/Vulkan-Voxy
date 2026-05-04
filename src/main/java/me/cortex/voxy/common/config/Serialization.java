@@ -99,6 +99,7 @@ public class Serialization {
         var path = FabricLoader.getInstance().getModContainer("voxy").get().getRootPaths().get(0);
         clazzs.addAll(collectAllClasses(path, BASE_SEARCH_PACKAGE));
         clazzs.addAll(collectAllClasses(BASE_SEARCH_PACKAGE));
+        boolean sodiumLoaded = FabricLoader.getInstance().isModLoaded("sodium");
         int count = 0;
         outer:
         for (var clzName : clazzs) {
@@ -116,6 +117,9 @@ public class Serialization {
             }
             if (clzName.contains("VoxyConfigScreenPages")) {
                 continue;//Dont want to modmenu incase it doesnt exist
+            }
+            if (!sodiumLoaded && (clzName.contains("SodiumConfigBuilder") || clzName.contains("VoxyConfigMenu"))) {
+                continue;//Skip sodium-only config integration classes when sodium is absent
             }
             if (clzName.endsWith("VoxyConfig")) {
                 continue;//Special case to prevent recursive loading pain
