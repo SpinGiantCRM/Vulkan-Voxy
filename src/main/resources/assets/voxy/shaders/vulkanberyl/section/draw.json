@@ -1,0 +1,22 @@
+{
+  "UBOs": [
+    {
+      "name": "GeometryBuffer",
+      "binding": 1,
+      "type": "storageBuffer",
+      "stages": ["vertex"]
+    },
+    {
+      "name": "MetadataBuffer",
+      "binding": 2,
+      "type": "storageBuffer",
+      "stages": ["vertex"]
+    },
+    {
+      "name": "RenderListBuffer",
+      "binding": 3,
+      "type": "storageBuffer",
+      "stages": ["vertex"]
+    }
+  ]
+}
