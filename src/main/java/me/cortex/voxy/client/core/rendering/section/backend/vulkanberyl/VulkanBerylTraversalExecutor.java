@@ -223,7 +223,7 @@ public final class VulkanBerylTraversalExecutor {
         this.dispatchIterationZeroSkipped = false;
     }
 
-    public void dispatchRemainingTraversalIterations(Renderer renderer) {
+    public void dispatchRemainingTraversalIterations(Renderer renderer, int maxTraversalIterations) {
         if (this.freed) throw new IllegalStateException("traversal executor is freed");
         requireLiveResources();
         if (renderer == null) throw new IllegalArgumentException("renderer must not be null");
@@ -243,7 +243,7 @@ public final class VulkanBerylTraversalExecutor {
         }
 
         VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
-        int maxIterations = this.traversalResources.getMaxIterations();
+        int maxIterations = Math.min(this.traversalResources.getMaxIterations(), Math.max(1, maxTraversalIterations));
         int iterations = 0;
         for (int iter = 1; iter < maxIterations; iter++) {
             this.traversalResources.uploadQueueIndex(iter, uploader);

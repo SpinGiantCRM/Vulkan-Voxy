@@ -26,30 +26,38 @@ uint getCurrentNode() {
 
 
 //TODO: limit the size/writing out of bounds
-uint nodePushIndex = -1;
+uint nodePushIndex = SENTINAL_OUT_OF_BOUNDS;
+uint nodePushRemaining = 0u;
 void pushNodesInit(uint nodeCount) {
-    //Debug
-    #ifdef DEBUG
-    if (queueIdx >= (MAX_ITERATIONS-1)) {
-        nodePushIndex = -1;
+    if (queueIdx >= (MAX_ITERATIONS - 1u)) {
+        nodePushIndex = SENTINAL_OUT_OF_BOUNDS;
+        nodePushRemaining = 0u;
         return;
     }
-    #endif
 
-    uint index = atomicAdd(nodeQueueMetadata[queueIdx+1].w, nodeCount);
-    //Increment first metadata value if it changes threash hold
-    uint inc = ((index+LOCAL_SIZE)>>LOCAL_SIZE_BITS)-(index>>LOCAL_SIZE_BITS);
-    atomicAdd(nodeQueueMetadata[queueIdx+1].x, inc);//TODO: see if making this conditional on inc != 0 is faster
+    uint index = atomicAdd(nodeQueueMetadata[queueIdx + 1u].w, nodeCount);
+    if (index >= MAX_QUEUE_SIZE) {
+        nodePushIndex = SENTINAL_OUT_OF_BOUNDS;
+        nodePushRemaining = 0u;
+        return;
+    }
+
+    uint writable = min(nodeCount, MAX_QUEUE_SIZE - index);
     nodePushIndex = index;
+    nodePushRemaining = writable;
+
+    uint inc = ((index + writable + LOCAL_SIZE - 1u) >> LOCAL_SIZE_BITS) - (index >> LOCAL_SIZE_BITS);
+    if (inc != 0u) {
+        atomicAdd(nodeQueueMetadata[queueIdx + 1u].x, inc);
+    }
 }
 
 void pushNode(uint nodeId) {
-    #ifdef DEBUG
-    if (nodePushIndex == -1) {
+    if (nodePushRemaining == 0u || nodePushIndex == SENTINAL_OUT_OF_BOUNDS) {
         return;
     }
-    #endif
     nodeQueueSink[nodePushIndex++] = nodeId;
+    nodePushRemaining--;
 }
 
 #define SIMPLE_QUEUE(type, name, bindingIndex) \

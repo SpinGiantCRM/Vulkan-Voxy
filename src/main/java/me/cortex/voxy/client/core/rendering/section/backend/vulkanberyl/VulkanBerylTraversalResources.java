@@ -152,7 +152,7 @@ public final class VulkanBerylTraversalResources {
         }
     }
 
-    public void uploadTraversalUniforms(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen) {
+    public void uploadTraversalUniforms(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen, int maxNodeCount) {
         requireNotFreed();
         if (viewport == null) {
             throw new IllegalArgumentException("viewport must not be null");
@@ -207,6 +207,8 @@ public final class VulkanBerylTraversalResources {
             final int requestSize = (int) Math.ceil(fillness * MAX_REQUEST_QUEUE_SIZE);
             MemoryUtil.memPutInt(ptr, Math.max(0, Math.min(MAX_REQUEST_QUEUE_SIZE, requestSize))); ptr += Integer.BYTES;
 
+            MemoryUtil.memPutInt(ptr, Math.max(0, maxNodeCount)); ptr += Integer.BYTES;
+
             MemoryUtil.memPutFloat(ptr, (float) Math.pow(VoxyConfig.CONFIG.sectionRenderDistance * 16 * 32, 2));
 
             VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
@@ -214,6 +216,7 @@ public final class VulkanBerylTraversalResources {
             uploader.flush();
         }
     }
+
 
     public Buffer getRequestBuffer() { return this.requestBuffer; }
     public Buffer getQueueMetaBuffer() { return this.queueMetaBuffer; }
