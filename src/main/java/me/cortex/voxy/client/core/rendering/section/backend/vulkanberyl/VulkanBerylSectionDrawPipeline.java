@@ -308,6 +308,13 @@ public final class VulkanBerylSectionDrawPipeline {
         ), List.of());
         try {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_SHADER_RESOURCE);
+            if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
+                throw new IllegalStateException("Preprocessed cmdgen shader file missing before compile: " + preprocessedShader.shaderPath());
+            }
+            System.out.println("[Voxy][VulkanBeryl] compileShader input verified: shader=" + preprocessedShader.shaderName()
+                    + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
+                    + ", file=" + preprocessedShader.shaderPath()
+                    + ", bytes=" + preprocessedShader.outputBytes());
             builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section cmdgen shader (compute=" + CMDGEN_SHADER_NAME + ", config=" + CMDGEN_SHADER_CONFIG + ")", e);

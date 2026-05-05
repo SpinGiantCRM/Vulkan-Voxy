@@ -25,14 +25,15 @@ final class VulkanBerylShaderImportPreprocessor {
         assertNormalizationInvariants();
         ImportResolution resolution = new ImportResolution();
         String expandedSource = resolution.expandRoot(rootShader);
-        String outputShaderRelativePath = outputShaderRelativePath(rootShader);
+        String shaderName = outputShaderRelativePath(rootShader);
+        String outputShaderRelativePath = shaderName + ".comp";
 
         Path root;
         Path shaderPath;
         try {
             root = Files.createTempDirectory("voxy-vulkanberyl-shaders-");
             root.toFile().deleteOnExit();
-            shaderPath = root.resolve(outputShaderRelativePath + ".comp");
+            shaderPath = root.resolve(outputShaderRelativePath);
             Files.createDirectories(shaderPath.getParent());
             Files.writeString(shaderPath, expandedSource, StandardCharsets.UTF_8);
             shaderPath.toFile().deleteOnExit();
@@ -40,18 +41,28 @@ final class VulkanBerylShaderImportPreprocessor {
             throw new IllegalStateException("Failed to write preprocessed shader for " + shaderResourceId, e);
         }
 
-        String shaderName = stripCompExtension(outputShaderRelativePath);
+        String relativePathFromName = shaderName + ".comp";
+        if (!outputShaderRelativePath.equals(relativePathFromName)) {
+            throw new IllegalStateException("Preprocessed shader path invariant failed: expected " + relativePathFromName + " but got " + outputShaderRelativePath);
+        }
+        long shaderFileSize;
+        try {
+            shaderFileSize = Files.size(shaderPath);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed reading preprocessed shader size for " + shaderResourceId + " at " + shaderPath, e);
+        }
         String rootUrl = root.toUri().toString();
         System.out.println("[Voxy][VulkanBeryl] Prepared shader import preprocess: shaderResourceId=" + shaderResourceId
                 + ", classpathInputPath=" + classpathShaderAssetPath(rootShader)
                 + ", tempRootPath=" + root
-                + ", tempShaderRelativePath=" + outputShaderRelativePath + ".comp"
+                + ", tempShaderRelativePath=" + outputShaderRelativePath
                 + ", compileShaderName=" + shaderName
+                + ", outputBytes=" + shaderFileSize
                 + ", rootUrl=" + rootUrl);
-        return new PreparedShader(rootUrl, shaderName);
+        return new PreparedShader(rootUrl, shaderName, shaderPath, outputShaderRelativePath, shaderFileSize);
     }
 
-    record PreparedShader(String rootUrl, String shaderName) {}
+    record PreparedShader(String rootUrl, String shaderName, Path shaderPath, String tempShaderRelativePath, long outputBytes) {}
 
     static String classpathShaderAssetPath(Identifier id) {
         String path = id.getPath();
@@ -61,7 +72,8 @@ final class VulkanBerylShaderImportPreprocessor {
 
     static String outputShaderRelativePath(Identifier rootShader) {
         String path = rootShader.getPath();
-        return path.startsWith("shaders/") ? path.substring("shaders/".length()) : path;
+        String relativePath = path.startsWith("shaders/") ? path.substring("shaders/".length()) : path;
+        return stripCompExtension(relativePath);
     }
 
     private static String stripCompExtension(String path) {
