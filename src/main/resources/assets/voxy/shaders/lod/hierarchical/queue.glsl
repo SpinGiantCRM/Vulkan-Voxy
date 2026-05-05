@@ -63,5 +63,5 @@ void pushNode(uint nodeId) {
 
 #define SIMPLE_QUEUE(type, name, bindingIndex) layout(binding = bindingIndex, std430) restrict buffer name##Struct { \
     type name##Index; \
-    type##[] name; \
+    type[] name; \
 };
