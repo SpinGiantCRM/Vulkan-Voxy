@@ -22,14 +22,17 @@ final class VulkanBerylShaderImportPreprocessor {
 
     static PreparedShader preprocessToTemp(String shaderResourceId) {
         Identifier rootShader = Identifier.parse(shaderResourceId);
+        assertNormalizationInvariants();
         ImportResolution resolution = new ImportResolution();
         String expandedSource = resolution.expandRoot(rootShader);
+        String outputShaderRelativePath = outputShaderRelativePath(rootShader);
 
         Path root;
+        Path shaderPath;
         try {
             root = Files.createTempDirectory("voxy-vulkanberyl-shaders-");
             root.toFile().deleteOnExit();
-            Path shaderPath = root.resolve(rootShader.getPath() + ".comp");
+            shaderPath = root.resolve(outputShaderRelativePath + ".comp");
             Files.createDirectories(shaderPath.getParent());
             Files.writeString(shaderPath, expandedSource, StandardCharsets.UTF_8);
             shaderPath.toFile().deleteOnExit();
@@ -37,10 +40,46 @@ final class VulkanBerylShaderImportPreprocessor {
             throw new IllegalStateException("Failed to write preprocessed shader for " + shaderResourceId, e);
         }
 
-        return new PreparedShader(root.toUri().toString(), rootShader.getPath());
+        String shaderName = stripCompExtension(outputShaderRelativePath);
+        String rootUrl = root.toUri().toString();
+        System.out.println("[Voxy][VulkanBeryl] Prepared shader import preprocess: shaderResourceId=" + shaderResourceId
+                + ", classpathInputPath=" + classpathShaderAssetPath(rootShader)
+                + ", tempRootPath=" + root
+                + ", tempShaderRelativePath=" + outputShaderRelativePath + ".comp"
+                + ", compileShaderName=" + shaderName
+                + ", rootUrl=" + rootUrl);
+        return new PreparedShader(rootUrl, shaderName);
     }
 
     record PreparedShader(String rootUrl, String shaderName) {}
+
+    static String classpathShaderAssetPath(Identifier id) {
+        String path = id.getPath();
+        String normalizedPath = path.startsWith("shaders/") ? path : "shaders/" + path;
+        return "/assets/" + id.getNamespace() + "/" + normalizedPath;
+    }
+
+    static String outputShaderRelativePath(Identifier rootShader) {
+        String path = rootShader.getPath();
+        return path.startsWith("shaders/") ? path.substring("shaders/".length()) : path;
+    }
+
+    private static String stripCompExtension(String path) {
+        return path.endsWith(".comp") ? path.substring(0, path.length() - ".comp".length()) : path;
+    }
+
+    private static void assertNormalizationInvariants() {
+        Identifier root = Identifier.parse("voxy:shaders/vulkanberyl/hierarchical/traversal.comp");
+        Identifier imported = Identifier.parse("voxy:lod/frustum.glsl");
+        String rootPath = classpathShaderAssetPath(root);
+        String importPath = classpathShaderAssetPath(imported);
+        if (!"/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.comp".equals(rootPath)) {
+            throw new IllegalStateException("Root shader path normalization failed: " + root + " -> " + rootPath);
+        }
+        if (!"/assets/voxy/shaders/lod/frustum.glsl".equals(importPath)) {
+            throw new IllegalStateException("Import shader path normalization failed: " + imported + " -> " + importPath);
+        }
+    }
 
     private static final class ImportResolution {
         private final Set<Identifier> onceIncluded = new LinkedHashSet<>();
@@ -118,7 +157,7 @@ final class VulkanBerylShaderImportPreprocessor {
         }
 
         private static String loadShaderAsset(Identifier id) {
-            String path = "/assets/" + id.getNamespace() + "/shaders/" + id.getPath();
+            String path = classpathShaderAssetPath(id);
             try (InputStream in = ImportResolution.class.getResourceAsStream(path)) {
                 if (in == null) throw new IllegalStateException("Shader import not found: " + id + " (" + path + ")");
                 return IOUtils.toString(in, StandardCharsets.UTF_8);
