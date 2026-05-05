@@ -4,6 +4,7 @@ import me.cortex.voxy.client.core.rendering.Viewport;
 import net.beryl.render.ComputePipeline;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
+import net.vulkanmod.vulkan.shader.descriptor.ManualUBO;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -115,11 +116,20 @@ public final class VulkanBerylTraversalExecutor {
 
         validateTraversalBindings(config);
 
+        this.descriptorCreationMode = "failed-before-descriptor-create";
+        int computeStage;
         try {
-            builder.parseBindings(config);
-            this.descriptorCreationMode = "beryl-json";
+            computeStage = ComputePipeline.Builder.getStageFromString("compute");
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to parse traversal compute bindings from " + TRAVERSAL_SHADER_CONFIG + ": " + describeTraversalBindings(config), e);
+            throw new IllegalStateException("Failed to resolve Beryl compute stage for manual traversal descriptors", e);
+        }
+        try {
+            builder.setUniforms(createTraversalManualDescriptors(computeStage), List.of());
+            this.descriptorCreationMode = "beryl-manual-descriptors";
+        } catch (RuntimeException e) {
+            this.lastDescriptorFailure = "binding=<pipeline-create>, method=ComputePipeline.Builder.setUniforms(manual ManualUBO list), reason=" + e.getMessage();
+            throw new IllegalStateException("Failed to create manual traversal descriptor layout (traversal config is validation-only and is not fed to Beryl parseBindings): "
+                    + describeTraversalBindings(config), e);
         }
         try {
             builder.compileShader(shaderRootUrl.toExternalForm(), TRAVERSAL_SHADER_NAME);
@@ -388,6 +398,20 @@ public final class VulkanBerylTraversalExecutor {
 
         return builder.toString();
     }
+
+    private static List<UBO> createTraversalManualDescriptors(int computeStage) {
+        return List.of(
+                new ManualUBO(SCENE_UNIFORM_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(REQUEST_QUEUE_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(RENDER_QUEUE_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(NODE_DATA_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(NODE_QUEUE_INDEX_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(NODE_QUEUE_META_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(NODE_QUEUE_SOURCE_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(NODE_QUEUE_SINK_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(RENDER_TRACKER_BINDING, computeStage, Integer.MAX_VALUE)
+        );
+    }
     private void requireLiveResources() {
         if (this.traversalResources.isFreed()) throw new IllegalStateException("traversalResources is freed");
         if (this.nodeMetadataStore.isFreed()) throw new IllegalStateException("nodeMetadataStore is freed");
@@ -425,7 +449,7 @@ public final class VulkanBerylTraversalExecutor {
         try {
             ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
         } catch (RuntimeException e) {
-            this.lastDescriptorFailure = "binding=" + binding + ", label=" + label + ", reason=" + e.getMessage();
+            this.lastDescriptorFailure = "binding=" + binding + ", method=UBO.getBufferSlice().set(Buffer,offset,size), label=" + label + ", reason=" + e.getMessage();
             throw new IllegalStateException("Failed to bind traversal descriptor binding " + binding + " (" + label + ")", e);
         }
     }
