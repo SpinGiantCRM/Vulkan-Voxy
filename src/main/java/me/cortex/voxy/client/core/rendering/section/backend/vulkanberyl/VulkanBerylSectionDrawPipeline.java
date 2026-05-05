@@ -266,6 +266,18 @@ public final class VulkanBerylSectionDrawPipeline {
         if (renderList == null) throw new IllegalArgumentException("renderList must not be null");
         if (this.graphicsPipeline == null) throw new IllegalStateException("graphics pipeline must be created before resources are bound");
 
+        long geometryBytes = geometryData.getGeometryBuffer().getBufferSize();
+        long metadataBytes = geometryData.getMetadataBuffer().getBufferSize();
+        long renderListBytes = renderList.getBuffer().getBufferSize();
+        System.out.println("[Voxy][VulkanBeryl] Draw descriptor bind preflight: geometryBytes=" + geometryBytes
+                + ", metadataBytes=" + metadataBytes
+                + ", renderListBytes=" + renderListBytes
+                + ", descriptorStrategy=int_only_BufferSlice_set"
+                + ", maxDescriptorRangeBytes=" + VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES
+                + ", geometryCapacityCapped=" + geometryData.wasGeometryCapacityCapped()
+                + ", requestedGeometryCapacityBytes=" + geometryData.getRequestedGeometryCapacityBytes()
+                + ", actualGeometryCapacityBytes=" + geometryData.getGeometryCapacityBytes());
+
         bindStorageBinding(GEOMETRY_BINDING, geometryData.getGeometryBuffer(), "geometryData.geometryBuffer");
         bindStorageBinding(METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindStorageBinding(RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
@@ -522,8 +534,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
         if (buffer == null) throw new IllegalStateException("Descriptor buffer is null for binding " + binding + " (" + label + ")");
         long size = buffer.getBufferSize();
-        if (size <= 0L || size > Integer.MAX_VALUE) {
-            throw new IllegalStateException("Invalid descriptor size for binding " + binding + " (" + label + "): " + size + " bytes");
+        if (size <= 0L || size > VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES) {
+            throw descriptorRangeException(binding, label, size);
         }
         return (int) size;
     }
@@ -531,24 +543,39 @@ public final class VulkanBerylSectionDrawPipeline {
     private void bindStorageBinding(int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
         long bufferSize = buffer.getBufferSize();
-        if (bufferSize <= 0L || bufferSize > Integer.MAX_VALUE) {
-            throw new IllegalStateException(label + " has invalid descriptor size: " + bufferSize);
+        if (bufferSize <= 0L || bufferSize > VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES) {
+            throw descriptorRangeException(binding, label, bufferSize);
         }
 
         UBO ubo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == binding);
         if (ubo == null) {
             throw new IllegalStateException("Section draw descriptor missing: name=" + label + ", binding=" + binding + ", config=" + DRAW_SHADER_CONFIG);
         }
-        ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
+        int rangeBytes = (int) bufferSize;
+        System.out.println("[Voxy][VulkanBeryl] Binding draw descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
+        ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
     }
 
     private void bindComputeStorageBinding(int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
         long bufferSize = buffer.getBufferSize();
-        if (bufferSize <= 0L || bufferSize > Integer.MAX_VALUE) throw new IllegalStateException(label + " has invalid descriptor size: " + bufferSize);
+        if (bufferSize <= 0L || bufferSize > VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES) {
+            throw descriptorRangeException(binding, label, bufferSize);
+        }
         UBO ubo = this.commandGenPipeline.getUBO(candidate -> candidate.binding == binding);
         if (ubo == null) throw new IllegalStateException("Section cmdgen descriptor missing: name=" + label + ", binding=" + binding + ", config=" + CMDGEN_SHADER_CONFIG);
-        ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
+        int rangeBytes = (int) bufferSize;
+        System.out.println("[Voxy][VulkanBeryl] Binding cmdgen descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
+        ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
+    }
+
+    private static IllegalStateException descriptorRangeException(int binding, String label, long sizeBytes) {
+        return new IllegalStateException("Descriptor range unsupported for binding=" + binding
+                + ", label=" + label
+                + ", bufferSizeBytes=" + sizeBytes
+                + ", maxSupportedBytes=" + VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES
+                + ", strategy=BufferSlice.set(Buffer,long,int)"
+                + ", fixHint=cap Vulkan/Beryl geometry capacity before buffer creation");
     }
 
     private void bindSceneUniform(VulkanBerylViewport viewport) {

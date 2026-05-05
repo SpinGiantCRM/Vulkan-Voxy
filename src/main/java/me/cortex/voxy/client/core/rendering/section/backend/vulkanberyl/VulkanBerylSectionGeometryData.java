@@ -10,11 +10,14 @@ import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
 public final class VulkanBerylSectionGeometryData implements IGeometryData {
     public static final int SECTION_METADATA_SIZE = 32;
+    public static final long MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES = Integer.MAX_VALUE - 7L;
 
     private final int maxSectionCount;
     private final Buffer geometryBuffer;
     private final Buffer metadataBuffer;
     private int sectionCount;
+    private final boolean geometryCapacityCapped;
+    private final long requestedGeometryCapacityBytes;
     private boolean freed;
 
     public VulkanBerylSectionGeometryData(int maxSectionCount, long maxCapacity) {
@@ -28,12 +31,25 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
             throw new IllegalArgumentException("maxCapacity must be 8-byte aligned");
         }
         long metadataCapacity = Math.multiplyExact((long) maxSectionCount, SECTION_METADATA_SIZE);
+        long descriptorCompatibleCapacity = capGeometryCapacityForDescriptorCompatibility(maxCapacity);
 
         this.maxSectionCount = maxSectionCount;
+        this.requestedGeometryCapacityBytes = maxCapacity;
+        this.geometryCapacityCapped = descriptorCompatibleCapacity != maxCapacity;
         this.geometryBuffer = new Buffer("voxy_vulkanberyl_geometry", VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
-        this.geometryBuffer.createBuffer(maxCapacity);
+        this.geometryBuffer.createBuffer(descriptorCompatibleCapacity);
         this.metadataBuffer = new Buffer("voxy_vulkanberyl_metadata", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
         this.metadataBuffer.createBuffer(metadataCapacity);
+    }
+
+
+
+    public static long capGeometryCapacityForDescriptorCompatibility(long requestedCapacityBytes) {
+        if (requestedCapacityBytes < 0L) {
+            throw new IllegalArgumentException("requestedCapacityBytes must be non-negative");
+        }
+        long capped = Math.min(requestedCapacityBytes, MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES);
+        return capped & ~7L;
     }
 
     @Override
@@ -75,6 +91,15 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
 
     public long getMetadataCapacityBytes() {
         return this.metadataBuffer.getBufferSize();
+    }
+
+
+    public boolean wasGeometryCapacityCapped() {
+        return this.geometryCapacityCapped;
+    }
+
+    public long getRequestedGeometryCapacityBytes() {
+        return this.requestedGeometryCapacityBytes;
     }
 
     public void setSectionCount(int sectionCount) {

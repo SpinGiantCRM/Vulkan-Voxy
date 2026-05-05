@@ -44,7 +44,7 @@ public final class VulkanBerylSectionBackendContext implements SectionRendererBa
 
     @Override
     public IGeometryData createGeometryData() {
-        return new VulkanBerylSectionGeometryData(1 << 20, 1L << 32);
+        return new VulkanBerylSectionGeometryData(1 << 20, VulkanBerylSectionGeometryData.capGeometryCapacityForDescriptorCompatibility(1L << 32));
     }
 
     @Override
