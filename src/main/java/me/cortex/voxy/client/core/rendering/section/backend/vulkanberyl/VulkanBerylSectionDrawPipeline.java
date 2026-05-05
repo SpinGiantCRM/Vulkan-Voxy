@@ -71,6 +71,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
         if (this.graphicsPipeline != null) return;
 
+        URL shaderRootUrl = VulkanBerylSectionDrawPipeline.class.getResource("/assets/voxy/shaders");
         if (shaderRootUrl == null) throw new IllegalStateException("Unable to locate /assets/voxy/shaders for section draw pipeline");
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(DRAW_SHADER_CONFIG);
         if (configUrl == null) throw new IllegalStateException("Missing section draw shader config: " + DRAW_SHADER_CONFIG);
