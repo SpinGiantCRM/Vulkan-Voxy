@@ -1,4 +1,11 @@
 #import <voxy:lod/pos_util.glsl>
+
+#ifdef VOXY_ENABLE_SHADER_DEBUG_PRINTF
+#extension GL_EXT_debug_printf : enable
+#define VOXY_DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#else
+#define VOXY_DEBUG_PRINTF(...)
+#endif
 layout(binding = NODE_DATA_BINDING, std430) restrict buffer NodeData {
 //Needs to be read and writeable for marking data,
 //(could do an evil violation, make this readonly, then have a writeonly varient, which means that writing might not be visible but will show up by the next frame)
@@ -99,5 +106,5 @@ void markRequested(inout UnpackedNode node) {
 }
 
 void debugDumpNode(in UnpackedNode node) {
-    printf("Node %d, %d@[%d,%d,%d], flags: %d, mesh: %d, ChildPtr: %d", node.nodeId, node.lodLevel, node.pos.x, node.pos.y, node.pos.z, node.flags, node.meshPtr, node.childPtr);
+    VOXY_DEBUG_PRINTF("Node %d, %d@[%d,%d,%d], flags: %d, mesh: %d, ChildPtr: %d", node.nodeId, node.lodLevel, node.pos.x, node.pos.y, node.pos.z, node.flags, node.meshPtr, node.childPtr);
 }
