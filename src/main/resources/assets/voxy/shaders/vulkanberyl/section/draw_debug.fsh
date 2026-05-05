@@ -1,4 +1,4 @@
-#version 460 core
+#version 460
 
 layout(location = 2) in flat uvec2 debugIds;
 layout(location = 0) out vec4 outColour;
