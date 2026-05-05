@@ -200,6 +200,22 @@ final class VulkanBerylShaderImportPreprocessor {
         }
         return line;
     }
+
+    private static boolean isGraphicsRootShader(Identifier shader) {
+        String path = shader.getPath();
+        return path.endsWith(".vsh") || path.endsWith(".fsh");
+    }
+
+    private static String shaderStageForGraphicsRoot(Identifier shader) {
+        String path = shader.getPath();
+        if (path.endsWith(".vsh")) {
+            return "vertex";
+        }
+        if (path.endsWith(".fsh")) {
+            return "fragment";
+        }
+        throw new IllegalStateException("Unexpected graphics shader extension for " + shader);
+    }
     private static final class ImportResolution {
         private final Set<Identifier> onceIncluded = new LinkedHashSet<>();
         private final ArrayDeque<Identifier> includeStack = new ArrayDeque<>();
@@ -210,7 +226,14 @@ final class VulkanBerylShaderImportPreprocessor {
             String[] lines = src.split("\\R", -1);
             int startLine = 0;
             while (startLine < lines.length && lines[startLine].trim().isEmpty()) startLine++;
-            if (startLine < lines.length && lines[startLine].startsWith("#version")) {
+            boolean graphicsRoot = isGraphicsRootShader(shader);
+            if (graphicsRoot) {
+                out.append("#version 450\n");
+                out.append("#pragma shader_stage(").append(shaderStageForGraphicsRoot(shader)).append(")\n");
+                if (startLine < lines.length && lines[startLine].trim().startsWith("#version")) {
+                    startLine++;
+                }
+            } else if (startLine < lines.length && lines[startLine].startsWith("#version")) {
                 out.append(normalizeVulkanVersionDirective(lines[startLine])).append('\n');
                 startLine++;
             } else {

@@ -124,12 +124,16 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", vertexPreparedTempPath=" + (vertexPrepared == null ? "<missing>" : vertexPrepared.tempShaderRelativePath())
                 + ", fragmentPreparedShaderName=" + (fragmentPrepared == null ? "<missing>" : fragmentPrepared.shaderName())
                 + ", fragmentPreparedTempPath=" + (fragmentPrepared == null ? "<missing>" : fragmentPrepared.tempShaderRelativePath()));
+        String vertexPreview = readPreprocessedShaderPreview(expectedVertexTempPath, 8);
+        String fragmentPreview = readPreprocessedShaderPreview(expectedFragmentTempPath, 8);
+        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed vertex shader first lines (path=" + expectedVertexTempPath + "):\n" + vertexPreview);
+        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed fragment shader first lines (path=" + expectedFragmentTempPath + "):\n" + fragmentPreview);
         try {
             builder.compileShaders(shaderCompileBase, DRAW_SHADER_NAME, fragmentShaderName);
         } catch (Exception e) {
-            logPreprocessedShaderPreview("vertex", expectedVertexTempPath);
-            logPreprocessedShaderPreview("fragment", expectedFragmentTempPath);
-            throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")", e);
+            throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")"
+                    + "\nVertex first lines:\n" + vertexPreview
+                    + "\nFragment first lines:\n" + fragmentPreview, e);
         }
         GraphicsPipeline pipeline;
         try {
@@ -143,11 +147,11 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
-    private static void logPreprocessedShaderPreview(String label, Path shaderPath) {
+    private static String readPreprocessedShaderPreview(Path shaderPath, int maxLines) {
         StringBuilder preview = new StringBuilder();
         try {
             List<String> lines = java.nio.file.Files.readAllLines(shaderPath, StandardCharsets.UTF_8);
-            int limit = Math.min(5, lines.size());
+            int limit = Math.min(maxLines, lines.size());
             for (int i = 0; i < limit; i++) {
                 preview.append(i + 1).append(": ").append(lines.get(i)).append(System.lineSeparator());
             }
@@ -157,7 +161,7 @@ public final class VulkanBerylSectionDrawPipeline {
         } catch (Exception ex) {
             preview.append("<failed to read: ").append(ex.getMessage()).append(">");
         }
-        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed " + label + " shader first lines (path=" + shaderPath + "):\n" + preview);
+        return preview.toString();
     }
 
     public void ensureDrawResourcesBound(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
