@@ -1,6 +1,16 @@
 #define SENTINAL_OUT_OF_BOUNDS uint(-1)
 
-layout(location = NODE_QUEUE_INDEX_BINDING) uniform uint queueIdx;
+#ifdef VOXY_ENABLE_SHADER_DEBUG_PRINTF
+#extension GL_EXT_debug_printf : enable
+#define VOXY_DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#else
+#define VOXY_DEBUG_PRINTF(...)
+#endif
+
+
+layout(binding = NODE_QUEUE_INDEX_BINDING, std430) restrict readonly buffer NodeQueueIndex {
+    uint queueIdx;
+};
 
 layout(binding = NODE_QUEUE_META_BINDING, std430) restrict buffer NodeQueueMeta {
     uvec4 nodeQueueMetadata[MAX_ITERATIONS];
@@ -28,7 +38,7 @@ void pushNodesInit(uint nodeCount) {
     //Debug
     #ifdef DEBUG
     if (queueIdx >= (MAX_ITERATIONS-1)) {
-        printf("LOG: Traversal tried inserting a node into next iteration, which is outside max iteration bounds. GID: %d, count: %d", gl_GlobalInvocationID.x, nodeCount);
+        VOXY_DEBUG_PRINTF("LOG: Traversal tried inserting a node into next iteration, which is outside max iteration bounds. GID: %d, count: %d", gl_GlobalInvocationID.x, nodeCount);
         nodePushIndex = -1;
         return;
     }
@@ -44,7 +54,7 @@ void pushNodesInit(uint nodeCount) {
 void pushNode(uint nodeId) {
     #ifdef DEBUG
     if (nodePushIndex == -1) {
-        printf("LOG: Tried pushing node when push node wasnt successful. GID: %d, pushing: %d", gl_GlobalInvocationID.x, nodeId);
+        VOXY_DEBUG_PRINTF("LOG: Tried pushing node when push node wasnt successful. GID: %d, pushing: %d", gl_GlobalInvocationID.x, nodeId);
         return;
     }
     #endif
