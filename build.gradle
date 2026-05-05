@@ -310,7 +310,6 @@ tasks.register('validateShaderSources') {
         }
         def directiveKeywords = '(version|define|ifdef|ifndef|else|endif|extension|import)'
         def validDirectiveLine = ~/^\s*#\s*${directiveKeywords}\b/
-        def inlineDirectivePattern = ~/\S.*#\s*${directiveKeywords}\b/
         def directiveTokenPattern = ~/#\s*${directiveKeywords}\b/
         def suspiciousCollapsedLine = ~/.*(?:#\s*(?:version|define|ifdef|ifndef|else|endif|extension|import)\b.*){2,}.*/
         def failures = []
@@ -323,13 +322,15 @@ tasks.register('validateShaderSources') {
 
             lines.eachWithIndex { line, idx ->
                 def trimmed = line.trim()
+                def matcher = line =~ directiveTokenPattern
+                def directiveCount = matcher.count
 
-                if ((trimmed =~ directiveTokenPattern).find() && !(line ==~ validDirectiveLine)) {
-                    if ((line =~ inlineDirectivePattern).find()) {
-                        failures << "${rel}:${idx + 1}: preprocessor directive appears after non-whitespace content"
-                    } else {
-                        failures << "${rel}:${idx + 1}: malformed preprocessor directive placement"
-                    }
+                if (directiveCount > 0 && !(line =~ validDirectiveLine).find()) {
+                    failures << "${rel}:${idx + 1}: preprocessor directive appears after non-whitespace content"
+                }
+
+                if (directiveCount > 1) {
+                    failures << "${rel}:${idx + 1}: multiple preprocessor directives on one line"
                 }
 
                 if (trimmed == '#import') {
