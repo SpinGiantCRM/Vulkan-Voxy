@@ -84,7 +84,13 @@ public final class VulkanBerylSectionDrawPipeline {
         }
 
         Pipeline.Builder builder = new Pipeline.Builder();
-        builder.parseBindings(config);
+        List<UBO> drawDescriptors = createManualDrawDescriptors();
+        System.out.println("[Voxy][VulkanBeryl] Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
+        try {
+            builder.setUniforms(drawDescriptors, List.of());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create manual section draw descriptor layout (config is validation-only and is not fed to Beryl parseBindings): " + DRAW_SHADER_CONFIG, e);
+        }
         String fragmentShaderName = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME;
         try {
             builder.compileShaders(shaderRootUrl.toExternalForm(), DRAW_SHADER_NAME, fragmentShaderName);
@@ -217,6 +223,21 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCommandDebugReadbackBuffer = null;
         }
         this.resourcesBound = false;
+    }
+
+
+
+    private static List<UBO> createManualDrawDescriptors() {
+        List<UBO> descriptors = new java.util.ArrayList<>(7);
+        int vertexStage = VK10.VK_SHADER_STAGE_VERTEX_BIT;
+        descriptors.add(new ManualUBO(0, vertexStage, 20)); // mat4 + ivec3 + frame + padding + vec3
+        descriptors.add(new ManualUBO(1, vertexStage, 1));
+        descriptors.add(new ManualUBO(2, vertexStage, 1));
+        descriptors.add(new ManualUBO(3, vertexStage, 1));
+        descriptors.add(new ManualUBO(4, vertexStage, 1));
+        descriptors.add(new ManualUBO(5, vertexStage, 1));
+        descriptors.add(new ManualUBO(6, vertexStage, 1));
+        return descriptors;
     }
 
     private void ensureCommandBuffers(int maxEntryCount) {
