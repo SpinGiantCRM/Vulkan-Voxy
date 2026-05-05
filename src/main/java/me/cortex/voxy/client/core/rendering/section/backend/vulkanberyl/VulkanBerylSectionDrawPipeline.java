@@ -47,6 +47,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int METADATA_BINDING = 5;
     private static final int RENDER_LIST_BINDING = 6;
     private static final int SCENE_UNIFORM_BINDING = 0;
+    private static final int CMDGEN_DUMMY_BINDING = 0;
     private static final int CMDGEN_METADATA_BINDING = 1;
     private static final int CMDGEN_RENDER_LIST_BINDING = 2;
     private static final int CMDGEN_DRAW_COMMAND_BINDING = 3;
@@ -493,12 +494,31 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to load section cmdgen shader config: " + CMDGEN_SHADER_CONFIG, e);
         }
         int computeStage = ComputePipeline.Builder.getStageFromString("compute");
-        builder.setUniforms(List.of(
+        List<UBO> cmdGenDescriptors = List.of(
+                new ManualUBO(CMDGEN_DUMMY_BINDING, computeStage, 1),
                 createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenMetadata"),
                 createManualDescriptor(CMDGEN_RENDER_LIST_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == RENDER_LIST_BINDING).getBufferSlice().getBuffer(), "CmdGenRenderList"),
                 createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenDrawCommand"),
                 createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount")
-        ), List.of());
+        );
+        builder.setUniforms(cmdGenDescriptors, List.of());
+        List<Integer> cmdgenBindings = cmdGenDescriptors.stream().map(ubo -> ubo.binding).sorted().toList();
+        boolean denseFromZero = !cmdgenBindings.isEmpty();
+        for (int i = 0; i < cmdgenBindings.size(); i++) {
+            if (cmdgenBindings.get(i) != i) {
+                denseFromZero = false;
+                break;
+            }
+        }
+        int minBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(0);
+        int maxBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(cmdgenBindings.size() - 1);
+        boolean dummyPresent = cmdgenBindings.contains(CMDGEN_DUMMY_BINDING);
+        System.out.println("[Voxy][VulkanBeryl] Section cmdgen descriptor layout: descriptorMode=manual_dense, count=" + cmdgenBindings.size()
+                + ", bindings=" + cmdgenBindings
+                + ", minBinding=" + minBinding
+                + ", maxBinding=" + maxBinding
+                + ", denseFromZero=" + denseFromZero
+                + ", dummyBindingPresent=" + dummyPresent);
         try {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_SHADER_RESOURCE);
             if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
