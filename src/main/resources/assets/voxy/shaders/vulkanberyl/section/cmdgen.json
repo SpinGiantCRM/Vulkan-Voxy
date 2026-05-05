@@ -1,8 +1,64 @@
 {
   "UBOs": [
-    {"name":"MetadataBuffer","binding":1,"type":"storageBuffer","stages":["compute"]},
-    {"name":"RenderListBuffer","binding":2,"type":"storageBuffer","stages":["compute"]},
-    {"name":"DrawCommandsBuffer","binding":3,"type":"storageBuffer","stages":["compute"]},
-    {"name":"DrawCountBuffer","binding":4,"type":"storageBuffer","stages":["compute"]}
+    {
+      "name": "MetadataBuffer",
+      "binding": 1,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ],
+      "fields": [
+        {
+          "name": "metadata",
+          "type": "int",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "name": "RenderListBuffer",
+      "binding": 2,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ],
+      "fields": [
+        {
+          "name": "metadata",
+          "type": "int",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "name": "DrawCommandsBuffer",
+      "binding": 3,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ],
+      "fields": [
+        {
+          "name": "metadata",
+          "type": "int",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "name": "DrawCountBuffer",
+      "binding": 4,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ],
+      "fields": [
+        {
+          "name": "metadata",
+          "type": "int",
+          "count": 4
+        }
+      ]
+    }
   ]
 }
