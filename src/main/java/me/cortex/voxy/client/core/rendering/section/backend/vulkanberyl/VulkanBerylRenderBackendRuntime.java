@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 public final class VulkanBerylRenderBackendRuntime implements SectionRenderBackendRuntime {
+    public record FrameSafetyState(boolean allowCmdGen, boolean allowIndirectDraw, String reason) {}
     public record SmokeStatus(
             boolean runtimeEntered,
             boolean traversalPipelineCreated,
@@ -36,6 +37,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     ) {}
 
     private static volatile SmokeStatus LAST_SMOKE_STATUS = new SmokeStatus(false, false, false, false, false, 0, false, false, -1, 0);
+    private static volatile FrameSafetyState LAST_FRAME_SAFETY_STATE = new FrameSafetyState(false, false, "waiting_for_valid_render_list_readback");
+    private static final boolean ENABLE_TRAVERSAL_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_TRAVERSAL_DISPATCH", "true"));
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private final AsyncNodeManager nodeManager;
@@ -64,6 +67,10 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private boolean runtimeEntered;
     private boolean requestReadbackScheduled;
     private boolean requestReadbackCompleted;
+    private boolean lastRequestReadbackDiscarded;
+    private boolean lastRenderListCounterDiscarded;
+    private boolean lastRenderListSampleDiscarded;
+    private int frameSequence;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
         this.nodeManager = nodeManager;
@@ -127,15 +134,19 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     null
             );
         }
-        this.traversalExecutor.prepareTraversal(vulkanViewport);
-        this.traversalExecutor.ensureTraversalPipeline();
-        this.traversalExecutor.ensureTraversalDescriptorsBound();
-        this.traversalExecutor.requireDispatchSupport();
-        this.traversalExecutor.dispatchFirstTraversalIteration(vulkanWorkContext.frame().renderer());
-        this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer());
-        this.scheduleRequestReadback(vulkanWorkContext.frame().renderer().getCommandBuffer());
-        this.scheduleRenderListCounterReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
-        this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
+        if (ENABLE_TRAVERSAL_DISPATCH) {
+            this.traversalExecutor.prepareTraversal(vulkanViewport);
+            this.traversalExecutor.ensureTraversalPipeline();
+            this.traversalExecutor.ensureTraversalDescriptorsBound();
+            this.traversalExecutor.requireDispatchSupport();
+            this.traversalExecutor.dispatchFirstTraversalIteration(vulkanWorkContext.frame().renderer());
+            this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer());
+            this.scheduleRequestReadback(vulkanWorkContext.frame().renderer().getCommandBuffer());
+            this.scheduleRenderListCounterReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
+            this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
+        }
+        this.frameSequence++;
+        updateFrameSafetyState(renderList.getMaxEntryCount());
         this.publishSmokeStatus();
     }
 
@@ -196,6 +207,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             acceptedCount = 0;
             discarded = true;
         }
+        this.lastRequestReadbackDiscarded = discarded;
 
         if (!discarded && acceptedCount > 0) {
             long batchSize = 8L + (long) acceptedCount * 8L;
@@ -267,6 +279,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             acceptedCount = 0;
             discarded = true;
         }
+        this.lastRenderListCounterDiscarded = discarded;
         renderList.setLastVisibleCount(acceptedCount);
         this.lastVisibleSectionCount = acceptedCount;
         this.lastVisibleSectionCapacity = maxEntryCount;
@@ -336,6 +349,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             this.renderListSampleReadbackPending = false;
             this.pendingRenderListSampleSource = null;
             this.pendingRenderListSampleGeometry = null;
+            this.lastRenderListSampleDiscarded = true;
             return;
         }
 
@@ -365,6 +379,20 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.renderListSampleReadbackPending = false;
         this.pendingRenderListSampleSource = null;
         this.pendingRenderListSampleGeometry = null;
+        this.lastRenderListSampleDiscarded = invalidCount > 0;
+    }
+
+    static FrameSafetyState getLastFrameSafetyState() {
+        return LAST_FRAME_SAFETY_STATE;
+    }
+
+    private void updateFrameSafetyState(int maxEntryCount) {
+        boolean goodCounter = !this.lastRenderListCounterDiscarded && this.lastVisibleSectionCount >= 0 && this.lastVisibleSectionCount <= maxEntryCount;
+        boolean noCorruption = !this.lastRequestReadbackDiscarded && !this.lastRenderListSampleDiscarded;
+        boolean allowCmdgen = this.frameSequence >= 2 && goodCounter && noCorruption;
+        boolean allowIndirect = this.frameSequence >= 3 && allowCmdgen && this.lastInvalidSampledRenderListEntryCount == 0;
+        String reason = allowIndirect ? "ready" : (!goodCounter ? "waiting_for_valid_render_list_readback" : (!noCorruption ? "previous_frame_corruption_detected" : (this.frameSequence < 2 ? "frame_stage_wait_n1" : "frame_stage_wait_n2")));
+        LAST_FRAME_SAFETY_STATE = new FrameSafetyState(allowCmdgen, allowIndirect, reason);
     }
 
     @Override
