@@ -18,6 +18,7 @@ import org.lwjgl.system.MemoryStack;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -286,15 +287,15 @@ public final class VulkanBerylTraversalExecutor {
 
     private static void validateTraversalBindings(JsonObject config) {
         java.util.Map<Integer, String> expectedTypesByBinding = java.util.Map.of(
-                SCENE_UNIFORM_BINDING, "uniformBuffer",
-                REQUEST_QUEUE_BINDING, "storageBuffer",
-                RENDER_QUEUE_BINDING, "storageBuffer",
-                NODE_DATA_BINDING, "storageBuffer",
-                NODE_QUEUE_INDEX_BINDING, "storageBuffer",
-                NODE_QUEUE_META_BINDING, "storageBuffer",
-                NODE_QUEUE_SOURCE_BINDING, "storageBuffer",
-                NODE_QUEUE_SINK_BINDING, "storageBuffer",
-                RENDER_TRACKER_BINDING, "storageBuffer"
+                SCENE_UNIFORM_BINDING, "compute",
+                REQUEST_QUEUE_BINDING, "compute",
+                RENDER_QUEUE_BINDING, "compute",
+                NODE_DATA_BINDING, "compute",
+                NODE_QUEUE_INDEX_BINDING, "compute",
+                NODE_QUEUE_META_BINDING, "compute",
+                NODE_QUEUE_SOURCE_BINDING, "compute",
+                NODE_QUEUE_SINK_BINDING, "compute",
+                RENDER_TRACKER_BINDING, "compute"
         );
 
         if (config == null || !config.has("UBOs") || !config.get("UBOs").isJsonArray()) {
@@ -305,8 +306,18 @@ public final class VulkanBerylTraversalExecutor {
         config.getAsJsonArray("UBOs").forEach(node -> {
             if (!node.isJsonObject()) return;
             JsonObject binding = node.getAsJsonObject();
-            if (!binding.has("binding") || !binding.has("type")) return;
-            foundTypesByBinding.put(binding.get("binding").getAsInt(), binding.get("type").getAsString());
+            if (!binding.has("binding")) return;
+            int bindingIndex = binding.get("binding").getAsInt();
+            if (binding.has("stages") && binding.get("stages").isJsonArray()) {
+                binding.getAsJsonArray("stages").forEach(stageNode -> {
+                    String stage = stageNode.getAsString();
+                    if (!isAcceptedBerylStageName(stage)) {
+                        throw new IllegalStateException("Traversal descriptor binding " + bindingIndex + " contains unsupported stage name " + stage + "; accepted stages are " + Arrays.toString(getAcceptedBerylStageNames()));
+                    }
+                });
+            }
+            if (!binding.has("type")) return;
+            foundTypesByBinding.put(bindingIndex, binding.get("type").getAsString());
         });
 
         for (java.util.Map.Entry<Integer, String> expected : expectedTypesByBinding.entrySet()) {
@@ -320,6 +331,20 @@ public final class VulkanBerylTraversalExecutor {
                 throw new IllegalStateException("Traversal descriptor binding " + binding + " must be type " + expectedType + " but was " + actualType);
             }
         }
+    }
+
+    private static boolean isAcceptedBerylStageName(String stage) {
+        if (stage == null) return false;
+        try {
+            ComputePipeline.Builder.getStageFromString(stage);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private static String[] getAcceptedBerylStageNames() {
+        return new String[]{"vertex", "fragment", "all", "compute"};
     }
 
     private static String describeTraversalBindings(JsonObject config) {
@@ -343,7 +368,9 @@ public final class VulkanBerylTraversalExecutor {
                     .append(", name=")
                     .append(binding.has("name") ? binding.get("name").getAsString() : "<missing>")
                     .append(", type=")
-                    .append(binding.has("type") ? binding.get("type").getAsString() : "<missing>");
+                    .append(binding.has("type") ? binding.get("type").getAsString() : "<missing>")
+                    .append(", stages=")
+                    .append(binding.has("stages") ? binding.get("stages").toString() : "<missing>");
         });
 
         return builder.toString();
