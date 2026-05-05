@@ -143,16 +143,10 @@ public final class VulkanBerylSectionDrawPipeline {
             builder.compileShaders(DRAW_SHADER_NAME, vertexSource, fragmentSource);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")"
-                    + "
-compileShaders expected args: name + vertexSource + fragmentSource (GLSL text)"
-                    + "
-Provided sources read from: " + expectedVertexTempPath + " and " + expectedFragmentTempPath
-                    + "
-Vertex first lines:
-" + vertexPreview
-                    + "
-Fragment first lines:
-" + fragmentPreview, e);
+                    + "\ncompileShaders expected args: name + vertexSource + fragmentSource (GLSL text)"
+                    + "\nProvided sources read from: " + expectedVertexTempPath + " and " + expectedFragmentTempPath
+                    + "\nVertex first lines:\n" + vertexPreview
+                    + "\nFragment first lines:\n" + fragmentPreview, e);
         }
         GraphicsPipeline pipeline;
         try {
