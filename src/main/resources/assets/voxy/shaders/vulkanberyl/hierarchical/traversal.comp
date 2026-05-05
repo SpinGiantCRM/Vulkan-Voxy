@@ -16,6 +16,7 @@
 #define MAX_ITERATIONS 17
 #define LOCAL_SIZE_BITS 5
 #define MAX_REQUEST_QUEUE_SIZE 50
+#define MAX_QUEUE_SIZE 200000u
 
 #define HIZ_BINDING 0
 #define SCENE_UNIFORM_BINDING 1
@@ -45,6 +46,7 @@ layout(binding = SCENE_UNIFORM_BINDING, std140) uniform SceneUniform {
     uint renderQueueMaxSize;
     uint frameId;
     uint requestQueueSize;
+    uint maxNodeCount;
     float renderDistance;
 };
 
@@ -105,7 +107,10 @@ void enqueueChildren(in UnpackedNode node) {
 void enqueueSelfForRender(in UnpackedNode node) {
     //printf("render %d@[%d,%d,%d]", node.lodLevel, node.pos.x, node.pos.y, node.pos.z);
     if (renderQueueIndex < renderQueueMaxSize) {
-        lastRenderFrame[getId(node)] = frameId;
+        uint nodeId = getId(node);
+        if (nodeId < maxNodeCount) {
+            lastRenderFrame[nodeId] = frameId;
+        }
         if (!isEmptyMesh(node)) {
             uint renderIndex = atomicAdd(renderQueueIndex, 1);
             if (renderIndex < renderQueueMaxSize) {
@@ -201,7 +206,7 @@ void traverse(in UnpackedNode node) {
 
 void main() {
     uint nodeId = getCurrentNode();
-    if (nodeId != SENTINAL_OUT_OF_BOUNDS) {
+    if (nodeId != SENTINAL_OUT_OF_BOUNDS && nodeId < maxNodeCount) {
         //Fetch + decode node
         UnpackedNode node;
         unpackNode(node, nodeId);

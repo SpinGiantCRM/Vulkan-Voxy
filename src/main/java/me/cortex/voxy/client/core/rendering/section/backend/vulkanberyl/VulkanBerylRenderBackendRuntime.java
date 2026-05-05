@@ -39,6 +39,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static volatile SmokeStatus LAST_SMOKE_STATUS = new SmokeStatus(false, false, false, false, false, 0, false, false, -1, 0);
     private static volatile FrameSafetyState LAST_FRAME_SAFETY_STATE = new FrameSafetyState(false, false, "waiting_for_valid_render_list_readback");
     private static final boolean ENABLE_TRAVERSAL_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_TRAVERSAL_DISPATCH", "true"));
+    private static final boolean ENABLE_INITIAL_TRAVERSAL_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INITIAL_TRAVERSAL_DISPATCH", "true"));
+    private static final boolean ENABLE_INDIRECT_TRAVERSAL_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_TRAVERSAL_DISPATCH", "false"));
+    private static final int TRAVERSAL_MAX_ITERATIONS = Math.max(1, Integer.parseInt(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_MAX_ITERATIONS", "1")));
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private final AsyncNodeManager nodeManager;
@@ -123,7 +126,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + this.traversalResources.getMaxQueueSize() + " maxRequestQueueSize=" + this.traversalResources.getMaxRequestQueueSize()
                 + " queueIndexAfterSeed=0");
         this.traversalResources.initializeQueueMetadata(topNodeCount);
-        this.traversalResources.uploadTraversalUniforms(vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen);
+        this.traversalResources.uploadTraversalUniforms(vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount);
         this.traversalResources.seedInitialTraversalQueue(this.topLevelNodeStore);
         if (this.traversalExecutor == null) {
             this.traversalExecutor = new VulkanBerylTraversalExecutor(
@@ -134,17 +137,38 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     null
             );
         }
+        boolean initialTraversalDispatch = false;
+        int remainingTraversalDispatchesRan = 0;
+        boolean traversalReadbacksScheduled = false;
         if (ENABLE_TRAVERSAL_DISPATCH) {
             this.traversalExecutor.prepareTraversal(vulkanViewport);
             this.traversalExecutor.ensureTraversalPipeline();
             this.traversalExecutor.ensureTraversalDescriptorsBound();
             this.traversalExecutor.requireDispatchSupport();
-            this.traversalExecutor.dispatchFirstTraversalIteration(vulkanWorkContext.frame().renderer());
-            this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer());
-            this.scheduleRequestReadback(vulkanWorkContext.frame().renderer().getCommandBuffer());
-            this.scheduleRenderListCounterReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
-            this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
+            if (ENABLE_INITIAL_TRAVERSAL_DISPATCH) {
+                this.traversalExecutor.dispatchFirstTraversalIteration(vulkanWorkContext.frame().renderer());
+                initialTraversalDispatch = this.traversalExecutor.didDispatchIterationZeroRun();
+            } else {
+                Logger.info("[Voxy][VulkanBeryl] Initial traversal dispatch skipped by safety gate");
+            }
+            if (ENABLE_INDIRECT_TRAVERSAL_DISPATCH && TRAVERSAL_MAX_ITERATIONS > 1) {
+                this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer(), TRAVERSAL_MAX_ITERATIONS);
+                remainingTraversalDispatchesRan = this.traversalExecutor.getIndirectDispatchIterationCount();
+            } else {
+                Logger.info("[Voxy][VulkanBeryl] Traversal remaining iterations skipped by safety gate");
+            }
+            if (initialTraversalDispatch || remainingTraversalDispatchesRan > 0) {
+                this.scheduleRequestReadback(vulkanWorkContext.frame().renderer().getCommandBuffer());
+                this.scheduleRenderListCounterReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
+                this.scheduleRenderListSampleReadback(vulkanWorkContext.frame().renderer().getCommandBuffer(), renderList);
+                traversalReadbacksScheduled = true;
+            }
+        } else {
+            Logger.info("[Voxy][VulkanBeryl] Traversal dispatch disabled globally; skipping traversal dispatches and traversal readbacks");
         }
+        Logger.info("[Voxy][VulkanBeryl] Traversal dispatch status: initialTraversalDispatch=" + initialTraversalDispatch
+                + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
+                + " traversalReadbacksScheduled=" + traversalReadbacksScheduled);
         this.frameSequence++;
         updateFrameSafetyState(renderList.getMaxEntryCount());
         this.publishSmokeStatus();
