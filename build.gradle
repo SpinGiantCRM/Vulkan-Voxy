@@ -298,3 +298,47 @@ if (!isInGHA) {
         }
     }
 }*/
+
+tasks.register('validateShaderSources') {
+    group = 'verification'
+    description = 'Fails when GLSL resources are collapsed or contain malformed in-line preprocessor directives.'
+
+    doLast {
+        def shaderDir = file('src/main/resources/assets/voxy/shaders')
+        def shaderFiles = fileTree(shaderDir) {
+            include '**/*.glsl', '**/*.comp', '**/*.vsh', '**/*.fsh', '**/*.csh'
+        }
+        def directives = ['#version', '#define', '#ifdef', '#ifndef', '#else', '#endif', '#extension', '#import']
+        def failures = []
+
+        shaderFiles.files.each { file ->
+            def rel = project.relativePath(file)
+            def lines = file.readLines('UTF-8')
+            def nonEmptyLines = lines.count { !it.trim().isEmpty() }
+            if (nonEmptyLines <= 2) {
+                failures << "${rel}: appears collapsed (${nonEmptyLines} non-empty lines)"
+            }
+
+            lines.eachWithIndex { line, idx ->
+                def trimmed = line.trim()
+                directives.each { directive ->
+                    int pos = line.indexOf(directive)
+                    if (pos > 0) {
+                        failures << "${rel}:${idx + 1}: directive '${directive}' must start at column 1"
+                    }
+                    if (trimmed.startsWith(directive) && !line.startsWith('#')) {
+                        failures << "${rel}:${idx + 1}: directive '${directive}' must start the line"
+                    }
+                }
+            }
+        }
+
+        if (!failures.isEmpty()) {
+            throw new GradleException("Shader source validation failed:\n - " + failures.join('\n - '))
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('validateShaderSources')
+}
