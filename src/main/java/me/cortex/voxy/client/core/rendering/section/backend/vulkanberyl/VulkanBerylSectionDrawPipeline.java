@@ -290,9 +290,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void ensureCommandGenPipeline() {
         if (this.commandGenPipeline != null) return;
-        URL shaderRootUrl = VulkanBerylSectionDrawPipeline.class.getResource("/assets/voxy/shaders");
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(CMDGEN_SHADER_CONFIG);
-        Objects.requireNonNull(shaderRootUrl, "Unable to locate /assets/voxy/shaders for section cmdgen pipeline");
         Objects.requireNonNull(configUrl, "Missing section cmdgen shader config: " + CMDGEN_SHADER_CONFIG);
         ComputePipeline.Builder builder = new ComputePipeline.Builder(CMDGEN_SHADER_RESOURCE);
         JsonObject config;
@@ -309,7 +307,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount")
         ), List.of());
         try {
-            builder.compileShader(shaderRootUrl.toExternalForm(), CMDGEN_SHADER_NAME);
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_SHADER_RESOURCE);
+            builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section cmdgen shader (compute=" + CMDGEN_SHADER_NAME + ", config=" + CMDGEN_SHADER_CONFIG + ")", e);
         }
