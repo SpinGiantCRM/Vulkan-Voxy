@@ -19,6 +19,7 @@ import org.lwjgl.vulkan.VkMemoryBarrier;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -128,10 +129,22 @@ public final class VulkanBerylSectionDrawPipeline {
         String fragmentPreview = readPreprocessedShaderPreview(expectedFragmentTempPath, 8);
         System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed vertex shader first lines (path=" + expectedVertexTempPath + "):\n" + vertexPreview);
         System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed fragment shader first lines (path=" + expectedFragmentTempPath + "):\n" + fragmentPreview);
+        byte[] vertexBytes = readShaderBytes(expectedVertexTempPath, "vertex");
+        byte[] fragmentBytes = readShaderBytes(expectedFragmentTempPath, "fragment");
+        verifyNoUtf8BomAndLogPrefix("vertex", expectedVertexTempPath, vertexBytes);
+        verifyNoUtf8BomAndLogPrefix("fragment", expectedFragmentTempPath, fragmentBytes);
+        String vertexSource = new String(vertexBytes, StandardCharsets.UTF_8);
+        String fragmentSource = new String(fragmentBytes, StandardCharsets.UTF_8);
+        System.out.println("[Voxy][VulkanBeryl] Section draw compileShaders contract: Pipeline.Builder.compileShaders(name, vertexSource, fragmentSource) where args 2/3 are GLSL source text, not file paths. "
+                + "Using name=" + DRAW_SHADER_NAME
+                + ", vertexSourceLength=" + vertexSource.length()
+                + ", fragmentSourceLength=" + fragmentSource.length());
         try {
-            builder.compileShaders(shaderCompileBase, DRAW_SHADER_NAME, fragmentShaderName);
+            builder.compileShaders(DRAW_SHADER_NAME, vertexSource, fragmentSource);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")"
+                    + "\ncompileShaders expected args: name + vertexSource + fragmentSource (GLSL text)"
+                    + "\nProvided sources read from: " + expectedVertexTempPath + " and " + expectedFragmentTempPath
                     + "\nVertex first lines:\n" + vertexPreview
                     + "\nFragment first lines:\n" + fragmentPreview, e);
         }
@@ -163,6 +176,42 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return preview.toString();
     }
+
+    private static byte[] readShaderBytes(Path shaderPath, String stage) {
+        try {
+            return Files.readAllBytes(shaderPath);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to read preprocessed " + stage + " shader bytes: " + shaderPath, e);
+        }
+    }
+
+    private static void verifyNoUtf8BomAndLogPrefix(String stage, Path shaderPath, byte[] bytes) {
+        if (bytes.length == 0) {
+            throw new IllegalStateException("Preprocessed " + stage + " shader is empty: " + shaderPath);
+        }
+        boolean hasUtf8Bom = bytes.length >= 3
+                && (bytes[0] & 0xFF) == 0xEF
+                && (bytes[1] & 0xFF) == 0xBB
+                && (bytes[2] & 0xFF) == 0xBF;
+        if (hasUtf8Bom) {
+            throw new IllegalStateException("Preprocessed " + stage + " shader starts with UTF-8 BOM (EF BB BF), expected first byte '#': " + shaderPath);
+        }
+        int previewLength = Math.min(32, bytes.length);
+        StringBuilder hex = new StringBuilder();
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < previewLength; i++) {
+            int b = bytes[i] & 0xFF;
+            if (i > 0) hex.append(' ');
+            hex.append(String.format("%02X", b));
+            text.append(b >= 32 && b <= 126 ? (char) b : '.');
+        }
+        System.out.println("[Voxy][VulkanBeryl] Section draw " + stage + " shader byte prefix: path=" + shaderPath
+                + ", firstByte=0x" + String.format("%02X", bytes[0] & 0xFF)
+                + ", expectedFirstByte=0x23(#)"
+                + ", previewHex=" + hex
+                + ", previewText='" + text + "'");
+    }
+
 
     public void ensureDrawResourcesBound(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
