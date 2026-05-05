@@ -34,6 +34,7 @@ public final class VulkanBerylTraversalExecutor {
     private static final String TRAVERSAL_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.json";
     private static final Pattern SHADER_LINE_PATTERN = Pattern.compile(":(\\d+):\\s+error:");
 
+    public static final int HIZ_BINDING = 0;
     public static final int SCENE_UNIFORM_BINDING = 1;
     public static final int REQUEST_QUEUE_BINDING = 2;
     public static final int RENDER_QUEUE_BINDING = 3;
@@ -127,8 +128,11 @@ public final class VulkanBerylTraversalExecutor {
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to resolve Beryl compute stage for manual traversal descriptors", e);
         }
+        List<UBO> manualDescriptors = createTraversalManualDescriptors(computeStage);
+        String manualDescriptorDiagnostics = describeDescriptorBindingLayout(manualDescriptors);
+        System.out.println("[Voxy][VulkanBeryl] Traversal manual descriptor layout: " + manualDescriptorDiagnostics);
         try {
-            builder.setUniforms(createTraversalManualDescriptors(computeStage), List.of());
+            builder.setUniforms(manualDescriptors, List.of());
             this.descriptorCreationMode = "beryl-manual-descriptors";
         } catch (RuntimeException e) {
             this.lastDescriptorFailure = "binding=<pipeline-create>, method=ComputePipeline.Builder.setUniforms(manual ManualUBO list), reason=" + e.getMessage();
@@ -154,7 +158,8 @@ public final class VulkanBerylTraversalExecutor {
         try {
             pipeline = builder.createPipeline();
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to create traversal compute pipeline for shader " + TRAVERSAL_SHADER_NAME, e);
+            throw new IllegalStateException("Failed to create traversal compute pipeline for shader " + TRAVERSAL_SHADER_NAME
+                    + "; descriptorLayout={" + manualDescriptorDiagnostics + "}", e);
         }
         if (pipeline == null || pipeline.getId() == 0L) {
             throw new IllegalStateException("Failed to create traversal compute pipeline");
@@ -414,6 +419,7 @@ public final class VulkanBerylTraversalExecutor {
 
     private List<UBO> createTraversalManualDescriptors(int computeStage) {
         return List.of(
+                createManualDescriptor(HIZ_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "ReservedHizDummy"),
                 createManualDescriptor(SCENE_UNIFORM_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SceneUniform"),
                 createManualDescriptor(REQUEST_QUEUE_BINDING, computeStage, this.traversalResources.getRequestBuffer(), "RequestQueue"),
                 createManualDescriptor(RENDER_QUEUE_BINDING, computeStage, this.renderList.getBuffer(), "RenderQueue"),
@@ -424,6 +430,39 @@ public final class VulkanBerylTraversalExecutor {
                 createManualDescriptor(NODE_QUEUE_SINK_BINDING, computeStage, this.traversalResources.getScratchQueueB(), "NodeQueueSink"),
                 createManualDescriptor(RENDER_TRACKER_BINDING, computeStage, this.traversalResources.getRenderTrackerBuffer(), "RenderTracker")
         );
+    }
+
+
+    private static String describeDescriptorBindingLayout(List<UBO> descriptors) {
+        if (descriptors == null || descriptors.isEmpty()) {
+            return "count=0, minBinding=<none>, maxBinding=<none>, bindings=[], denseFromZero=false";
+        }
+
+        List<Integer> bindings = new ArrayList<>(descriptors.size());
+        for (UBO descriptor : descriptors) {
+            bindings.add(descriptor.binding);
+        }
+        bindings.sort(Integer::compareTo);
+
+        int minBinding = bindings.get(0);
+        int maxBinding = bindings.get(bindings.size() - 1);
+        boolean denseFromZero = minBinding == 0;
+        if (denseFromZero) {
+            int expected = 0;
+            for (int binding : bindings) {
+                if (binding != expected) {
+                    denseFromZero = false;
+                    break;
+                }
+                expected++;
+            }
+        }
+
+        return "count=" + bindings.size()
+                + ", minBinding=" + minBinding
+                + ", maxBinding=" + maxBinding
+                + ", bindings=" + bindings
+                + ", denseFromZero=" + denseFromZero;
     }
 
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
