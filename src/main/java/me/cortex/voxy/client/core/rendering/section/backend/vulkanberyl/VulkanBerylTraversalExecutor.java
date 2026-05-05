@@ -13,8 +13,11 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.InputStreamReader;
+import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.lwjgl.system.MemoryStack;
 
 import java.lang.reflect.Method;
@@ -22,11 +25,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class VulkanBerylTraversalExecutor {
     public static final String TRAVERSAL_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/hierarchical/traversal.comp";
     private static final String TRAVERSAL_SHADER_NAME = "vulkanberyl/hierarchical/traversal";
     private static final String TRAVERSAL_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.json";
+    private static final Pattern SHADER_LINE_PATTERN = Pattern.compile(":(\\d+):\\s+error:");
 
     public static final int SCENE_UNIFORM_BINDING = 1;
     public static final int REQUEST_QUEUE_BINDING = 2;
@@ -131,7 +137,7 @@ public final class VulkanBerylTraversalExecutor {
         }
         try {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SHADER_RESOURCE);
-            if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
+            if (!Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed traversal shader file missing before compile: " + preprocessedShader.shaderPath());
             }
             System.out.println("[Voxy][VulkanBeryl] compileShader input verified: shader=" + preprocessedShader.shaderName()
@@ -140,6 +146,7 @@ public final class VulkanBerylTraversalExecutor {
                     + ", bytes=" + preprocessedShader.outputBytes());
             builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
         } catch (RuntimeException e) {
+            logTraversalShaderCompileFailureDiagnostics(e);
             throw new IllegalStateException("Failed to compile traversal compute shader: " + TRAVERSAL_SHADER_NAME + " from " + TRAVERSAL_SHADER_RESOURCE, e);
         }
 
@@ -455,6 +462,45 @@ public final class VulkanBerylTraversalExecutor {
             }
         } catch (NoSuchMethodException e) {
             missing.add(owner.getName() + "#" + methodName);
+        }
+    }
+
+    private static void logTraversalShaderCompileFailureDiagnostics(RuntimeException compileFailure) {
+        try {
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SHADER_RESOURCE);
+            Path shaderPath = preprocessedShader.shaderPath();
+            System.out.println("[Voxy][VulkanBeryl] Traversal shader compile failure diagnostics:");
+            System.out.println("  shaderResourceId=" + TRAVERSAL_SHADER_RESOURCE);
+            System.out.println("  tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath());
+            System.out.println("  tempShaderPath=" + shaderPath);
+            if (!Files.isRegularFile(shaderPath)) {
+                System.out.println("  temp shader file is missing; cannot print source context");
+                return;
+            }
+            String message = compileFailure.getMessage();
+            if (message == null || message.isBlank()) {
+                System.out.println("  compile error message was empty; cannot infer source line context");
+                return;
+            }
+            List<String> sourceLines = Files.readAllLines(shaderPath, StandardCharsets.UTF_8);
+            Matcher matcher = SHADER_LINE_PATTERN.matcher(message);
+            boolean foundLine = false;
+            while (matcher.find()) {
+                foundLine = true;
+                int lineNumber = Integer.parseInt(matcher.group(1));
+                int start = Math.max(1, lineNumber - 2);
+                int end = Math.min(sourceLines.size(), lineNumber + 2);
+                System.out.println("  source context around line " + lineNumber + ":");
+                for (int i = start; i <= end; i++) {
+                    String marker = i == lineNumber ? ">" : " ";
+                    System.out.println("    " + marker + String.format("%4d", i) + " | " + sourceLines.get(i - 1));
+                }
+            }
+            if (!foundLine) {
+                System.out.println("  no shader line numbers were parsed from compile exception message");
+            }
+        } catch (RuntimeException | IOException diagnosticsFailure) {
+            System.out.println("[Voxy][VulkanBeryl] Failed to capture traversal shader compile diagnostics: " + diagnosticsFailure);
         }
     }
 
