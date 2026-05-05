@@ -125,10 +125,10 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", vertexPreparedTempPath=" + (vertexPrepared == null ? "<missing>" : vertexPrepared.tempShaderRelativePath())
                 + ", fragmentPreparedShaderName=" + (fragmentPrepared == null ? "<missing>" : fragmentPrepared.shaderName())
                 + ", fragmentPreparedTempPath=" + (fragmentPrepared == null ? "<missing>" : fragmentPrepared.tempShaderRelativePath()));
-        String vertexPreview = readPreprocessedShaderPreview(expectedVertexTempPath, 24);
-        String fragmentPreview = readPreprocessedShaderPreview(expectedFragmentTempPath, 24);
-        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed vertex shader first 24 lines (path=" + expectedVertexTempPath + "):\n" + vertexPreview);
-        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed fragment shader first 24 lines (path=" + expectedFragmentTempPath + "):\n" + fragmentPreview);
+        String vertexPreview = readPreprocessedShaderPreview(expectedVertexTempPath, 220);
+        String fragmentPreview = readPreprocessedShaderPreview(expectedFragmentTempPath, 220);
+        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed vertex shader first 220 lines (path=" + expectedVertexTempPath + "):\n" + vertexPreview);
+        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed fragment shader first 220 lines (path=" + expectedFragmentTempPath + "):\n" + fragmentPreview);
         byte[] vertexBytes = readShaderBytes(expectedVertexTempPath, "vertex");
         byte[] fragmentBytes = readShaderBytes(expectedFragmentTempPath, "fragment");
         verifyNoUtf8BomAndLogPrefix("vertex", expectedVertexTempPath, vertexBytes);
