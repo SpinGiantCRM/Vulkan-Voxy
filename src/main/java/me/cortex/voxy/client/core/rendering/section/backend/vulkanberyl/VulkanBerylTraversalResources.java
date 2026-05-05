@@ -8,6 +8,9 @@ import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
+import org.lwjgl.vulkan.VK10;
+import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkMemoryBarrier;
 
 import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
@@ -135,6 +138,68 @@ public final class VulkanBerylTraversalResources {
             uploader.flush();
         }
     }
+
+    public FrameInitStats recordTraversalFrameInitialization(VkCommandBuffer commandBuffer,
+                                                             VulkanBerylViewportRenderList renderList,
+                                                             VulkanBerylTopLevelNodeStore topLevelNodeStore,
+                                                             int topNodeCount,
+                                                             boolean smokeWriteKnown) {
+        requireNotFreed();
+        if (commandBuffer == null) throw new IllegalArgumentException("commandBuffer must not be null");
+        if (renderList == null) throw new IllegalArgumentException("renderList must not be null");
+        if (topLevelNodeStore == null) throw new IllegalArgumentException("topLevelNodeStore must not be null");
+        int firstDispatchSize = (topNodeCount + 31) >>> 5;
+
+        VK10.vkCmdFillBuffer(commandBuffer, renderList.getBuffer().getId(), 0L, Integer.BYTES, 0);
+        VK10.vkCmdFillBuffer(commandBuffer, this.requestBuffer.getId(), 0L, Integer.BYTES, 0);
+        VK10.vkCmdFillBuffer(commandBuffer, this.queueIndexBuffer.getId(), 0L, QUEUE_INDEX_BUFFER_SIZE_BYTES, 0);
+        VK10.vkCmdFillBuffer(commandBuffer, this.queueMetaBuffer.getId(), 0L, QUEUE_META_BUFFER_SIZE_BYTES, 0);
+        VK10.vkCmdFillBuffer(commandBuffer, this.renderTrackerBuffer.getId(), 0L, RENDER_TRACKER_BUFFER_SIZE_BYTES, 0);
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var queueMetadata = stack.mallocInt(MAX_ITERATIONS * 4);
+            for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+                int baseIndex = iteration * 4;
+                queueMetadata.put(baseIndex, iteration == 0 ? firstDispatchSize : 0);
+                queueMetadata.put(baseIndex + 1, 1);
+                queueMetadata.put(baseIndex + 2, 1);
+                queueMetadata.put(baseIndex + 3, iteration == 0 ? topNodeCount : 0);
+            }
+            VK10.vkCmdUpdateBuffer(commandBuffer, this.queueMetaBuffer.getId(), 0L, queueMetadata);
+
+            int seededCount = 0;
+            if (topNodeCount > 0) {
+                var topNodeIds = stack.mallocInt(topNodeCount);
+                topLevelNodeStore.copyTopNodeIdsToAddress(memAddress(topNodeIds), topNodeCount);
+                VK10.vkCmdUpdateBuffer(commandBuffer, this.scratchQueueA.getId(), 0L, topNodeIds);
+                seededCount = topNodeCount;
+            }
+            if (smokeWriteKnown) {
+                var known = stack.mallocInt(1);
+                known.put(0, 0);
+                VK10.vkCmdUpdateBuffer(commandBuffer, renderList.getBuffer().getId(), 0L, known);
+                VK10.vkCmdUpdateBuffer(commandBuffer, this.requestBuffer.getId(), 0L, known);
+            }
+
+            VkMemoryBarrier.Buffer transferToCompute = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    0, transferToCompute, null, null);
+
+            return new FrameInitStats(firstDispatchSize, true, seededCount, true, true, true);
+        }
+    }
+
+    public record FrameInitStats(int firstDispatchSize,
+                                 boolean queueMetaInitialized,
+                                 int scratchQueueASeededCount,
+                                 boolean requestCounterCleared,
+                                 boolean renderListCounterCleared,
+                                 boolean transferToComputeBarrier) {}
 
     public void uploadQueueIndex(int queueIndex, VulkanBerylGeometryUploader uploader) {
         requireNotFreed();
