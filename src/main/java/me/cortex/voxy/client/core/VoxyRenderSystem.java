@@ -61,6 +61,7 @@ public class VoxyRenderSystem {
     private final SectionRenderPipeline pipeline;
     private final RenderProperties properties;
     private final BooleanSupplier frexWorkSupplier;
+    private final boolean supportsGlModelBaking;
     private long renderEntryCount;
     private long renderSkippedCount;
     private String lastRenderSkipReason = "none";
@@ -93,6 +94,7 @@ public class VoxyRenderSystem {
 
             this.properties = RenderProperties.getRenderProperties();
             var backendContext = getRenderBackendContext();
+            this.supportsGlModelBaking = backendContext.supportsGlModelBaking();
             try (var stateGuard = backendContext.enterConstructionStateGuard()) {
                 this.modelService = new ModelBakerySubsystem(world.getMapper(), backendContext.supportsGlModelBaking());
                 this.renderGen = new RenderGenerationService(world, this.modelService, sm, backendContext.usesMeshlets());
@@ -269,7 +271,11 @@ public class VoxyRenderSystem {
             while (this.renderDistanceTracker.setCenterAndProcess(viewport.cameraX, viewport.cameraZ) && VoxyClient.isFrexActive());//While FF is active, run until everything is processed
             TimingStatistics.H.start();
             //Done here as is allows less gl state resetup
-            do { this.modelService.tick(900_000); } while (VoxyClient.isFrexActive() && !this.modelService.areQueuesEmpty());
+            if (this.supportsGlModelBaking) {
+                do { this.modelService.tick(900_000); } while (VoxyClient.isFrexActive() && !this.modelService.areQueuesEmpty());
+            } else {
+                this.modelService.skipDisabledBackendWorkOrLogOnce();
+            }
             TimingStatistics.H.stop();
         }
         GPUTiming.INSTANCE.marker();
