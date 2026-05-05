@@ -1,11 +1,8 @@
-#version 460 core
+#version 460
 
 layout(local_size_x = 128) in;
 
-struct SectionMeta {
-    uvec4 a;
-    uvec4 b;
-};
+#import <voxy:lod/section.glsl>
 
 struct DrawCommand {
     uint vertexCount;
@@ -28,7 +25,6 @@ layout(binding = 4, std430) buffer DrawCountBuffer {
     uint drawCount;
 };
 
-#import <voxy:lod/section.glsl>
 
 uint extractOpaqueQuadCount(SectionMeta meta) {
     uvec4 counts = meta.b;
