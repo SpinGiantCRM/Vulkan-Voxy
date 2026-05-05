@@ -52,15 +52,19 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int CMDGEN_RENDER_LIST_BINDING = 2;
     private static final int CMDGEN_DRAW_COMMAND_BINDING = 3;
     private static final int CMDGEN_DRAW_COUNT_BINDING = 4;
+    private static final int CMDGEN_CONFIG_BINDING = 5;
     private static final int DRAW_COMMAND_STRIDE_BYTES = 16;
     private static final int DRAW_COMMAND_DEBUG_SAMPLE_LIMIT = 16;
     private static final boolean DEBUG_COLOUR_MODE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DEBUG_COLOUR", "false"));
+    private static final boolean ENABLE_CMDGEN_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", "false"));
+    private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
 
     private GraphicsPipeline graphicsPipeline;
     private ComputePipeline commandGenPipeline;
     private Buffer drawCommandBuffer;
     private Buffer drawCountBuffer;
     private Buffer drawCommandDebugReadbackBuffer;
+    private Buffer cmdGenConfigBuffer;
     private int drawCommandBufferUsageFlags;
     private int drawCommandCapacity;
     private int pendingDebugSampleCommandCount;
@@ -288,6 +292,7 @@ public final class VulkanBerylSectionDrawPipeline {
         bindComputeStorageBinding(CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
         bindComputeStorageBinding(CMDGEN_DRAW_COMMAND_BINDING, this.drawCommandBuffer, "drawCommandBuffer");
         bindComputeStorageBinding(CMDGEN_DRAW_COUNT_BINDING, this.drawCountBuffer, "drawCountBuffer");
+        updateAndBindCmdGenConfigBuffer(geometryData.getMaxSectionCount(), renderList.getMaxEntryCount());
         this.resourcesBound = true;
     }
 
@@ -321,8 +326,16 @@ public final class VulkanBerylSectionDrawPipeline {
         int maxEntryCount = renderList.getMaxEntryCount();
         int rawVisibleCount = renderList.getLastVisibleCount();
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
+        VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety = VulkanBerylRenderBackendRuntime.getLastFrameSafetyState();
+        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && frameSafety.allowCmdGen();
+        boolean indirectAllowed = ENABLE_INDIRECT_DRAW && frameSafety.allowIndirectDraw();
+        String gateReason = frameSafety.reason();
+        System.out.println("[Voxy][VulkanBeryl] GPU stage gate: traversalDispatch=true cmdgenDispatch=" + cmdgenAllowed + " indirectDraw=" + indirectAllowed + " reason=" + gateReason);
         if (visibleCount <= 0) {
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
+        }
+        if (!cmdgenAllowed) {
+            return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "cmdgen_gate:" + gateReason);
         }
 
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
@@ -331,6 +344,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
 
         validateDrawCommandBuffer(visibleCount);
+        clearDrawCommandState(commandBuffer);
         VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, this.commandGenPipeline.getId());
         this.commandGenPipeline.bindDescriptorSets(commandBuffer, 0);
         int groupCountX = (visibleCount + 127) >>> 7;
@@ -355,6 +369,9 @@ public final class VulkanBerylSectionDrawPipeline {
         this.consumePendingDebugCommandSampleIfReady();
         int sampledCommandCount = Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount);
         scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
+        if (!indirectAllowed) {
+            return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + gateReason);
+        }
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(viewport);
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
@@ -382,6 +399,10 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCountBuffer != null) {
             this.drawCountBuffer.scheduleFree();
             this.drawCountBuffer = null;
+        }
+        if (this.cmdGenConfigBuffer != null) {
+            this.cmdGenConfigBuffer.scheduleFree();
+            this.cmdGenConfigBuffer = null;
         }
         if (this.drawCommandDebugReadbackBuffer != null) {
             this.drawCommandDebugReadbackBuffer.scheduleFree();
@@ -427,7 +448,19 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandDebugReadbackBuffer != null) this.drawCommandDebugReadbackBuffer.scheduleFree();
         this.drawCommandDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
         this.drawCommandDebugReadbackBuffer.createBuffer((long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
+        if (this.cmdGenConfigBuffer == null) {
+            this.cmdGenConfigBuffer = new Buffer("voxy_vulkanberyl_cmdgen_config", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+            this.cmdGenConfigBuffer.createBuffer(8L);
+        }
         this.drawCommandCapacity = maxEntryCount;
+    }
+
+    private void clearDrawCommandState(VkCommandBuffer commandBuffer) {
+        VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, 4L, 0);
+        long clearBytes = Math.min(this.drawCommandBuffer.getBufferSize(), (long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
+        if (clearBytes > 0L) {
+            VK10.vkCmdFillBuffer(commandBuffer, this.drawCommandBuffer.getId(), 0L, clearBytes, 0);
+        }
     }
 
     private void validateDrawCommandBuffer(int visibleCount) {
@@ -499,7 +532,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenMetadata"),
                 createManualDescriptor(CMDGEN_RENDER_LIST_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == RENDER_LIST_BINDING).getBufferSlice().getBuffer(), "CmdGenRenderList"),
                 createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenDrawCommand"),
-                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount")
+                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount"),
+                createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenConfig")
         );
         builder.setUniforms(cmdGenDescriptors, List.of());
         List<Integer> cmdgenBindings = cmdGenDescriptors.stream().map(ubo -> ubo.binding).sorted().toList();
@@ -610,6 +644,19 @@ public final class VulkanBerylSectionDrawPipeline {
         int rangeBytes = (int) bufferSize;
         System.out.println("[Voxy][VulkanBeryl] Binding cmdgen descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
         ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
+    }
+
+    private void updateAndBindCmdGenConfigBuffer(int metadataSectionCapacity, int renderListCapacity) {
+        long scratch = MemoryUtil.nmemAlloc(8L);
+        try {
+            MemoryUtil.memPutInt(scratch, metadataSectionCapacity);
+            MemoryUtil.memPutInt(scratch + 4L, renderListCapacity);
+            VulkanBerylGeometryUploader.get().upload(this.cmdGenConfigBuffer, 0L, scratch, 8L);
+            VulkanBerylGeometryUploader.get().flush();
+        } finally {
+            MemoryUtil.nmemFree(scratch);
+        }
+        bindComputeStorageBinding(CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
     }
 
     private static IllegalStateException descriptorRangeException(int binding, String label, long sizeBytes) {

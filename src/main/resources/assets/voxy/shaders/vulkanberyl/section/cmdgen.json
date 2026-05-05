@@ -31,6 +31,14 @@
       "stages": [
         "compute"
       ]
+    },
+    {
+      "name": "CmdGenConfigBuffer",
+      "binding": 5,
+      "type": "storageBuffer",
+      "stages": [
+        "compute"
+      ]
     }
   ]
 }
