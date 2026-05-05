@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -62,7 +64,48 @@ final class VulkanBerylShaderImportPreprocessor {
         return new PreparedShader(rootUrl, shaderName, shaderPath, outputShaderRelativePath, shaderFileSize);
     }
 
+    static PreparedShaderSet preprocessShaderSetToTemp(String... shaderResourceIds) {
+        if (shaderResourceIds == null || shaderResourceIds.length == 0) {
+            throw new IllegalArgumentException("shaderResourceIds must not be empty");
+        }
+        assertNormalizationInvariants();
+        ImportResolution resolution = new ImportResolution();
+        Path root;
+        List<PreparedShader> preparedShaders = new ArrayList<>(shaderResourceIds.length);
+        try {
+            root = Files.createTempDirectory("voxy-vulkanberyl-shaders-");
+            root.toFile().deleteOnExit();
+            for (String shaderResourceId : shaderResourceIds) {
+                Identifier rootShader = Identifier.parse(shaderResourceId);
+                String expandedSource = resolution.expandRoot(rootShader);
+                String shaderName = outputShaderRelativePath(rootShader);
+                String extension = extractExtension(rootShader.getPath());
+                String outputShaderRelativePath = shaderName + extension;
+                Path shaderPath = root.resolve(outputShaderRelativePath);
+                Files.createDirectories(shaderPath.getParent());
+                Files.writeString(shaderPath, expandedSource, StandardCharsets.UTF_8);
+                shaderPath.toFile().deleteOnExit();
+                long shaderFileSize = Files.size(shaderPath);
+                preparedShaders.add(new PreparedShader(root.toUri().toString(), shaderName, shaderPath, outputShaderRelativePath, shaderFileSize));
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to write preprocessed shader set", e);
+        }
+        String rootUrl = root.toUri().toString();
+        for (PreparedShader shader : preparedShaders) {
+            System.out.println("[Voxy][VulkanBeryl] Prepared shader import preprocess: shaderResourceId="
+                    + shaderResourceIds[preparedShaders.indexOf(shader)]
+                    + ", tempRootPath=" + root
+                    + ", tempShaderRelativePath=" + shader.tempShaderRelativePath()
+                    + ", compileShaderName=" + shader.shaderName()
+                    + ", outputBytes=" + shader.outputBytes()
+                    + ", rootUrl=" + rootUrl);
+        }
+        return new PreparedShaderSet(rootUrl, root, List.copyOf(preparedShaders));
+    }
+
     record PreparedShader(String rootUrl, String shaderName, Path shaderPath, String tempShaderRelativePath, long outputBytes) {}
+    record PreparedShaderSet(String rootUrl, Path tempRootPath, List<PreparedShader> shaders) {}
 
     static String classpathShaderAssetPath(Identifier id) {
         String path = id.getPath();
@@ -78,6 +121,14 @@ final class VulkanBerylShaderImportPreprocessor {
 
     private static String stripCompExtension(String path) {
         return path.endsWith(".comp") ? path.substring(0, path.length() - ".comp".length()) : path;
+    }
+
+    private static String extractExtension(String path) {
+        int dot = path.lastIndexOf('.');
+        if (dot < 0 || dot == path.length() - 1) {
+            throw new IllegalStateException("Shader path is missing extension: " + path);
+        }
+        return path.substring(dot);
     }
 
     private static void assertNormalizationInvariants() {
