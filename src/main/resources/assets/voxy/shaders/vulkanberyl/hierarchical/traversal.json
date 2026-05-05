@@ -3,136 +3,73 @@
     {
       "name": "SceneUniform",
       "binding": 1,
-      "type": "compute",
+      "type": "uniformBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "RequestQueue",
       "binding": 2,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "RenderQueue",
       "binding": 3,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "NodeData",
       "binding": 4,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "NodeQueueIndex",
       "binding": 5,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "NodeQueueMeta",
       "binding": 6,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "NodeQueueSource",
       "binding": 7,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "NodeQueueSink",
       "binding": 8,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "RenderTracker",
       "binding": 9,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     }
   ]
