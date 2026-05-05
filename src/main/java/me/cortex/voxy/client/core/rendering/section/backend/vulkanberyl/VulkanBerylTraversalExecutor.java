@@ -131,6 +131,13 @@ public final class VulkanBerylTraversalExecutor {
         }
         try {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SHADER_RESOURCE);
+            if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
+                throw new IllegalStateException("Preprocessed traversal shader file missing before compile: " + preprocessedShader.shaderPath());
+            }
+            System.out.println("[Voxy][VulkanBeryl] compileShader input verified: shader=" + preprocessedShader.shaderName()
+                    + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
+                    + ", file=" + preprocessedShader.shaderPath()
+                    + ", bytes=" + preprocessedShader.outputBytes());
             builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to compile traversal compute shader: " + TRAVERSAL_SHADER_NAME + " from " + TRAVERSAL_SHADER_RESOURCE, e);
