@@ -9,7 +9,6 @@ import net.vulkanmod.vulkan.shader.GraphicsPipeline;
 import net.vulkanmod.vulkan.shader.Pipeline;
 import net.vulkanmod.vulkan.shader.descriptor.ManualUBO;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
-import java.util.ArrayList;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VK10;
@@ -85,7 +84,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
 
         Pipeline.Builder builder = new Pipeline.Builder();
-        List<ManualUBO> drawDescriptors = createManualDrawDescriptors();
+        List<UBO> drawDescriptors = createManualDrawDescriptors();
         System.out.println("[Voxy][VulkanBeryl] Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
         try {
             builder.setUniforms(drawDescriptors, List.of());
@@ -228,8 +227,8 @@ public final class VulkanBerylSectionDrawPipeline {
 
 
 
-    private static List<ManualUBO> createManualDrawDescriptors() {
-        List<ManualUBO> descriptors = new ArrayList<>(7);
+    private static List<UBO> createManualDrawDescriptors() {
+        List<UBO> descriptors = new java.util.ArrayList<>(7);
         int vertexStage = VK10.VK_SHADER_STAGE_VERTEX_BIT;
         descriptors.add(new ManualUBO(0, vertexStage, 20)); // mat4 + ivec3 + frame + padding + vec3
         descriptors.add(new ManualUBO(1, vertexStage, 1));
