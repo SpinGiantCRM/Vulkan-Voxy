@@ -2,6 +2,8 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import net.beryl.render.ComputePipeline;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import net.vulkanmod.vulkan.Renderer;
@@ -85,7 +87,8 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to load section draw shader config: " + DRAW_SHADER_CONFIG, e);
         }
 
-        Pipeline.Builder builder = new Pipeline.Builder();
+        VertexFormat drawVertexFormat = resolveDummyVertexFormat();
+        Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
         System.out.println("[Voxy][VulkanBeryl] Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
         try {
@@ -135,6 +138,13 @@ public final class VulkanBerylSectionDrawPipeline {
         verifyNoUtf8BomAndLogPrefix("fragment", expectedFragmentTempPath, fragmentBytes);
         String vertexSource = new String(vertexBytes, StandardCharsets.UTF_8);
         String fragmentSource = new String(fragmentBytes, StandardCharsets.UTF_8);
+        boolean declaresVertexInputs = declaresVertexInputs(vertexSource);
+        System.out.println("[Voxy][VulkanBeryl] Section draw vertex input diagnostics: vertexFormatSet=" + (drawVertexFormat != null)
+                + ", vertexFormatClass=" + (drawVertexFormat == null ? "<null>" : drawVertexFormat.getClass().getName())
+                + ", vertexFormat=" + drawVertexFormat
+                + ", vertexSize=" + (drawVertexFormat == null ? -1 : drawVertexFormat.getVertexSize())
+                + ", shaderDeclaresVertexInputs=" + declaresVertexInputs
+                + ", usingDummyVertexInputMode=true");
         System.out.println("[Voxy][VulkanBeryl] Section draw compileShaders contract: Pipeline.Builder.compileShaders(name, vertexSource, fragmentSource) where args 2/3 are GLSL source text, not file paths. "
                 + "Using name=" + DRAW_SHADER_NAME
                 + ", vertexSourceLength=" + vertexSource.length()
@@ -157,6 +167,43 @@ public final class VulkanBerylSectionDrawPipeline {
         if (pipeline == null) throw new IllegalStateException("Failed to create section draw graphics pipeline");
         this.graphicsPipeline = pipeline;
         this.graphicsPipelineCreated = true;
+    }
+
+    private static VertexFormat resolveDummyVertexFormat() {
+        VertexFormat positionFormat = tryGetVertexFormatField("POSITION");
+        if (positionFormat != null) {
+            return positionFormat;
+        }
+        VertexFormat positionColorFormat = tryGetVertexFormatField("POSITION_COLOR");
+        if (positionColorFormat != null) {
+            return positionColorFormat;
+        }
+        throw new IllegalStateException("Unable to resolve a non-null dummy vertex format for VulkanMod graphics pipeline creation");
+    }
+
+    private static VertexFormat tryGetVertexFormatField(String fieldName) {
+        try {
+            var field = DefaultVertexFormat.class.getDeclaredField(fieldName);
+            Object value = field.get(null);
+            if (value instanceof VertexFormat format) {
+                return format;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static boolean declaresVertexInputs(String vertexSource) {
+        if (vertexSource == null || vertexSource.isEmpty()) return false;
+        String[] lines = vertexSource.split("\\R");
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("//")) continue;
+            if (trimmed.contains("layout") && trimmed.contains(" in ")) {
+                return true;
+            }
+        }
+        return false;
     }
 
 
