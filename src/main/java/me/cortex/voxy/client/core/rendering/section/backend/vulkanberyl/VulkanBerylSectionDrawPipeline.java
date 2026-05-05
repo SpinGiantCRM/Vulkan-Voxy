@@ -508,7 +508,12 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
-            builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
+            try {
+                builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
+            } catch (Exception e) {
+                logCmdGenCompileFailureDiagnostics(preprocessedShader);
+                throw e;
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section cmdgen shader (compute=" + CMDGEN_SHADER_NAME + ", config=" + CMDGEN_SHADER_CONFIG + ")", e);
         }
@@ -523,6 +528,24 @@ public final class VulkanBerylSectionDrawPipeline {
         this.commandGenPipelineCreated = true;
     }
 
+
+
+    private static void logCmdGenCompileFailureDiagnostics(VulkanBerylShaderImportPreprocessor.PreparedShader shader) {
+        final int maxLines = 120;
+        try {
+            List<String> lines = Files.readAllLines(shader.shaderPath(), StandardCharsets.UTF_8);
+            int lineCount = Math.min(maxLines, lines.size());
+            StringBuilder preview = new StringBuilder();
+            for (int i = 0; i < lineCount; i++) {
+                preview.append(String.format("%4d | %s%n", i + 1, lines.get(i)));
+            }
+            System.err.println("[Voxy][VulkanBeryl] Cmdgen compile failed. Preprocessed shader path=" + shader.shaderPath()
+                    + ", showing first " + lineCount + " lines:\n" + preview);
+        } catch (Exception readError) {
+            System.err.println("[Voxy][VulkanBeryl] Cmdgen compile failed, and preprocessed shader preview could not be read: path="
+                    + shader.shaderPath() + ", error=" + readError);
+        }
+    }
 
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
