@@ -101,8 +101,6 @@ public final class VulkanBerylTraversalExecutor {
             return;
         }
 
-        URL shaderRootUrl = VulkanBerylTraversalExecutor.class.getResource("/assets/voxy/shaders");
-        if (shaderRootUrl == null) throw new IllegalStateException("Unable to locate /assets/voxy/shaders for traversal compute pipeline");
         URL configUrl = VulkanBerylTraversalExecutor.class.getResource(TRAVERSAL_SHADER_CONFIG);
         if (configUrl == null) throw new IllegalStateException("Missing traversal compute shader config: " + TRAVERSAL_SHADER_CONFIG);
 
@@ -132,7 +130,8 @@ public final class VulkanBerylTraversalExecutor {
                     + describeTraversalBindings(config), e);
         }
         try {
-            builder.compileShader(shaderRootUrl.toExternalForm(), TRAVERSAL_SHADER_NAME);
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SHADER_RESOURCE);
+            builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to compile traversal compute shader: " + TRAVERSAL_SHADER_NAME + " from " + TRAVERSAL_SHADER_RESOURCE, e);
         }

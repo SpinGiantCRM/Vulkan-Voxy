@@ -71,7 +71,6 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
         if (this.graphicsPipeline != null) return;
 
-        URL shaderRootUrl = VulkanBerylSectionDrawPipeline.class.getResource("/assets/voxy/shaders");
         if (shaderRootUrl == null) throw new IllegalStateException("Unable to locate /assets/voxy/shaders for section draw pipeline");
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(DRAW_SHADER_CONFIG);
         if (configUrl == null) throw new IllegalStateException("Missing section draw shader config: " + DRAW_SHADER_CONFIG);
@@ -290,9 +289,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void ensureCommandGenPipeline() {
         if (this.commandGenPipeline != null) return;
-        URL shaderRootUrl = VulkanBerylSectionDrawPipeline.class.getResource("/assets/voxy/shaders");
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(CMDGEN_SHADER_CONFIG);
-        Objects.requireNonNull(shaderRootUrl, "Unable to locate /assets/voxy/shaders for section cmdgen pipeline");
         Objects.requireNonNull(configUrl, "Missing section cmdgen shader config: " + CMDGEN_SHADER_CONFIG);
         ComputePipeline.Builder builder = new ComputePipeline.Builder(CMDGEN_SHADER_RESOURCE);
         JsonObject config;
@@ -309,7 +306,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount")
         ), List.of());
         try {
-            builder.compileShader(shaderRootUrl.toExternalForm(), CMDGEN_SHADER_NAME);
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_SHADER_RESOURCE);
+            builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section cmdgen shader (compute=" + CMDGEN_SHADER_NAME + ", config=" + CMDGEN_SHADER_CONFIG + ")", e);
         }
