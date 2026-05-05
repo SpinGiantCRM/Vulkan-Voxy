@@ -186,6 +186,20 @@ final class VulkanBerylShaderImportPreprocessor {
         assertShaderPathInvariants(drawFragment.toString(), outputShaderRelativePath(drawFragment), outputShaderRelativePath(drawFragment) + ".fsh", ".fsh");
     }
 
+
+    private static String normalizeVulkanVersionDirective(String line) {
+        if (line == null) {
+            return null;
+        }
+        String trimmed = line.trim();
+        if ("#version 460 core".equals(trimmed)) {
+            return line.replace("#version 460 core", "#version 460");
+        }
+        if ("#version 450 core".equals(trimmed)) {
+            return line.replace("#version 450 core", "#version 450");
+        }
+        return line;
+    }
     private static final class ImportResolution {
         private final Set<Identifier> onceIncluded = new LinkedHashSet<>();
         private final ArrayDeque<Identifier> includeStack = new ArrayDeque<>();
@@ -197,7 +211,7 @@ final class VulkanBerylShaderImportPreprocessor {
             int startLine = 0;
             while (startLine < lines.length && lines[startLine].trim().isEmpty()) startLine++;
             if (startLine < lines.length && lines[startLine].startsWith("#version")) {
-                out.append(lines[startLine]).append('\n');
+                out.append(normalizeVulkanVersionDirective(lines[startLine])).append('\n');
                 startLine++;
             } else {
                 out.append("#version 460\n");
@@ -237,7 +251,7 @@ final class VulkanBerylShaderImportPreprocessor {
                     Identifier imported = Identifier.fromNamespaceAndPath(matcher.group("namespace"), matcher.group("path"));
                     expandImport(owner, imported, out);
                 } else {
-                    out.append(line).append('\n');
+                    out.append(normalizeVulkanVersionDirective(line)).append('\n');
                 }
             }
         }

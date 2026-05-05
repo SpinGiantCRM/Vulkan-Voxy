@@ -1,4 +1,4 @@
-#version 460 core
+#version 460
 #extension GL_ARB_gpu_shader_int64 : enable
 
 #ifdef GL_ARB_gpu_shader_int64
