@@ -227,9 +227,7 @@ public class ModelFactory {
 
     private boolean processModelResult() {
         if (!this.glModelBakingEnabled) {
-            if (!this.bakeQueue.isEmpty()) {
-                throw new UnsupportedOperationException("Model baking requires an OpenGL context and is disabled for this backend (VULKANMOD_BERYL)");
-            }
+            this.discardDisabledBackendBakeQueueWork();
             return false;
         }
 
@@ -331,6 +329,19 @@ public class ModelFactory {
 
         while (this.processModelResult());
         return (this.blockStatesInFlight.size()!=0)||(!this.bakeQueue.isEmpty())||!this.biomeQueue.isEmpty();
+    }
+
+    private void discardDisabledBackendBakeQueueWork() {
+        BlockBake bake = this.bakeQueue.poll();
+        while (bake != null) {
+            this.blockStatesInFlightLock.lock();
+            try {
+                this.blockStatesInFlight.remove(bake.blockId);
+            } finally {
+                this.blockStatesInFlightLock.unlock();
+            }
+            bake = this.bakeQueue.poll();
+        }
     }
 
     public void processUploads() {
@@ -1020,6 +1031,14 @@ public class ModelFactory {
         size += this.biomeQueue.size();
         size += this.bakeQueue.size();
         return size;
+    }
+
+    public boolean isGlModelBakingEnabled() {
+        return this.glModelBakingEnabled;
+    }
+
+    public int getBakeQueueSize() {
+        return this.bakeQueue.size();
     }
 
 

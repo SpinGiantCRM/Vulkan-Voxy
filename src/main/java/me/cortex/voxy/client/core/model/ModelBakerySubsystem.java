@@ -6,8 +6,6 @@ import me.cortex.voxy.client.VoxyClient;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.world.other.Mapper;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -20,10 +18,14 @@ public class ModelBakerySubsystem {
     private final Mapper mapper;
 
     private final Thread processingThread;
+    private final boolean glModelBakingEnabled;
     private volatile boolean isRunning = true;
     private volatile Throwable processingThreadException;
+    private long disabledBackendSkipTickCount;
+    private boolean disabledBackendSkipLogged;
     public ModelBakerySubsystem(Mapper mapper, boolean glModelBakingEnabled) {
         this.mapper = mapper;
+        this.glModelBakingEnabled = glModelBakingEnabled;
         this.factory = new ModelFactory(mapper, this.storage, glModelBakingEnabled);
         this.processingThread = new Thread(()->{//TODO replace this with something good/integrate it into the async processor so that we just have less threads overall
             while (this.isRunning) {
@@ -45,7 +47,19 @@ public class ModelBakerySubsystem {
         if (this.processingThreadException != null) {
             throw new RuntimeException(this.processingThreadException);
         }
+        if (!this.glModelBakingEnabled) {
+            this.skipDisabledBackendWorkOrLogOnce();
+            return;
+        }
         this.factory.processUploads();
+    }
+
+    public void skipDisabledBackendWorkOrLogOnce() {
+        this.disabledBackendSkipTickCount++;
+        if (!this.disabledBackendSkipLogged) {
+            this.disabledBackendSkipLogged = true;
+            Logger.info("[Voxy][VulkanBeryl] GL model baking disabled; skipping model bakery uploads for Vulkan/Beryl backend");
+        }
     }
 
     public void shutdown() {
@@ -89,6 +103,10 @@ public class ModelBakerySubsystem {
 
     public void addDebugData(List<String> debug) {
         debug.add(String.format("IF/MC: %03d, %04d", this.factory.getInflightCount(),  this.factory.getBakedCount()));//Model bake queue/in flight/model baked count
+        debug.add("Model bakery GL enabled: " + this.glModelBakingEnabled);
+        debug.add("Model bakery disabled-backend skip ticks: " + this.disabledBackendSkipTickCount);
+        debug.add("Model bakery disabled-backend bake queue: " + this.factory.getBakeQueueSize());
+        debug.add("Model bakery processing thread exception status: " + (this.processingThreadException == null ? "none" : "present"));
     }
 
     public ModelStore getStore() {
@@ -101,5 +119,9 @@ public class ModelBakerySubsystem {
 
     public int getProcessingCount() {
         return this.factory.getInflightCount();
+    }
+
+    public boolean isGlModelBakingEnabled() {
+        return this.glModelBakingEnabled;
     }
 }
