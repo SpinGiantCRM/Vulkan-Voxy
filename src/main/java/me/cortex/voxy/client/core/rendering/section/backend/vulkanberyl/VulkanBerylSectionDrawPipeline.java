@@ -30,6 +30,8 @@ import net.vulkanmod.vulkan.memory.MemoryTypes;
 
 public final class VulkanBerylSectionDrawPipeline {
     public static final String DRAW_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/draw.vsh";
+    public static final String DRAW_FRAGMENT_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/draw.fsh";
+    public static final String DRAW_DEBUG_FRAGMENT_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/draw_debug.fsh";
     private static final String DRAW_SHADER_NAME = "vulkanberyl/section/draw";
     private static final String DRAW_DEBUG_FRAGMENT_SHADER_NAME = "vulkanberyl/section/draw_debug";
     private static final String DRAW_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/section/draw.json";
@@ -71,8 +73,6 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
         if (this.graphicsPipeline != null) return;
 
-        URL shaderRootUrl = VulkanBerylSectionDrawPipeline.class.getResource("/assets/voxy/shaders");
-        if (shaderRootUrl == null) throw new IllegalStateException("Unable to locate /assets/voxy/shaders for section draw pipeline");
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(DRAW_SHADER_CONFIG);
         if (configUrl == null) throw new IllegalStateException("Missing section draw shader config: " + DRAW_SHADER_CONFIG);
 
@@ -92,8 +92,24 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to create manual section draw descriptor layout (config is validation-only and is not fed to Beryl parseBindings): " + DRAW_SHADER_CONFIG, e);
         }
         String fragmentShaderName = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME;
+        String fragmentShaderResource = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_RESOURCE : DRAW_FRAGMENT_SHADER_RESOURCE;
+        var preprocessedShaders = VulkanBerylShaderImportPreprocessor.preprocessShaderSetToTemp(DRAW_SHADER_RESOURCE, fragmentShaderResource);
+        String shaderCompileRoot = preprocessedShaders.rootUrl();
+        String vertexClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(DRAW_SHADER_RESOURCE));
+        String fragmentClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(fragmentShaderResource));
+        URL expectedVertexResource = VulkanBerylSectionDrawPipeline.class.getResource(vertexClasspathPath);
+        URL expectedFragmentResource = VulkanBerylSectionDrawPipeline.class.getResource(fragmentClasspathPath);
+        System.out.println("[Voxy][VulkanBeryl] Section draw compile diagnostics: compileRoot=" + shaderCompileRoot
+                + ", vertexShaderName=" + DRAW_SHADER_NAME
+                + ", fragmentShaderName=" + fragmentShaderName
+                + ", expectedVertexResource=" + vertexClasspathPath
+                + ", expectedFragmentResource=" + fragmentClasspathPath
+                + ", vertexResourceExists=" + (expectedVertexResource != null)
+                + ", fragmentResourceExists=" + (expectedFragmentResource != null)
+                + ", usingPreprocessedTempFiles=true"
+                + ", tempRootPath=" + preprocessedShaders.tempRootPath());
         try {
-            builder.compileShaders(shaderRootUrl.toExternalForm(), DRAW_SHADER_NAME, fragmentShaderName);
+            builder.compileShaders(shaderCompileRoot, DRAW_SHADER_NAME, fragmentShaderName);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")", e);
         }
