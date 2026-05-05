@@ -81,6 +81,7 @@ final class VulkanBerylShaderImportPreprocessor {
                 String shaderName = outputShaderRelativePath(rootShader);
                 String extension = extractExtension(rootShader.getPath());
                 String outputShaderRelativePath = shaderName + extension;
+                assertShaderPathInvariants(shaderResourceId, shaderName, outputShaderRelativePath, extension);
                 Path shaderPath = root.resolve(outputShaderRelativePath);
                 Files.createDirectories(shaderPath.getParent());
                 Files.writeString(shaderPath, expandedSource, StandardCharsets.UTF_8);
@@ -116,11 +117,16 @@ final class VulkanBerylShaderImportPreprocessor {
     static String outputShaderRelativePath(Identifier rootShader) {
         String path = rootShader.getPath();
         String relativePath = path.startsWith("shaders/") ? path.substring("shaders/".length()) : path;
-        return stripCompExtension(relativePath);
+        return stripKnownShaderExtension(relativePath);
     }
 
-    private static String stripCompExtension(String path) {
-        return path.endsWith(".comp") ? path.substring(0, path.length() - ".comp".length()) : path;
+    private static String stripKnownShaderExtension(String path) {
+        for (String ext : List.of(".comp", ".vsh", ".fsh")) {
+            if (path.endsWith(ext)) {
+                return path.substring(0, path.length() - ext.length());
+            }
+        }
+        return path;
     }
 
     private static String extractExtension(String path) {
@@ -131,9 +137,42 @@ final class VulkanBerylShaderImportPreprocessor {
         return path.substring(dot);
     }
 
+    private static void assertShaderPathInvariants(String shaderResourceId, String shaderName, String tempShaderRelativePath, String extension) {
+        if ("voxy:shaders/vulkanberyl/section/draw.vsh".equals(shaderResourceId)) {
+            if (!"vulkanberyl/section/draw".equals(shaderName)) {
+                throw new IllegalStateException("Draw vertex shaderName invariant failed: " + shaderName);
+            }
+            if (!"vulkanberyl/section/draw.vsh".equals(tempShaderRelativePath)) {
+                throw new IllegalStateException("Draw vertex temp path invariant failed: " + tempShaderRelativePath);
+            }
+        }
+        if ("voxy:shaders/vulkanberyl/section/draw.fsh".equals(shaderResourceId)) {
+            if (!"vulkanberyl/section/draw".equals(shaderName)) {
+                throw new IllegalStateException("Draw fragment shaderName invariant failed: " + shaderName);
+            }
+            if (!"vulkanberyl/section/draw.fsh".equals(tempShaderRelativePath)) {
+                throw new IllegalStateException("Draw fragment temp path invariant failed: " + tempShaderRelativePath);
+            }
+        }
+        if ("voxy:shaders/vulkanberyl/hierarchical/traversal.comp".equals(shaderResourceId)) {
+            if (!"vulkanberyl/hierarchical/traversal".equals(shaderName)) {
+                throw new IllegalStateException("Traversal shaderName invariant failed: " + shaderName);
+            }
+            if (!"vulkanberyl/hierarchical/traversal.comp".equals(tempShaderRelativePath)) {
+                throw new IllegalStateException("Traversal temp path invariant failed: " + tempShaderRelativePath);
+            }
+        }
+        String expectedTempPath = shaderName + extension;
+        if (!expectedTempPath.equals(tempShaderRelativePath)) {
+            throw new IllegalStateException("Shader temp path invariant failed: expected " + expectedTempPath + " but got " + tempShaderRelativePath + " for " + shaderResourceId);
+        }
+    }
+
     private static void assertNormalizationInvariants() {
         Identifier root = Identifier.parse("voxy:shaders/vulkanberyl/hierarchical/traversal.comp");
         Identifier imported = Identifier.parse("voxy:lod/frustum.glsl");
+        Identifier drawVertex = Identifier.parse("voxy:shaders/vulkanberyl/section/draw.vsh");
+        Identifier drawFragment = Identifier.parse("voxy:shaders/vulkanberyl/section/draw.fsh");
         String rootPath = classpathShaderAssetPath(root);
         String importPath = classpathShaderAssetPath(imported);
         if (!"/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.comp".equals(rootPath)) {
@@ -142,6 +181,9 @@ final class VulkanBerylShaderImportPreprocessor {
         if (!"/assets/voxy/shaders/lod/frustum.glsl".equals(importPath)) {
             throw new IllegalStateException("Import shader path normalization failed: " + imported + " -> " + importPath);
         }
+        assertShaderPathInvariants(root.toString(), outputShaderRelativePath(root), outputShaderRelativePath(root) + ".comp", ".comp");
+        assertShaderPathInvariants(drawVertex.toString(), outputShaderRelativePath(drawVertex), outputShaderRelativePath(drawVertex) + ".vsh", ".vsh");
+        assertShaderPathInvariants(drawFragment.toString(), outputShaderRelativePath(drawFragment), outputShaderRelativePath(drawFragment) + ".fsh", ".fsh");
     }
 
     private static final class ImportResolution {

@@ -19,6 +19,7 @@ import org.lwjgl.vulkan.VkMemoryBarrier;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -94,12 +95,12 @@ public final class VulkanBerylSectionDrawPipeline {
         String fragmentShaderName = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME;
         String fragmentShaderResource = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_RESOURCE : DRAW_FRAGMENT_SHADER_RESOURCE;
         var preprocessedShaders = VulkanBerylShaderImportPreprocessor.preprocessShaderSetToTemp(DRAW_SHADER_RESOURCE, fragmentShaderResource);
-        String shaderCompileRoot = preprocessedShaders.rootUrl();
+        String shaderCompileBase = preprocessedShaders.rootUrl() + DRAW_SHADER_NAME;
         String vertexClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(DRAW_SHADER_RESOURCE));
         String fragmentClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(fragmentShaderResource));
         URL expectedVertexResource = VulkanBerylSectionDrawPipeline.class.getResource(vertexClasspathPath);
         URL expectedFragmentResource = VulkanBerylSectionDrawPipeline.class.getResource(fragmentClasspathPath);
-        System.out.println("[Voxy][VulkanBeryl] Section draw compile diagnostics: compileRoot=" + shaderCompileRoot
+        System.out.println("[Voxy][VulkanBeryl] Section draw compile diagnostics: compileShaderBase=" + shaderCompileBase
                 + ", vertexShaderName=" + DRAW_SHADER_NAME
                 + ", fragmentShaderName=" + fragmentShaderName
                 + ", expectedVertexResource=" + vertexClasspathPath
@@ -108,8 +109,23 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", fragmentResourceExists=" + (expectedFragmentResource != null)
                 + ", usingPreprocessedTempFiles=true"
                 + ", tempRootPath=" + preprocessedShaders.tempRootPath());
+        var vertexPrepared = preprocessedShaders.shaders().stream().filter(s -> DRAW_SHADER_NAME.equals(s.shaderName()) && s.tempShaderRelativePath().endsWith(".vsh")).findFirst().orElse(null);
+        var fragmentPrepared = preprocessedShaders.shaders().stream().filter(s -> fragmentShaderName.equals(s.shaderName()) && s.tempShaderRelativePath().endsWith(".fsh")).findFirst().orElse(null);
+        Path expectedVertexTempPath = preprocessedShaders.tempRootPath().resolve(DRAW_SHADER_NAME + ".vsh");
+        Path expectedFragmentTempPath = preprocessedShaders.tempRootPath().resolve(fragmentShaderName + ".fsh");
+        System.out.println("[Voxy][VulkanBeryl] Section draw compile file diagnostics: compileShaders.firstArg=" + shaderCompileBase
+                + ", expectedVertexTempPath=" + expectedVertexTempPath
+                + ", expectedFragmentTempPath=" + expectedFragmentTempPath
+                + ", vertexTempExists=" + java.nio.file.Files.exists(expectedVertexTempPath)
+                + ", fragmentTempExists=" + java.nio.file.Files.exists(expectedFragmentTempPath)
+                + ", vertexTempBytes=" + readTempFileSize(expectedVertexTempPath)
+                + ", fragmentTempBytes=" + readTempFileSize(expectedFragmentTempPath)
+                + ", vertexPreparedShaderName=" + (vertexPrepared == null ? "<missing>" : vertexPrepared.shaderName())
+                + ", vertexPreparedTempPath=" + (vertexPrepared == null ? "<missing>" : vertexPrepared.tempShaderRelativePath())
+                + ", fragmentPreparedShaderName=" + (fragmentPrepared == null ? "<missing>" : fragmentPrepared.shaderName())
+                + ", fragmentPreparedTempPath=" + (fragmentPrepared == null ? "<missing>" : fragmentPrepared.tempShaderRelativePath()));
         try {
-            builder.compileShaders(shaderCompileRoot, DRAW_SHADER_NAME, fragmentShaderName);
+            builder.compileShaders(shaderCompileBase, DRAW_SHADER_NAME, fragmentShaderName);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")", e);
         }
@@ -239,6 +255,14 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCommandDebugReadbackBuffer = null;
         }
         this.resourcesBound = false;
+    }
+    private static long readTempFileSize(Path path) {
+        try {
+            return java.nio.file.Files.exists(path) ? java.nio.file.Files.size(path) : -1L;
+        } catch (Exception e) {
+            System.out.println("[Voxy][VulkanBeryl] Failed reading temp shader file size for " + path + ": " + e);
+            return -1L;
+        }
     }
 
 
