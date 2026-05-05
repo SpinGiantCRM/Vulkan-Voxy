@@ -3,6 +3,10 @@
 
 #define QUAD_DATA_USE_64_BIT
 
+#import <voxy:lod/quad_format.glsl>
+#import <voxy:lod/section.glsl>
+#import <voxy:vulkanberyl/section/draw_util.glsl>
+
 layout(binding = 0, std140) uniform SceneUniform {
     mat4 MVP;
     ivec3 baseSectionPos;
@@ -25,10 +29,6 @@ layout(binding = 6, std430) readonly buffer RenderListBuffer {
 layout(location = 0) out flat uvec4 interData;
 layout(location = 1) out vec2 uv;
 layout(location = 2) out flat uvec2 debugIds;
-
-#import <voxy:lod/quad_format.glsl>
-#import <voxy:lod/section.glsl>
-#import <voxy:vulkanberyl/section/draw_util.glsl>
 
 vec2 taaShift();
 
