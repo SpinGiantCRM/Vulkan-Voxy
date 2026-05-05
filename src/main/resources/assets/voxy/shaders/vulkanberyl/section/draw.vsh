@@ -5,7 +5,6 @@
 
 #import <voxy:lod/quad_format.glsl>
 #import <voxy:lod/section.glsl>
-#import <voxy:vulkanberyl/section/draw_util.glsl>
 
 layout(binding = 0, std140) uniform SceneUniform {
     mat4 MVP;
@@ -14,6 +13,8 @@ layout(binding = 0, std140) uniform SceneUniform {
     vec3 innerTranslation;
     float _scenePadding0;
 };
+
+#import <voxy:vulkanberyl/section/draw_util.glsl>
 
 layout(binding = 4, std430) readonly buffer GeometryBuffer {
     Quad quadData[];
