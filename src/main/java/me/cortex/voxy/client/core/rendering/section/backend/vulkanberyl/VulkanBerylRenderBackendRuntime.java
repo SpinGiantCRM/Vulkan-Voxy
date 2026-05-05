@@ -371,6 +371,11 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         debug.add("Vulkan/Beryl render list visible sections: " + this.lastVisibleSectionCount + "/" + this.lastVisibleSectionCapacity);
         debug.add("Vulkan/Beryl render-list sample: " + this.lastSampledRenderListEntryCount + "/" + this.lastSampledVisibleSectionCount
                 + " entries, invalid=" + this.lastInvalidSampledRenderListEntryCount + ", first=" + this.lastSampledRenderListFirstEntries);
+        VulkanBerylTraversalExecutor traversal = this.traversalExecutor;
+        debug.add("Vulkan/Beryl traversal descriptor creation mode: " + (traversal == null ? "unavailable" : traversal.getDescriptorCreationMode()));
+        debug.add("Vulkan/Beryl traversal pipeline created: " + (traversal != null && traversal.isTraversalPipelineCreated()));
+        debug.add("Vulkan/Beryl traversal descriptors bound: " + (traversal != null && traversal.areDescriptorsBound()));
+        debug.add("Vulkan/Beryl traversal last descriptor failure: " + (traversal == null ? "unavailable" : traversal.getLastDescriptorFailure()));
         this.publishSmokeStatus();
     }
 

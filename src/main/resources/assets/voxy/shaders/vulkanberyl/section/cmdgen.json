@@ -3,61 +3,33 @@
     {
       "name": "MetadataBuffer",
       "binding": 1,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "RenderListBuffer",
       "binding": 2,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "DrawCommandsBuffer",
       "binding": 3,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     },
     {
       "name": "DrawCountBuffer",
       "binding": 4,
-      "type": "compute",
+      "type": "storageBuffer",
       "stages": [
         "compute"
-      ],
-      "fields": [
-        {
-          "name": "metadata",
-          "type": "int",
-          "count": 4
-        }
       ]
     }
   ]
