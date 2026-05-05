@@ -125,6 +125,17 @@ public final class VulkanBerylTraversalResources {
         }
     }
 
+
+    public void clearRequestCounter() {
+        requireNotFreed();
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            long zeroCounterPtr = memAddress(stack.callocInt(1));
+            VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+            uploader.upload(this.requestBuffer, 0L, zeroCounterPtr, Integer.BYTES);
+            uploader.flush();
+        }
+    }
+
     public void uploadQueueIndex(int queueIndex, VulkanBerylGeometryUploader uploader) {
         requireNotFreed();
         if (queueIndex < 0 || queueIndex >= MAX_ITERATIONS) {
