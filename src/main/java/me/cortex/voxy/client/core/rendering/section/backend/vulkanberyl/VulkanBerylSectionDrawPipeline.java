@@ -7,6 +7,7 @@ import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.shader.GraphicsPipeline;
 import net.vulkanmod.vulkan.shader.Pipeline;
+import net.vulkanmod.vulkan.shader.descriptor.ManualUBO;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -18,6 +19,7 @@ import org.lwjgl.vulkan.VkMemoryBarrier;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Objects;
 
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
@@ -299,7 +301,13 @@ public final class VulkanBerylSectionDrawPipeline {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to load section cmdgen shader config: " + CMDGEN_SHADER_CONFIG, e);
         }
-        builder.parseBindings(config);
+        int computeStage = ComputePipeline.Builder.getStageFromString("compute");
+        builder.setUniforms(List.of(
+                new ManualUBO(CMDGEN_METADATA_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(CMDGEN_RENDER_LIST_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(CMDGEN_DRAW_COMMAND_BINDING, computeStage, Integer.MAX_VALUE),
+                new ManualUBO(CMDGEN_DRAW_COUNT_BINDING, computeStage, Integer.MAX_VALUE)
+        ), List.of());
         try {
             builder.compileShader(shaderRootUrl.toExternalForm(), CMDGEN_SHADER_NAME);
         } catch (Exception e) {
