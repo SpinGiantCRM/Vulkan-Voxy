@@ -1,15 +1,14 @@
 #version 460
 #extension GL_ARB_gpu_shader_int64 : enable
 
-#ifdef GL_ARB_gpu_shader_int64
-#define Quad uint64_t
-#else
-#define Quad uvec2
-#endif
+#define QUAD_DATA_USE_64_BIT
 
-struct SectionMeta {
-    uvec4 a;
-    uvec4 b;
+layout(binding = 0, std140) uniform SceneUniform {
+    mat4 MVP;
+    ivec3 baseSectionPos;
+    int frameId;
+    vec3 innerTranslation;
+    float _scenePadding0;
 };
 
 layout(binding = 4, std430) readonly buffer GeometryBuffer {
@@ -28,27 +27,23 @@ layout(location = 1) out vec2 uv;
 layout(location = 2) out flat uvec2 debugIds;
 
 #import <voxy:lod/quad_format.glsl>
-#import <voxy:lod/block_model.glsl>
 #import <voxy:lod/section.glsl>
-#import <voxy:lod/quad_util.glsl>
+#import <voxy:vulkanberyl/section/draw_util.glsl>
 
 vec2 taaShift();
 
 void main() {
     taaOffset = taaShift();
 
-    uint drawIndex = gl_BaseInstance;
+    uint drawIndex = gl_InstanceIndex;
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
 
-    // Vulkan GLSL convention: gl_VertexIndex already includes DrawIndirectCommand.firstVertex.
-    // cmdgen writes firstVertex = extractQuadStart(meta) * 4, so shifting gl_VertexIndex by 2
-    // yields a global quad index directly.
     uint quadIndex = (uint(gl_VertexIndex) >> 2u);
     QuadData quad;
     setupQuad(quad, quadData[quadIndex], extractRawPos(meta), (gl_VertexIndex & 3u) == 1u);
 
-    uint cornerId = gl_VertexIndex & 3u;
+    uint cornerId = uint(gl_VertexIndex) & 3u;
     gl_Position = getQuadCornerPos(quad, cornerId);
     uv = getCornerUV(quad, cornerId);
     interData = quad.attributeData;
