@@ -1,13 +1,76 @@
 {
   "UBOs": [
-    {"name":"SceneUniform","binding":1,"type":"uniformBuffer","stages":["compute"]},
-    {"name":"RequestQueue","binding":2,"type":"storageBuffer","stages":["compute"]},
-    {"name":"RenderQueue","binding":3,"type":"storageBuffer","stages":["compute"]},
-    {"name":"NodeData","binding":4,"type":"storageBuffer","stages":["compute"]},
-    {"name":"NodeQueueIndex","binding":5,"type":"storageBuffer","stages":["compute"]},
-    {"name":"NodeQueueMeta","binding":6,"type":"storageBuffer","stages":["compute"]},
-    {"name":"NodeQueueSource","binding":7,"type":"storageBuffer","stages":["compute"]},
-    {"name":"NodeQueueSink","binding":8,"type":"storageBuffer","stages":["compute"]},
-    {"name":"RenderTracker","binding":9,"type":"storageBuffer","stages":["compute"]}
+    {
+      "name": "SceneUniform",
+      "binding": 1,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "RequestQueue",
+      "binding": 2,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "RenderQueue",
+      "binding": 3,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "NodeData",
+      "binding": 4,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "NodeQueueIndex",
+      "binding": 5,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "NodeQueueMeta",
+      "binding": 6,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "NodeQueueSource",
+      "binding": 7,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "NodeQueueSink",
+      "binding": 8,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
+      "name": "RenderTracker",
+      "binding": 9,
+      "type": "compute",
+      "stages": [
+        "compute"
+      ]
+    }
   ]
 }
