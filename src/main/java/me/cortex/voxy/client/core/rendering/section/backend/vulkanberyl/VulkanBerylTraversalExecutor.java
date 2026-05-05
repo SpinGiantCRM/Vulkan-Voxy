@@ -399,18 +399,34 @@ public final class VulkanBerylTraversalExecutor {
         return builder.toString();
     }
 
-    private static List<UBO> createTraversalManualDescriptors(int computeStage) {
+    private List<UBO> createTraversalManualDescriptors(int computeStage) {
         return List.of(
-                new ManualUBO(SCENE_UNIFORM_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(REQUEST_QUEUE_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(RENDER_QUEUE_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(NODE_DATA_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(NODE_QUEUE_INDEX_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(NODE_QUEUE_META_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(NODE_QUEUE_SOURCE_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(NODE_QUEUE_SINK_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(RENDER_TRACKER_BINDING, computeStage, Integer.MAX_VALUE)
+                createManualDescriptor(SCENE_UNIFORM_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SceneUniform"),
+                createManualDescriptor(REQUEST_QUEUE_BINDING, computeStage, this.traversalResources.getRequestBuffer(), "RequestQueue"),
+                createManualDescriptor(RENDER_QUEUE_BINDING, computeStage, this.renderList.getBuffer(), "RenderQueue"),
+                createManualDescriptor(NODE_DATA_BINDING, computeStage, this.nodeMetadataStore.getNodeBuffer(), "NodeData"),
+                createManualDescriptor(NODE_QUEUE_INDEX_BINDING, computeStage, this.traversalResources.getQueueIndexBuffer(), "NodeQueueIndex"),
+                createManualDescriptor(NODE_QUEUE_META_BINDING, computeStage, this.traversalResources.getQueueMetaBuffer(), "NodeQueueMeta"),
+                createManualDescriptor(NODE_QUEUE_SOURCE_BINDING, computeStage, this.traversalResources.getScratchQueueA(), "NodeQueueSource"),
+                createManualDescriptor(NODE_QUEUE_SINK_BINDING, computeStage, this.traversalResources.getScratchQueueB(), "NodeQueueSink"),
+                createManualDescriptor(RENDER_TRACKER_BINDING, computeStage, this.traversalResources.getRenderTrackerBuffer(), "RenderTracker")
         );
+    }
+
+    private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
+        int requestedSize = descriptorSizeBytes(binding, label, buffer);
+        int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
+        System.out.println("[Voxy][VulkanBeryl] Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
+        return new ManualUBO(binding, computeStage, structSizeInts);
+    }
+
+    private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
+        if (buffer == null) throw new IllegalStateException("Descriptor buffer is null for binding " + binding + " (" + label + ")");
+        long size = buffer.getBufferSize();
+        if (size <= 0L || size > Integer.MAX_VALUE) {
+            throw new IllegalStateException("Invalid descriptor size for binding " + binding + " (" + label + "): " + size + " bytes");
+        }
+        return (int) size;
     }
     private void requireLiveResources() {
         if (this.traversalResources.isFreed()) throw new IllegalStateException("traversalResources is freed");

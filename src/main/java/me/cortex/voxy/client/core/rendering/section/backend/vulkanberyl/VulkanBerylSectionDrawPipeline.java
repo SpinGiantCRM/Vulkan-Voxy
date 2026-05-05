@@ -303,10 +303,10 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         int computeStage = ComputePipeline.Builder.getStageFromString("compute");
         builder.setUniforms(List.of(
-                new ManualUBO(CMDGEN_METADATA_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(CMDGEN_RENDER_LIST_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(CMDGEN_DRAW_COMMAND_BINDING, computeStage, Integer.MAX_VALUE),
-                new ManualUBO(CMDGEN_DRAW_COUNT_BINDING, computeStage, Integer.MAX_VALUE)
+                createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenMetadata"),
+                createManualDescriptor(CMDGEN_RENDER_LIST_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == RENDER_LIST_BINDING).getBufferSlice().getBuffer(), "CmdGenRenderList"),
+                createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenDrawCommand"),
+                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount")
         ), List.of());
         try {
             builder.compileShader(shaderRootUrl.toExternalForm(), CMDGEN_SHADER_NAME);
@@ -322,6 +322,23 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to create section cmdgen compute pipeline");
         }
         this.commandGenPipelineCreated = true;
+    }
+
+
+    private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
+        int requestedSize = descriptorSizeBytes(binding, label, buffer);
+        int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
+        System.out.println("[Voxy][VulkanBeryl] Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
+        return new ManualUBO(binding, computeStage, structSizeInts);
+    }
+
+    private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
+        if (buffer == null) throw new IllegalStateException("Descriptor buffer is null for binding " + binding + " (" + label + ")");
+        long size = buffer.getBufferSize();
+        if (size <= 0L || size > Integer.MAX_VALUE) {
+            throw new IllegalStateException("Invalid descriptor size for binding " + binding + " (" + label + "): " + size + " bytes");
+        }
+        return (int) size;
     }
 
     private void bindStorageBinding(int binding, Buffer buffer, String label) {
