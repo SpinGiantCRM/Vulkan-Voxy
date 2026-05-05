@@ -308,28 +308,37 @@ tasks.register('validateShaderSources') {
         def shaderFiles = fileTree(shaderDir) {
             include '**/*.glsl', '**/*.comp', '**/*.vsh', '**/*.fsh', '**/*.csh'
         }
-        def directives = ['#version', '#define', '#ifdef', '#ifndef', '#else', '#endif', '#extension', '#import']
+        def directiveKeywords = '(version|define|ifdef|ifndef|else|endif|extension|import)'
+        def validDirectiveLine = ~/^\s*#\s*${directiveKeywords}\b/
+        def inlineDirectivePattern = ~/\S.*#\s*${directiveKeywords}\b/
+        def directiveTokenPattern = ~/#\s*${directiveKeywords}\b/
+        def suspiciousCollapsedLine = ~/.*(?:#\s*(?:version|define|ifdef|ifndef|else|endif|extension|import)\b.*){2,}.*/
         def failures = []
 
         shaderFiles.files.each { file ->
             def rel = project.relativePath(file)
             def lines = file.readLines('UTF-8')
             def nonEmptyLines = lines.count { !it.trim().isEmpty() }
-            if (nonEmptyLines <= 2) {
-                failures << "${rel}: appears collapsed (${nonEmptyLines} non-empty lines)"
-            }
+            def hasSuspiciousCollapsedLine = lines.any { line -> line ==~ suspiciousCollapsedLine }
 
             lines.eachWithIndex { line, idx ->
                 def trimmed = line.trim()
-                directives.each { directive ->
-                    int pos = line.indexOf(directive)
-                    if (pos > 0) {
-                        failures << "${rel}:${idx + 1}: directive '${directive}' must start at column 1"
-                    }
-                    if (trimmed.startsWith(directive) && !line.startsWith('#')) {
-                        failures << "${rel}:${idx + 1}: directive '${directive}' must start the line"
+
+                if ((trimmed =~ directiveTokenPattern).find() && !(line ==~ validDirectiveLine)) {
+                    if ((line =~ inlineDirectivePattern).find()) {
+                        failures << "${rel}:${idx + 1}: preprocessor directive appears after non-whitespace content"
+                    } else {
+                        failures << "${rel}:${idx + 1}: malformed preprocessor directive placement"
                     }
                 }
+
+                if (trimmed == '#import') {
+                    failures << "${rel}:${idx + 1}: broken empty #import directive"
+                }
+            }
+
+            if (nonEmptyLines <= 2 && hasSuspiciousCollapsedLine) {
+                failures << "${rel}: appears collapsed (${nonEmptyLines} non-empty lines with multiple directives on one line)"
             }
         }
 
