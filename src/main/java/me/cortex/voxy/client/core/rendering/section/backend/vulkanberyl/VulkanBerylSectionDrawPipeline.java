@@ -95,7 +95,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VertexFormat drawVertexFormat = resolveDummyVertexFormat();
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
-        System.out.println("[Voxy][VulkanBeryl] Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
+        VulkanBerylDebugLog.once("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
         try {
             builder.setUniforms(drawDescriptors, List.of());
         } catch (Exception e) {
@@ -109,7 +109,7 @@ public final class VulkanBerylSectionDrawPipeline {
         String fragmentClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(fragmentShaderResource));
         URL expectedVertexResource = VulkanBerylSectionDrawPipeline.class.getResource(vertexClasspathPath);
         URL expectedFragmentResource = VulkanBerylSectionDrawPipeline.class.getResource(fragmentClasspathPath);
-        System.out.println("[Voxy][VulkanBeryl] Section draw compile diagnostics: compileShaderBase=" + shaderCompileBase
+        VulkanBerylDebugLog.once("section-draw-compile-diagnostics", "Section draw compile diagnostics: compileShaderBase=" + shaderCompileBase
                 + ", vertexShaderName=" + DRAW_SHADER_NAME
                 + ", fragmentShaderName=" + fragmentShaderName
                 + ", expectedVertexResource=" + vertexClasspathPath
@@ -122,7 +122,7 @@ public final class VulkanBerylSectionDrawPipeline {
         var fragmentPrepared = preprocessedShaders.shaders().stream().filter(s -> fragmentShaderName.equals(s.shaderName()) && s.tempShaderRelativePath().endsWith(".fsh")).findFirst().orElse(null);
         Path expectedVertexTempPath = preprocessedShaders.tempRootPath().resolve(DRAW_SHADER_NAME + ".vsh");
         Path expectedFragmentTempPath = preprocessedShaders.tempRootPath().resolve(fragmentShaderName + ".fsh");
-        System.out.println("[Voxy][VulkanBeryl] Section draw compile file diagnostics: compileShaders.firstArg=" + shaderCompileBase
+        VulkanBerylDebugLog.once("section-draw-compile-file-diagnostics", "Section draw compile file diagnostics: compileShaders.firstArg=" + shaderCompileBase
                 + ", expectedVertexTempPath=" + expectedVertexTempPath
                 + ", expectedFragmentTempPath=" + expectedFragmentTempPath
                 + ", vertexTempExists=" + java.nio.file.Files.exists(expectedVertexTempPath)
@@ -135,8 +135,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", fragmentPreparedTempPath=" + (fragmentPrepared == null ? "<missing>" : fragmentPrepared.tempShaderRelativePath()));
         String vertexPreview = readPreprocessedShaderPreview(expectedVertexTempPath, 220);
         String fragmentPreview = readPreprocessedShaderPreview(expectedFragmentTempPath, 220);
-        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed vertex shader first 220 lines (path=" + expectedVertexTempPath + "):\n" + vertexPreview);
-        System.out.println("[Voxy][VulkanBeryl] Section draw preprocessed fragment shader first 220 lines (path=" + expectedFragmentTempPath + "):\n" + fragmentPreview);
+        VulkanBerylDebugLog.verbose("section-draw-vertex-preview", "Section draw preprocessed vertex shader first 220 lines (path=" + expectedVertexTempPath + "):\n" + vertexPreview);
+        VulkanBerylDebugLog.verbose("section-draw-fragment-preview", "Section draw preprocessed fragment shader first 220 lines (path=" + expectedFragmentTempPath + "):\n" + fragmentPreview);
         byte[] vertexBytes = readShaderBytes(expectedVertexTempPath, "vertex");
         byte[] fragmentBytes = readShaderBytes(expectedFragmentTempPath, "fragment");
         verifyNoUtf8BomAndLogPrefix("vertex", expectedVertexTempPath, vertexBytes);
@@ -144,13 +144,13 @@ public final class VulkanBerylSectionDrawPipeline {
         String vertexSource = new String(vertexBytes, StandardCharsets.UTF_8);
         String fragmentSource = new String(fragmentBytes, StandardCharsets.UTF_8);
         boolean declaresVertexInputs = declaresVertexInputs(vertexSource);
-        System.out.println("[Voxy][VulkanBeryl] Section draw vertex input diagnostics: vertexFormatSet=" + (drawVertexFormat != null)
+        VulkanBerylDebugLog.once("section-draw-vertex-input-diagnostics", "Section draw vertex input diagnostics: vertexFormatSet=" + (drawVertexFormat != null)
                 + ", vertexFormatClass=" + (drawVertexFormat == null ? "<null>" : drawVertexFormat.getClass().getName())
                 + ", vertexFormat=" + drawVertexFormat
                 + ", vertexSize=" + (drawVertexFormat == null ? -1 : drawVertexFormat.getVertexSize())
                 + ", shaderDeclaresVertexInputs=" + declaresVertexInputs
                 + ", usingDummyVertexInputMode=true");
-        System.out.println("[Voxy][VulkanBeryl] Section draw compileShaders contract: Pipeline.Builder.compileShaders(name, vertexSource, fragmentSource) where args 2/3 are GLSL source text, not file paths. "
+        VulkanBerylDebugLog.once("section-draw-compile-shaders-contract", "Section draw compileShaders contract: Pipeline.Builder.compileShaders(name, vertexSource, fragmentSource) where args 2/3 are GLSL source text, not file paths. "
                 + "Using name=" + DRAW_SHADER_NAME
                 + ", vertexSourceLength=" + vertexSource.length()
                 + ", fragmentSourceLength=" + fragmentSource.length());
@@ -257,7 +257,7 @@ public final class VulkanBerylSectionDrawPipeline {
             hex.append(String.format("%02X", b));
             text.append(b >= 32 && b <= 126 ? (char) b : '.');
         }
-        System.out.println("[Voxy][VulkanBeryl] Section draw " + stage + " shader byte prefix: path=" + shaderPath
+        VulkanBerylDebugLog.verbose("section-draw-" + stage + "-shader-byte-prefix", "Section draw " + stage + " shader byte prefix: path=" + shaderPath
                 + ", firstByte=0x" + String.format("%02X", bytes[0] & 0xFF)
                 + ", expectedFirstByte=0x23(#)"
                 + ", previewHex=" + hex
@@ -274,7 +274,7 @@ public final class VulkanBerylSectionDrawPipeline {
         long geometryBytes = geometryData.getGeometryBuffer().getBufferSize();
         long metadataBytes = geometryData.getMetadataBuffer().getBufferSize();
         long renderListBytes = renderList.getBuffer().getBufferSize();
-        System.out.println("[Voxy][VulkanBeryl] Draw descriptor bind preflight: geometryBytes=" + geometryBytes
+        VulkanBerylDebugLog.trace("draw-descriptor-bind-preflight", "Draw descriptor bind preflight: geometryBytes=" + geometryBytes
                 + ", metadataBytes=" + metadataBytes
                 + ", renderListBytes=" + renderListBytes
                 + ", descriptorStrategy=int_only_BufferSlice_set"
@@ -330,7 +330,7 @@ public final class VulkanBerylSectionDrawPipeline {
         boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && frameSafety.allowCmdGen();
         boolean indirectAllowed = ENABLE_INDIRECT_DRAW && frameSafety.allowIndirectDraw();
         String gateReason = frameSafety.reason();
-        System.out.println("[Voxy][VulkanBeryl] GPU stage gate: traversalDispatch=true cmdgenDispatch=" + cmdgenAllowed + " indirectDraw=" + indirectAllowed + " reason=" + gateReason);
+        VulkanBerylDebugLog.trace("gpu-stage-gate", "GPU stage gate: traversalDispatch=true cmdgenDispatch=" + cmdgenAllowed + " indirectDraw=" + indirectAllowed + " reason=" + gateReason);
         if (visibleCount <= 0) {
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
         }
@@ -414,7 +414,7 @@ public final class VulkanBerylSectionDrawPipeline {
         try {
             return java.nio.file.Files.exists(path) ? java.nio.file.Files.size(path) : -1L;
         } catch (Exception e) {
-            System.out.println("[Voxy][VulkanBeryl] Failed reading temp shader file size for " + path + ": " + e);
+            VulkanBerylDebugLog.warnRateLimited("read-temp-shader-file-size", "Failed reading temp shader file size for " + path + ": " + e);
             return -1L;
         }
     }
@@ -547,7 +547,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int minBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(0);
         int maxBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(cmdgenBindings.size() - 1);
         boolean dummyPresent = cmdgenBindings.contains(CMDGEN_DUMMY_BINDING);
-        System.out.println("[Voxy][VulkanBeryl] Section cmdgen descriptor layout: descriptorMode=manual_dense, count=" + cmdgenBindings.size()
+        VulkanBerylDebugLog.once("section-cmdgen-descriptor-layout", "Section cmdgen descriptor layout: descriptorMode=manual_dense, count=" + cmdgenBindings.size()
                 + ", bindings=" + cmdgenBindings
                 + ", minBinding=" + minBinding
                 + ", maxBinding=" + maxBinding
@@ -558,7 +558,7 @@ public final class VulkanBerylSectionDrawPipeline {
             if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed cmdgen shader file missing before compile: " + preprocessedShader.shaderPath());
             }
-            System.out.println("[Voxy][VulkanBeryl] compileShader input verified: shader=" + preprocessedShader.shaderName()
+            VulkanBerylDebugLog.once("section-cmdgen-compile-input-verified", "compileShader input verified: shader=" + preprocessedShader.shaderName()
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
@@ -593,10 +593,10 @@ public final class VulkanBerylSectionDrawPipeline {
             for (int i = 0; i < lineCount; i++) {
                 preview.append(String.format("%4d | %s%n", i + 1, lines.get(i)));
             }
-            System.err.println("[Voxy][VulkanBeryl] Cmdgen compile failed. Preprocessed shader path=" + shader.shaderPath()
+            VulkanBerylDebugLog.error("Cmdgen compile failed. Preprocessed shader path=" + shader.shaderPath()
                     + ", showing first " + lineCount + " lines:\n" + preview);
         } catch (Exception readError) {
-            System.err.println("[Voxy][VulkanBeryl] Cmdgen compile failed, and preprocessed shader preview could not be read: path="
+            VulkanBerylDebugLog.error("Cmdgen compile failed, and preprocessed shader preview could not be read: path="
                     + shader.shaderPath() + ", error=" + readError);
         }
     }
@@ -604,7 +604,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
         int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
-        System.out.println("[Voxy][VulkanBeryl] Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
+        VulkanBerylDebugLog.once("manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
         return new ManualUBO(binding, computeStage, structSizeInts);
     }
 
@@ -629,7 +629,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Section draw descriptor missing: name=" + label + ", binding=" + binding + ", config=" + DRAW_SHADER_CONFIG);
         }
         int rangeBytes = (int) bufferSize;
-        System.out.println("[Voxy][VulkanBeryl] Binding draw descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
+        VulkanBerylDebugLog.trace("binding-draw-descriptor:" + binding + ":" + label, "Binding draw descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
         ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
     }
 
@@ -642,7 +642,7 @@ public final class VulkanBerylSectionDrawPipeline {
         UBO ubo = this.commandGenPipeline.getUBO(candidate -> candidate.binding == binding);
         if (ubo == null) throw new IllegalStateException("Section cmdgen descriptor missing: name=" + label + ", binding=" + binding + ", config=" + CMDGEN_SHADER_CONFIG);
         int rangeBytes = (int) bufferSize;
-        System.out.println("[Voxy][VulkanBeryl] Binding cmdgen descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
+        VulkanBerylDebugLog.trace("binding-cmdgen-descriptor:" + binding + ":" + label, "Binding cmdgen descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
         ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
     }
 

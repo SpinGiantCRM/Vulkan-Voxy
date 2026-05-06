@@ -137,7 +137,7 @@ public final class VulkanBerylTraversalExecutor {
         }
         List<UBO> manualDescriptors = createTraversalManualDescriptors(computeStage);
         String manualDescriptorDiagnostics = describeDescriptorBindingLayout(manualDescriptors);
-        System.out.println("[Voxy][VulkanBeryl] Traversal manual descriptor layout: " + manualDescriptorDiagnostics);
+        VulkanBerylDebugLog.once("traversal-manual-descriptor-layout", "Traversal manual descriptor layout: " + manualDescriptorDiagnostics);
         try {
             builder.setUniforms(manualDescriptors, List.of());
             this.descriptorCreationMode = "beryl-manual-descriptors";
@@ -151,7 +151,7 @@ public final class VulkanBerylTraversalExecutor {
             if (!Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed traversal shader file missing before compile: " + preprocessedShader.shaderPath());
             }
-            System.out.println("[Voxy][VulkanBeryl] compileShader input verified: shader=" + preprocessedShader.shaderName()
+            VulkanBerylDebugLog.once("traversal-compile-input-verified", "compileShader input verified: shader=" + preprocessedShader.shaderName()
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
@@ -475,7 +475,7 @@ public final class VulkanBerylTraversalExecutor {
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
         int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
-        System.out.println("[Voxy][VulkanBeryl] Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
+        VulkanBerylDebugLog.once("traversal-manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
         return new ManualUBO(binding, computeStage, structSizeInts);
     }
 
@@ -515,17 +515,17 @@ public final class VulkanBerylTraversalExecutor {
         try {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(shaderResource);
             Path shaderPath = preprocessedShader.shaderPath();
-            System.out.println("[Voxy][VulkanBeryl] Traversal shader compile failure diagnostics:");
-            System.out.println("  shaderResourceId=" + shaderResource);
-            System.out.println("  tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath());
-            System.out.println("  tempShaderPath=" + shaderPath);
+            VulkanBerylDebugLog.error("Traversal shader compile failure diagnostics:");
+            VulkanBerylDebugLog.alwaysRaw("  shaderResourceId=" + shaderResource);
+            VulkanBerylDebugLog.alwaysRaw("  tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath());
+            VulkanBerylDebugLog.alwaysRaw("  tempShaderPath=" + shaderPath);
             if (!Files.isRegularFile(shaderPath)) {
-                System.out.println("  temp shader file is missing; cannot print source context");
+                VulkanBerylDebugLog.alwaysRaw("  temp shader file is missing; cannot print source context");
                 return;
             }
             String message = compileFailure.getMessage();
             if (message == null || message.isBlank()) {
-                System.out.println("  compile error message was empty; cannot infer source line context");
+                VulkanBerylDebugLog.alwaysRaw("  compile error message was empty; cannot infer source line context");
                 return;
             }
             List<String> sourceLines = Files.readAllLines(shaderPath, StandardCharsets.UTF_8);
@@ -536,17 +536,17 @@ public final class VulkanBerylTraversalExecutor {
                 int lineNumber = Integer.parseInt(matcher.group(1));
                 int start = Math.max(1, lineNumber - 2);
                 int end = Math.min(sourceLines.size(), lineNumber + 2);
-                System.out.println("  source context around line " + lineNumber + ":");
+                VulkanBerylDebugLog.alwaysRaw("  source context around line " + lineNumber + ":");
                 for (int i = start; i <= end; i++) {
                     String marker = i == lineNumber ? ">" : " ";
-                    System.out.println("    " + marker + String.format("%4d", i) + " | " + sourceLines.get(i - 1));
+                    VulkanBerylDebugLog.alwaysRaw("    " + marker + String.format("%4d", i) + " | " + sourceLines.get(i - 1));
                 }
             }
             if (!foundLine) {
-                System.out.println("  no shader line numbers were parsed from compile exception message");
+                VulkanBerylDebugLog.alwaysRaw("  no shader line numbers were parsed from compile exception message");
             }
         } catch (RuntimeException | IOException diagnosticsFailure) {
-            System.out.println("[Voxy][VulkanBeryl] Failed to capture traversal shader compile diagnostics: " + diagnosticsFailure);
+            VulkanBerylDebugLog.error("Failed to capture traversal shader compile diagnostics: " + diagnosticsFailure);
         }
     }
 
