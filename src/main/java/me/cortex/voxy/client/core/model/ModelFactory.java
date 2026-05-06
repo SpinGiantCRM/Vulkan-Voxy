@@ -108,6 +108,7 @@ public class ModelFactory {
     // this has an issue with scaffolding i believe tho, so maybe make it a probability to render??? idk
     private final long[] metadataCache;
     private final int[] fluidStateLUT;
+    private int disabledBackendFallbackModelCount;
 
     //Provides a map from id -> model id as multiple ids might have the same internal model id
     private final int[] idMappings;
@@ -227,8 +228,7 @@ public class ModelFactory {
 
     private boolean processModelResult() {
         if (!this.glModelBakingEnabled) {
-            this.discardDisabledBackendBakeQueueWork();
-            return false;
+            return this.processDisabledBackendModelResult();
         }
 
         var bake = this.bakeQueue.poll();
@@ -322,7 +322,11 @@ public class ModelFactory {
             }
             var res = this.addBiome0(biomeEntry.id, mcbiomeEntry.isPresent()?mcbiomeEntry.orElseThrow().value():DEFAULT_BIOME);
             if (res != null) {
-                this.uploadResults.add(res);
+                if (this.glModelBakingEnabled) {
+                    this.uploadResults.add(res);
+                } else {
+                    res.free();
+                }
             }
             biomeEntry = this.biomeQueue.poll();
         }
@@ -331,17 +335,51 @@ public class ModelFactory {
         return (this.blockStatesInFlight.size()!=0)||(!this.bakeQueue.isEmpty())||!this.biomeQueue.isEmpty();
     }
 
-    private void discardDisabledBackendBakeQueueWork() {
+    private boolean processDisabledBackendModelResult() {
         BlockBake bake = this.bakeQueue.poll();
-        while (bake != null) {
-            this.blockStatesInFlightLock.lock();
-            try {
-                this.blockStatesInFlight.remove(bake.blockId);
-            } finally {
-                this.blockStatesInFlightLock.unlock();
-            }
-            bake = this.bakeQueue.poll();
+        if (bake == null) {
+            return false;
         }
+
+        if (this.idMappings[bake.blockId] == -1) {
+            int modelId = this.getDisabledBackendFallbackModelId(bake.state);
+            this.idMappings[bake.blockId] = modelId;
+        }
+
+        this.blockStatesInFlightLock.lock();
+        try {
+            if (!this.blockStatesInFlight.remove(bake.blockId)) {
+                throw new IllegalStateException("processing a disabled-backend model result but the block state was not in flight!!");
+            }
+        } finally {
+            this.blockStatesInFlightLock.unlock();
+        }
+        return !this.bakeQueue.isEmpty();
+    }
+
+    private int getDisabledBackendFallbackModelId(BlockState blockState) {
+        if (blockState.isAir() || blockState.getRenderShape() == RenderShape.INVISIBLE) {
+            this.metadataCache[0] = 0x0000_FFFF_FFFF_FFFFL;
+            this.fluidStateLUT[0] = 0;
+            this.disabledBackendFallbackModelCount = Math.max(this.disabledBackendFallbackModelCount, 1);
+            return 0;
+        }
+
+        int modelId = 1;
+        if (this.disabledBackendFallbackModelCount <= modelId) {
+            long fullCubeFace = 0b0000_0111L;
+            long metadata = 0L;
+            for (int face = 0; face < 6; face++) {
+                metadata |= fullCubeFace << (8 * face);
+            }
+            metadata |= 32L << (8 * 6);
+            metadata |= 64L << (8 * 6);
+            metadata |= ((long) getBlockLightEmission(blockState)) << (8 * 6 + 7);
+            this.metadataCache[modelId] = metadata;
+            this.fluidStateLUT[modelId] = modelId;
+            this.disabledBackendFallbackModelCount = modelId + 1;
+        }
+        return modelId;
     }
 
     public void processUploads() {
@@ -1021,7 +1059,7 @@ public class ModelFactory {
     }
 
     public int getBakedCount() {
-        return this.modelTexture2id.size();
+        return Math.max(this.modelTexture2id.size(), this.disabledBackendFallbackModelCount);
     }
 
     public int getInflightCount() {
