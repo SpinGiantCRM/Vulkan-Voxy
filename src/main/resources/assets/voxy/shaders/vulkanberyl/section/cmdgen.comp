@@ -34,6 +34,9 @@ layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
 };
 
 const uint CMDGEN_FLAG_NOOP_SMOKE = 1u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ONLY = 1u << 1u;
+const uint CMDGEN_FLAG_READ_METADATA_ONLY = 1u << 2u;
+const uint CMDGEN_FLAG_WRITE_DRAWS_ONLY = 1u << 3u;
 
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
@@ -61,6 +64,16 @@ void main() {
     }
 
     uint safeVisibleCount = min(visibleCount, renderListCapacity);
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ONLY) != 0u) {
+        if (drawIndex == 0u && safeVisibleCount > 0u) {
+            uint sectionIdSmoke = indirectLookup[0];
+            if (drawCountCapacityWords > 0u) {
+                drawCount = min(sectionIdSmoke, 0u);
+            }
+        }
+        return;
+    }
+
     if (drawIndex >= safeVisibleCount) {
         return;
     }
@@ -80,6 +93,26 @@ void main() {
     }
 
     SectionMeta meta = sectionData[sectionId];
+    if ((flags & CMDGEN_FLAG_READ_METADATA_ONLY) != 0u) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            drawCount = min(extractQuadStart(meta), 0u);
+        }
+        return;
+    }
+    if ((flags & CMDGEN_FLAG_WRITE_DRAWS_ONLY) != 0u) {
+        if (drawIndex == 0u) {
+            DrawCommand dummy;
+            dummy.vertexCount = 0u;
+            dummy.instanceCount = 0u;
+            dummy.firstVertex = 0u;
+            dummy.firstInstance = 0u;
+            commands[0] = dummy;
+            if (drawCountCapacityWords > 0u) {
+                drawCount = 0u;
+            }
+        }
+        return;
+    }
     uint translucentQuadCount = extractTranslucentQuadCount(meta);
     uint opaqueQuadCount = extractOpaqueQuadCount(meta);
     uint opaqueQuadStart = extractQuadStart(meta) + translucentQuadCount;
