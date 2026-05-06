@@ -137,7 +137,7 @@ public final class VulkanBerylTraversalExecutor {
         }
         List<UBO> manualDescriptors = createTraversalManualDescriptors(computeStage);
         String manualDescriptorDiagnostics = describeDescriptorBindingLayout(manualDescriptors);
-        VulkanBerylDebugLog.once("traversal-manual-descriptor-layout", "Traversal manual descriptor layout: " + manualDescriptorDiagnostics);
+        VulkanBerylDebugLog.verboseOnce("traversal-manual-descriptor-layout", "Traversal manual descriptor layout: " + manualDescriptorDiagnostics);
         try {
             builder.setUniforms(manualDescriptors, List.of());
             this.descriptorCreationMode = "beryl-manual-descriptors";
@@ -151,7 +151,7 @@ public final class VulkanBerylTraversalExecutor {
             if (!Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed traversal shader file missing before compile: " + preprocessedShader.shaderPath());
             }
-            VulkanBerylDebugLog.once("traversal-compile-input-verified", "compileShader input verified: shader=" + preprocessedShader.shaderName()
+            VulkanBerylDebugLog.verboseOnce("traversal-compile-input-verified", "compileShader input verified: shader=" + preprocessedShader.shaderName()
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
@@ -475,7 +475,7 @@ public final class VulkanBerylTraversalExecutor {
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
         int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
-        VulkanBerylDebugLog.once("traversal-manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
+        VulkanBerylDebugLog.verboseOnce("traversal-manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
         return new ManualUBO(binding, computeStage, structSizeInts);
     }
 

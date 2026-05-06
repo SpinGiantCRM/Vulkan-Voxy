@@ -188,7 +188,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 traversalReadbacksScheduled = true;
             }
         } else {
-            VulkanBerylDebugLog.once("traversal-dispatch-disabled", "Traversal dispatch disabled by safety gate/stage limit; skipping real traversal dispatches and traversal readbacks");
+            VulkanBerylDebugLog.traceOnce("traversal-dispatch-disabled", "Traversal dispatch disabled by safety gate/stage limit; skipping real traversal dispatches and traversal readbacks");
         }
         VulkanBerylDebugLog.trace("traversal-dispatch-status", "Traversal dispatch status: initialTraversalDispatch=" + initialTraversalDispatch
                 + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
