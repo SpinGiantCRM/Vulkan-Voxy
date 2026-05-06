@@ -1,6 +1,14 @@
 {
   "UBOs": [
     {
+      "name": "RenderListBuffer",
+      "binding": 0,
+      "type": "storageBuffer",
+      "stages": [
+        "compute"
+      ]
+    },
+    {
       "name": "MetadataBuffer",
       "binding": 1,
       "type": "storageBuffer",
@@ -9,7 +17,7 @@
       ]
     },
     {
-      "name": "RenderListBuffer",
+      "name": "Binding2ProbeBuffer",
       "binding": 2,
       "type": "storageBuffer",
       "stages": [
