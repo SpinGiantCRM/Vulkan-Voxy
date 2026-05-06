@@ -38,6 +38,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     private static volatile SmokeStatus LAST_SMOKE_STATUS = new SmokeStatus(false, false, false, false, false, 0, false, false, -1, 0);
     private static volatile FrameSafetyState LAST_FRAME_SAFETY_STATE = new FrameSafetyState(false, false, "waiting_for_valid_render_list_readback");
+    private static final int TRAVERSAL_STAGE_LIMIT = Math.max(0, Math.min(6, Integer.parseInt(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_STAGE_LIMIT", "0"))));
     private static final boolean ENABLE_TRAVERSAL_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_TRAVERSAL_DISPATCH", "true"));
     private static final boolean ENABLE_INITIAL_TRAVERSAL_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INITIAL_TRAVERSAL_DISPATCH", "true"));
     private static final boolean ENABLE_INDIRECT_TRAVERSAL_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_TRAVERSAL_DISPATCH", "false"));
@@ -46,6 +47,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final boolean TRAVERSAL_SMOKE_WRITE_KNOWN = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SMOKE_WRITE_KNOWN", "false"));
     private static final boolean TRAVERSAL_SHADER_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_SMOKE", "false"));
     private static final boolean TRAVERSAL_SHADER_UNIFORM_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_UNIFORM_SMOKE", "false"));
+    private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
+    private static final boolean ENABLE_CMDGEN_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", "false"));
+    private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private final AsyncNodeManager nodeManager;
@@ -140,7 +144,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + " requestCounterCleared=" + frameInit.requestCounterCleared()
                 + " renderListCounterCleared=" + frameInit.renderListCounterCleared()
                 + " transferToComputeBarrier=" + frameInit.transferToComputeBarrier());
-        this.traversalResources.uploadTraversalUniforms(vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE);
+        this.traversalResources.recordTraversalUniformUpload(commandBuffer, vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, TRAVERSAL_STAGE_LIMIT);
         if (this.traversalExecutor == null) {
             this.traversalExecutor = new VulkanBerylTraversalExecutor(
                     this.traversalResources,
@@ -159,7 +163,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             this.scheduleRenderListSampleReadback(commandBuffer, renderList);
             traversalReadbacksScheduled = true;
             VulkanBerylDebugLog.once("traversal-smoke-noop-active", "Traversal smoke mode active: noop=true writeKnown=" + TRAVERSAL_SMOKE_WRITE_KNOWN + " traversal shader dispatch skipped");
-        } else if (ENABLE_TRAVERSAL_DISPATCH) {
+        } else if (ENABLE_TRAVERSAL_DISPATCH && (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE || TRAVERSAL_STAGE_LIMIT > 0)) {
             this.traversalExecutor.prepareTraversal(vulkanViewport);
             this.traversalExecutor.ensureTraversalPipeline(TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE);
             if (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE) { VulkanBerylDebugLog.once("traversal-shader-smoke-active", "Traversal shader smoke dispatch active"); }
@@ -184,7 +188,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 traversalReadbacksScheduled = true;
             }
         } else {
-            VulkanBerylDebugLog.once("traversal-dispatch-disabled", "Traversal dispatch disabled globally; skipping traversal dispatches and traversal readbacks");
+            VulkanBerylDebugLog.once("traversal-dispatch-disabled", "Traversal dispatch disabled by safety gate/stage limit; skipping real traversal dispatches and traversal readbacks");
         }
         VulkanBerylDebugLog.trace("traversal-dispatch-status", "Traversal dispatch status: initialTraversalDispatch=" + initialTraversalDispatch
                 + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
@@ -193,6 +197,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.frameId++;
         updateFrameSafetyState(renderList.getMaxEntryCount());
         this.publishSmokeStatus();
+        VulkanBerylLodBringupDiagnostics.updateRuntime(TRAVERSAL_SMOKE_NOOP, TRAVERSAL_SHADER_SMOKE, TRAVERSAL_SHADER_UNIFORM_SMOKE, TRAVERSAL_STAGE_LIMIT, RENDERLIST_SMOKE_ONE_ENTRY, ENABLE_CMDGEN_DISPATCH, ENABLE_INDIRECT_DRAW, this.lastVisibleSectionCount, LAST_FRAME_SAFETY_STATE.reason());
     }
 
     private void scheduleRequestReadback(VkCommandBuffer commandBuffer) {

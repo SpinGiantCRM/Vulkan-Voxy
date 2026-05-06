@@ -78,6 +78,9 @@ layout(binding = STATISTICS_BUFFER_BINDING, std430) restrict buffer statisticsBu
 #endif
 
 void addRequest(inout UnpackedNode node) {
+    if (frameId < 4u) {
+        return;
+    }
     //printf("Put node decend request");
     if (!hasRequested(node)) {
         if (requestQueueIndex.x < requestQueueSize) {//Soft limit
@@ -92,6 +95,9 @@ void addRequest(inout UnpackedNode node) {
 }
 
 void enqueueChildren(in UnpackedNode node) {
+    if (frameId < 5u) {
+        return;
+    }
     if (childListIsEmpty(node)) {//Occures in a very rare case/instance so just handle it gracefully
         return;
     }
@@ -105,6 +111,9 @@ void enqueueChildren(in UnpackedNode node) {
 }
 
 void enqueueSelfForRender(in UnpackedNode node) {
+    if (frameId < 4u) {
+        return;
+    }
     //printf("render %d@[%d,%d,%d]", node.lodLevel, node.pos.x, node.pos.y, node.pos.z);
     if (renderQueueIndex < renderQueueMaxSize) {
         uint nodeId = getId(node);
@@ -205,11 +214,23 @@ void traverse(in UnpackedNode node) {
 }
 
 void main() {
+    uint stageLimit = frameId;
+    if (stageLimit <= 1u) {
+        return;
+    }
+
     uint nodeId = getCurrentNode();
+    if (stageLimit == 2u) {
+        return;
+    }
+
     if (nodeId != SENTINAL_OUT_OF_BOUNDS && nodeId < maxNodeCount) {
         //Fetch + decode node
         UnpackedNode node;
         unpackNode(node, nodeId);
+        if (stageLimit == 3u) {
+            return;
+        }
 
         //Check if were inside the render distastance before traversince
         if (isWithinRenderDistance(node)) {
