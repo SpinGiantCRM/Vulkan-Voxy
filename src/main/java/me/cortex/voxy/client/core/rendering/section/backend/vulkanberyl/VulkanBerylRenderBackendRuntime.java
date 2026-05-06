@@ -46,7 +46,6 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final boolean TRAVERSAL_SMOKE_WRITE_KNOWN = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SMOKE_WRITE_KNOWN", "false"));
     private static final boolean TRAVERSAL_SHADER_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_SMOKE", "false"));
     private static final boolean TRAVERSAL_SHADER_UNIFORM_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_UNIFORM_SMOKE", "false"));
-    private static final boolean VERBOSE_LOGS = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_VERBOSE_LOGS", "false"));
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private final AsyncNodeManager nodeManager;
@@ -134,7 +133,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 topNodeCount,
                 TRAVERSAL_SMOKE_WRITE_KNOWN
         );
-        if (VERBOSE_LOGS || this.frameSequence % 120 == 0) Logger.info("[Voxy][VulkanBeryl] Traversal frame init: mode=command_buffer topNodeCount=" + topNodeCount
+        VulkanBerylDebugLog.trace("traversal-frame-init", "Traversal frame init: mode=command_buffer topNodeCount=" + topNodeCount
                 + " firstDispatchSize=" + frameInit.firstDispatchSize()
                 + " queueMetaInitialized=" + frameInit.queueMetaInitialized()
                 + " scratchQueueASeededCount=" + frameInit.scratchQueueASeededCount()
@@ -159,24 +158,24 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             this.scheduleRenderListCounterReadback(commandBuffer, renderList);
             this.scheduleRenderListSampleReadback(commandBuffer, renderList);
             traversalReadbacksScheduled = true;
-            Logger.info("[Voxy][VulkanBeryl] Traversal smoke mode active: noop=true writeKnown=" + TRAVERSAL_SMOKE_WRITE_KNOWN + " traversal shader dispatch skipped");
+            VulkanBerylDebugLog.once("traversal-smoke-noop-active", "Traversal smoke mode active: noop=true writeKnown=" + TRAVERSAL_SMOKE_WRITE_KNOWN + " traversal shader dispatch skipped");
         } else if (ENABLE_TRAVERSAL_DISPATCH) {
             this.traversalExecutor.prepareTraversal(vulkanViewport);
             this.traversalExecutor.ensureTraversalPipeline(TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE);
-            if (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE) { Logger.info("[Voxy][VulkanBeryl] Traversal shader smoke dispatch active"); }
+            if (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE) { VulkanBerylDebugLog.once("traversal-shader-smoke-active", "Traversal shader smoke dispatch active"); }
             this.traversalExecutor.ensureTraversalDescriptorsBound();
             this.traversalExecutor.requireDispatchSupport();
             if (ENABLE_INITIAL_TRAVERSAL_DISPATCH) {
                 this.traversalExecutor.dispatchFirstTraversalIteration(vulkanWorkContext.frame().renderer());
                 initialTraversalDispatch = this.traversalExecutor.didDispatchIterationZeroRun();
             } else {
-                Logger.info("[Voxy][VulkanBeryl] Initial traversal dispatch skipped by safety gate");
+                VulkanBerylDebugLog.once("initial-traversal-dispatch-skipped", "Initial traversal dispatch skipped by safety gate");
             }
             if (ENABLE_INDIRECT_TRAVERSAL_DISPATCH && TRAVERSAL_MAX_ITERATIONS > 1) {
                 this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer(), TRAVERSAL_MAX_ITERATIONS);
                 remainingTraversalDispatchesRan = this.traversalExecutor.getIndirectDispatchIterationCount();
             } else {
-                Logger.info("[Voxy][VulkanBeryl] Traversal remaining iterations skipped by safety gate");
+                VulkanBerylDebugLog.once("traversal-remaining-iterations-skipped", "Traversal remaining iterations skipped by safety gate");
             }
             if (initialTraversalDispatch || remainingTraversalDispatchesRan > 0) {
                 this.scheduleRequestReadback(commandBuffer);
@@ -185,9 +184,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 traversalReadbacksScheduled = true;
             }
         } else {
-            Logger.info("[Voxy][VulkanBeryl] Traversal dispatch disabled globally; skipping traversal dispatches and traversal readbacks");
+            VulkanBerylDebugLog.once("traversal-dispatch-disabled", "Traversal dispatch disabled globally; skipping traversal dispatches and traversal readbacks");
         }
-        if (VERBOSE_LOGS || this.frameSequence % 120 == 0) Logger.info("[Voxy][VulkanBeryl] Traversal dispatch status: initialTraversalDispatch=" + initialTraversalDispatch
+        VulkanBerylDebugLog.trace("traversal-dispatch-status", "Traversal dispatch status: initialTraversalDispatch=" + initialTraversalDispatch
                 + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
                 + " traversalReadbacksScheduled=" + traversalReadbacksScheduled);
         this.frameSequence++;
@@ -245,12 +244,12 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
         ByteBuffer requestBytes = MemoryUtil.memByteBuffer(readbackPtr, (int) VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES);
         int rawCount = requestBytes.getInt(0);
-        if (VERBOSE_LOGS || this.frameSequence % 120 == 0) Logger.info("[Voxy][VulkanBeryl] Traversal readback: frameId=" + this.requestReadbackFrameId + " gpuCompletionConfirmed=true rawRequestCount=" + rawCount);
+        VulkanBerylDebugLog.trace("traversal-request-readback", "Traversal readback: frameId=" + this.requestReadbackFrameId + " gpuCompletionConfirmed=true rawRequestCount=" + rawCount);
         int maxByBuffer = (int) ((VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES - 8L) / 8L);
         int acceptedCount = rawCount;
         boolean discarded = false;
         if (rawCount < 0 || rawCount > this.traversalResources.getMaxRequestQueueSize() || rawCount > maxByBuffer) {
-            Logger.error("Invalid/corrupt Vulkan/Beryl traversal request count, discarding readback batch: rawRequestCount=" + rawCount
+            VulkanBerylDebugLog.warnRateLimited("invalid-traversal-request-count", "Invalid/corrupt Vulkan/Beryl traversal request count, discarding readback batch: rawRequestCount=" + rawCount
                     + " maxRequestQueueSize=" + this.traversalResources.getMaxRequestQueueSize() + " maxByBuffer=" + maxByBuffer);
             acceptedCount = 0;
             discarded = true;
@@ -262,7 +261,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             MemoryBuffer batch = new MemoryBuffer(batchSize).cpyFrom(readbackPtr);
             this.nodeManager.submitRequestBatch(batch);
         }
-        if (VERBOSE_LOGS || this.frameSequence % 120 == 0) Logger.info("[Voxy][VulkanBeryl] Request readback: rawRequestCount=" + rawCount + " acceptedRequestCount=" + acceptedCount
+        VulkanBerylDebugLog.trace("request-readback-status", "Request readback: rawRequestCount=" + rawCount + " acceptedRequestCount=" + acceptedCount
                 + " requestBatchDiscarded=" + discarded);
         this.requestReadbackPending = false;
         this.requestReadbackCompleted = !discarded;
@@ -319,12 +318,12 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             return;
         }
         int rawCount = MemoryUtil.memGetInt(readbackPtr);
-        if (VERBOSE_LOGS || this.frameSequence % 120 == 0) Logger.info("[Voxy][VulkanBeryl] Traversal readback: frameId=" + this.renderListReadbackFrameId + " gpuCompletionConfirmed=true rawRenderListCount=" + rawCount);
+        VulkanBerylDebugLog.trace("traversal-render-list-readback", "Traversal readback: frameId=" + this.renderListReadbackFrameId + " gpuCompletionConfirmed=true rawRenderListCount=" + rawCount);
         int maxEntryCount = renderList.getMaxEntryCount();
         int acceptedCount = rawCount;
         boolean discarded = false;
         if (rawCount < 0 || rawCount > maxEntryCount) {
-            Logger.error("Invalid/corrupt Vulkan/Beryl render-list counter readback, discarding: rawRenderListCount=" + rawCount
+            VulkanBerylDebugLog.warnRateLimited("invalid-render-list-counter-readback", "Invalid/corrupt Vulkan/Beryl render-list counter readback, discarding: rawRenderListCount=" + rawCount
                     + " maxEntryCount=" + maxEntryCount);
             acceptedCount = 0;
             discarded = true;
@@ -333,7 +332,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         renderList.setLastVisibleCount(acceptedCount);
         this.lastVisibleSectionCount = acceptedCount;
         this.lastVisibleSectionCapacity = maxEntryCount;
-        if (VERBOSE_LOGS || this.frameSequence % 120 == 0) Logger.info("[Voxy][VulkanBeryl] Render-list counter readback: rawRenderListCount=" + rawCount
+        VulkanBerylDebugLog.trace("render-list-counter-readback-status", "Render-list counter readback: rawRenderListCount=" + rawCount
                 + " acceptedRenderListCount=" + acceptedCount + " renderListCounterDiscarded=" + discarded);
         this.renderListCounterReadbackPending = false;
         this.pendingRenderListCounterSource = null;
@@ -390,7 +389,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         int visibleCount = MemoryUtil.memGetInt(readbackPtr);
         int maxEntryCount = renderList.getMaxEntryCount();
         if (visibleCount < 0 || visibleCount > maxEntryCount) {
-            Logger.error("Invalid/corrupt Vulkan/Beryl render-list sample counter, skipping sample: visibleCount=" + visibleCount
+            VulkanBerylDebugLog.warnRateLimited("invalid-render-list-sample-counter", "Invalid/corrupt Vulkan/Beryl render-list sample counter, skipping sample: visibleCount=" + visibleCount
                     + " maxEntryCount=" + maxEntryCount);
             this.lastSampledVisibleSectionCount = 0;
             this.lastSampledRenderListEntryCount = 0;
@@ -422,7 +421,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.lastInvalidSampledRenderListEntryCount = invalidCount;
         this.lastSampledRenderListFirstEntries = java.util.Arrays.toString(firstIds);
         if (invalidCount > 0) {
-            Logger.error("Vulkan/Beryl render-list sample validation found invalid entries: " + invalidCount + "/" + sampledCount +
+            VulkanBerylDebugLog.warnRateLimited("invalid-render-list-sample-entries", "Vulkan/Beryl render-list sample validation found invalid entries: " + invalidCount + "/" + sampledCount +
                     " (visible=" + visibleCount + ", renderListCapacity=" + maxEntryCount + ")");
         }
 

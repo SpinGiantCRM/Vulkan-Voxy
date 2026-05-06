@@ -54,7 +54,7 @@ final class VulkanBerylShaderImportPreprocessor {
             throw new IllegalStateException("Failed reading preprocessed shader size for " + shaderResourceId + " at " + shaderPath, e);
         }
         String rootUrl = root.toUri().toString();
-        System.out.println("[Voxy][VulkanBeryl] Prepared shader import preprocess: shaderResourceId=" + shaderResourceId
+        VulkanBerylDebugLog.once("shader-preprocess:" + shaderResourceId, "Prepared shader import preprocess: shaderResourceId=" + shaderResourceId
                 + ", classpathInputPath=" + classpathShaderAssetPath(rootShader)
                 + ", tempRootPath=" + root
                 + ", tempShaderRelativePath=" + outputShaderRelativePath
@@ -94,7 +94,7 @@ final class VulkanBerylShaderImportPreprocessor {
         }
         String rootUrl = root.toUri().toString();
         for (PreparedShader shader : preparedShaders) {
-            System.out.println("[Voxy][VulkanBeryl] Prepared shader import preprocess: shaderResourceId="
+            VulkanBerylDebugLog.once("shader-preprocess:" + shaderResourceIds[preparedShaders.indexOf(shader)], "Prepared shader import preprocess: shaderResourceId="
                     + shaderResourceIds[preparedShaders.indexOf(shader)]
                     + ", tempRootPath=" + root
                     + ", tempShaderRelativePath=" + shader.tempShaderRelativePath()
