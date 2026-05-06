@@ -1,0 +1,47 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+struct DrawCommand {
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+};
+
+layout(binding = 0, std430) readonly buffer RenderListBuffer {
+    uint visibleCount;
+    uint indirectLookup[];
+};
+layout(binding = 1, std430) readonly buffer MetadataRawBuffer {
+    uvec4 metadataWords[];
+};
+layout(binding = 2, std430) readonly buffer Binding2ProbeBuffer {
+    uint binding2ProbeWord;
+};
+layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
+    DrawCommand commands[];
+};
+layout(binding = 4, std430) buffer DrawCountBuffer {
+    uint drawCount;
+};
+layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
+    uint metadataSectionCapacity;
+    uint renderListCapacity;
+    uint geometryCapacityQuads;
+    uint drawCommandCapacity;
+    uint drawCountCapacityWords;
+    uint flags;
+};
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u || metadataSectionCapacity == 0u) {
+        return;
+    }
+
+    uvec4 raw = metadataWords[0];
+    uint metadataSmoke = raw.x ^ raw.y ^ raw.z ^ raw.w;
+    if (metadataSmoke == binding2ProbeWord) {
+        memoryBarrierBuffer();
+    }
+}

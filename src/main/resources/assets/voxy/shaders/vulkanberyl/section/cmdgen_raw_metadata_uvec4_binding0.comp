@@ -1,0 +1,18 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+layout(binding = 0, std430) readonly buffer MetadataRawBuffer {
+    uvec4 metadataWords[];
+};
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    uvec4 raw = metadataWords[0];
+    if ((raw.x ^ raw.y ^ raw.z ^ raw.w) == 0xffffffffu) {
+        memoryBarrierBuffer();
+    }
+}
