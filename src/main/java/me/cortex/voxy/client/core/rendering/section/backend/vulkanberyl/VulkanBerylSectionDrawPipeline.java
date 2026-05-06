@@ -59,6 +59,16 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_config_binding0_read";
     private static final String CMDGEN_NO_IMPORT_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import.comp";
     private static final String CMDGEN_NO_IMPORT_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import";
+    private static final String CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_read_metadata0_only.comp";
+    private static final String CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_read_metadata0_only";
+    private static final String CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_compute_quad_counts_only_no_write.comp";
+    private static final String CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_compute_quad_counts_only_no_write";
+    private static final String CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_write_command0_only_no_atomic.comp";
+    private static final String CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_write_command0_only_no_atomic";
+    private static final String CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_atomic_drawcount_only.comp";
+    private static final String CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_atomic_drawcount_only";
+    private static final String CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_single_invocation_real_command_no_atomic.comp";
+    private static final String CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_single_invocation_real_command_no_atomic";
     private static final String CMDGEN_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/section/cmdgen.json";
 
     private static final int GEOMETRY_BINDING = 4;
@@ -116,6 +126,11 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE", "false"));
     private static final boolean CMDGEN_NO_IMPORT_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE", "false"));
+    private static final boolean CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE", "false"));
+    private static final boolean CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE", "false"));
+    private static final boolean CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE", "false"));
+    private static final boolean CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE", "false"));
+    private static final boolean CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE", "false"));
     private static final boolean CMDGEN_DEBUG_READBACK = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
@@ -132,6 +147,11 @@ public final class VulkanBerylSectionDrawPipeline {
     private ComputePipeline commandGenFullLayoutHardcodedBinding0ReadProbePipeline;
     private ComputePipeline commandGenFullLayoutConfigBinding0ReadProbePipeline;
     private ComputePipeline commandGenNoImportProbePipeline;
+    private ComputePipeline commandGenNoImportReadMetadata0OnlyProbePipeline;
+    private ComputePipeline commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline;
+    private ComputePipeline commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline;
+    private ComputePipeline commandGenNoImportAtomicDrawcountOnlyProbePipeline;
+    private ComputePipeline commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline;
     private Buffer drawCommandBuffer;
     private Buffer drawCountBuffer;
     private Buffer drawCommandDebugReadbackBuffer;
@@ -407,6 +427,21 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_NO_IMPORT_PROBE) {
             this.ensureCommandGenNoImportProbePipeline();
         }
+        if (CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE) {
+            this.ensureCommandGenNoImportReadMetadata0OnlyProbePipeline();
+        }
+        if (CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE) {
+            this.ensureCommandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline();
+        }
+        if (CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE) {
+            this.ensureCommandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline();
+        }
+        if (CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE) {
+            this.ensureCommandGenNoImportAtomicDrawcountOnlyProbePipeline();
+        }
+        if (CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE) {
+            this.ensureCommandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline();
+        }
         bindComputeStorageBinding(CMDGEN_METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindComputeStorageBinding(CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
         ensureAndBindCmdgenBinding2ProbeBuffer();
@@ -504,7 +539,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_FULL_LAYOUT_NOOP_PROBE
                 || CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE
                 || CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE
-                || CMDGEN_NO_IMPORT_PROBE;
+                || CMDGEN_NO_IMPORT_PROBE
+                || CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE
+                || CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE
+                || CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE
+                || CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE
+                || CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE;
         String cmdgenBlocker = validateCmdgenDispatchInputs(geometryData, renderList, visibleCount, controlledSmoke, (noOpCmdgenSmoke && isolationStage == null) || singleSsboReadProbe, isolationStage);
         if (cmdgenBlocker != null) {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "cmdgen_blocked:" + cmdgenBlocker);
@@ -563,6 +603,21 @@ public final class VulkanBerylSectionDrawPipeline {
             }
             if (CMDGEN_NO_IMPORT_PROBE) {
                 return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportProbePipeline, "no_import_probe");
+            }
+            if (CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE) {
+                return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportReadMetadata0OnlyProbePipeline, "no_import_read_metadata0_only_probe");
+            }
+            if (CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE) {
+                return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline, "no_import_compute_quad_counts_only_no_write_probe");
+            }
+            if (CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE) {
+                return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline, "no_import_write_command0_only_no_atomic_probe");
+            }
+            if (CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE) {
+                return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportAtomicDrawcountOnlyProbePipeline, "no_import_atomic_drawcount_only_probe");
+            }
+            if (CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE) {
+                return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline, "no_import_single_invocation_real_command_no_atomic_probe");
             }
             barrierTransferToCompute(commandBuffer);
             if (CMDGEN_CLEAR_OUTPUTS_ONLY) {
@@ -970,6 +1025,26 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.commandGenNoImportProbePipeline != null) {
             this.commandGenNoImportProbePipeline.cleanUp();
             this.commandGenNoImportProbePipeline = null;
+        }
+        if (this.commandGenNoImportReadMetadata0OnlyProbePipeline != null) {
+            this.commandGenNoImportReadMetadata0OnlyProbePipeline.cleanUp();
+            this.commandGenNoImportReadMetadata0OnlyProbePipeline = null;
+        }
+        if (this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline != null) {
+            this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline.cleanUp();
+            this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline = null;
+        }
+        if (this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline != null) {
+            this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline.cleanUp();
+            this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline = null;
+        }
+        if (this.commandGenNoImportAtomicDrawcountOnlyProbePipeline != null) {
+            this.commandGenNoImportAtomicDrawcountOnlyProbePipeline.cleanUp();
+            this.commandGenNoImportAtomicDrawcountOnlyProbePipeline = null;
+        }
+        if (this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline != null) {
+            this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline.cleanUp();
+            this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline = null;
         }
         if (this.drawCommandBuffer != null) {
             this.drawCommandBuffer.scheduleFree();
@@ -1397,6 +1472,31 @@ public final class VulkanBerylSectionDrawPipeline {
     private void ensureCommandGenNoImportProbePipeline() {
         if (this.commandGenNoImportProbePipeline != null) return;
         this.commandGenNoImportProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_SHADER_RESOURCE, CMDGEN_NO_IMPORT_SHADER_NAME, "CmdGenNoImportProbe");
+    }
+
+    private void ensureCommandGenNoImportReadMetadata0OnlyProbePipeline() {
+        if (this.commandGenNoImportReadMetadata0OnlyProbePipeline != null) return;
+        this.commandGenNoImportReadMetadata0OnlyProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_RESOURCE, CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_NAME, "CmdGenNoImportReadMetadata0OnlyProbe");
+    }
+
+    private void ensureCommandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline() {
+        if (this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline != null) return;
+        this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_RESOURCE, CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_NAME, "CmdGenNoImportComputeQuadCountsOnlyNoWriteProbe");
+    }
+
+    private void ensureCommandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline() {
+        if (this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline != null) return;
+        this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_RESOURCE, CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_NAME, "CmdGenNoImportWriteCommand0OnlyNoAtomicProbe");
+    }
+
+    private void ensureCommandGenNoImportAtomicDrawcountOnlyProbePipeline() {
+        if (this.commandGenNoImportAtomicDrawcountOnlyProbePipeline != null) return;
+        this.commandGenNoImportAtomicDrawcountOnlyProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_RESOURCE, CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_NAME, "CmdGenNoImportAtomicDrawcountOnlyProbe");
+    }
+
+    private void ensureCommandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline() {
+        if (this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline != null) return;
+        this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_RESOURCE, CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_NAME, "CmdGenNoImportSingleInvocationRealCommandNoAtomicProbe");
     }
 
     private ComputePipeline createDenseConfigReadProbePipeline() {
