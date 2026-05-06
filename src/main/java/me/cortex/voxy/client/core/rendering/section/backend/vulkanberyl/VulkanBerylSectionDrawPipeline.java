@@ -118,6 +118,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private Buffer cmdGenBinding2ProbeBuffer;
     private Buffer cmdGenRenderListAltProbeBuffer;
     private Buffer cmdGenMinimalTinySsboReadProbeBuffer;
+    private Buffer cmdGenMinimalConfigReadProbePlaceholderBuffer;
     private int drawCommandBufferUsageFlags;
     private int drawCommandCapacity;
     private int pendingDebugSampleCommandCount;
@@ -864,6 +865,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.cmdGenMinimalTinySsboReadProbeBuffer.scheduleFree();
             this.cmdGenMinimalTinySsboReadProbeBuffer = null;
         }
+        if (this.cmdGenMinimalConfigReadProbePlaceholderBuffer != null) {
+            this.cmdGenMinimalConfigReadProbePlaceholderBuffer.scheduleFree();
+            this.cmdGenMinimalConfigReadProbePlaceholderBuffer = null;
+        }
         if (this.drawCommandDebugReadbackBuffer != null) {
             this.drawCommandDebugReadbackBuffer.scheduleFree();
             this.drawCommandDebugReadbackBuffer = null;
@@ -1204,12 +1209,72 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void ensureCommandGenMinimalConfigReadProbePipeline() {
         if (this.commandGenMinimalConfigReadProbePipeline != null) return;
-        this.commandGenMinimalConfigReadProbePipeline = createSingleSsboReadProbePipeline(CMDGEN_MINIMAL_CONFIG_READ_SHADER_RESOURCE, CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME, CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "CmdGenMinimalConfigReadProbe");
+        ensureCommandGenMinimalConfigReadProbePlaceholderBuffer();
+        this.commandGenMinimalConfigReadProbePipeline = createDenseConfigReadProbePipeline();
+    }
+
+    private void ensureCommandGenMinimalConfigReadProbePlaceholderBuffer() {
+        if (this.cmdGenMinimalConfigReadProbePlaceholderBuffer != null) return;
+        this.cmdGenMinimalConfigReadProbePlaceholderBuffer = new Buffer("voxy_vulkanberyl_cmdgen_minimal_config_read_probe_placeholder",
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                MemoryTypes.GPU_MEM);
+        this.cmdGenMinimalConfigReadProbePlaceholderBuffer.createBuffer(Integer.BYTES);
+        VulkanBerylDebugLog.once("cmdgen-minimal-config-read-probe-placeholder-created", "cmdgen minimal config read probe placeholder buffer created: bufferId="
+                + this.cmdGenMinimalConfigReadProbePlaceholderBuffer.getId()
+                + ", capacityBytes=" + this.cmdGenMinimalConfigReadProbePlaceholderBuffer.getBufferSize()
+                + ", usage=STORAGE|TRANSFER_DST");
     }
 
     private void ensureCommandGenHardcodedBinding0ReadPipeline(Buffer renderListBuffer) {
         if (this.commandGenHardcodedBinding0ReadPipeline != null) return;
         this.commandGenHardcodedBinding0ReadPipeline = createSingleSsboReadProbePipeline(CMDGEN_HARDCODED_BINDING0_READ_SHADER_RESOURCE, CMDGEN_HARDCODED_BINDING0_READ_SHADER_NAME, CMDGEN_RENDER_LIST_BINDING, renderListBuffer, "CmdGenHardcodedBinding0ReadProbe");
+    }
+
+    private ComputePipeline createDenseConfigReadProbePipeline() {
+        int computeStage = ComputePipeline.Builder.getStageFromString("compute");
+        List<UBO> descriptors = List.of(
+                createManualDescriptor(0, computeStage, this.cmdGenMinimalConfigReadProbePlaceholderBuffer, "CmdGenMinimalConfigReadProbePlaceholder0"),
+                createManualDescriptor(1, computeStage, this.cmdGenMinimalConfigReadProbePlaceholderBuffer, "CmdGenMinimalConfigReadProbePlaceholder1"),
+                createManualDescriptor(2, computeStage, this.cmdGenMinimalConfigReadProbePlaceholderBuffer, "CmdGenMinimalConfigReadProbePlaceholder2"),
+                createManualDescriptor(3, computeStage, this.cmdGenMinimalConfigReadProbePlaceholderBuffer, "CmdGenMinimalConfigReadProbePlaceholder3"),
+                createManualDescriptor(4, computeStage, this.cmdGenMinimalConfigReadProbePlaceholderBuffer, "CmdGenMinimalConfigReadProbePlaceholder4"),
+                createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenMinimalConfigReadProbe")
+        );
+        ComputePipeline.Builder builder = new ComputePipeline.Builder(CMDGEN_MINIMAL_CONFIG_READ_SHADER_RESOURCE);
+        builder.setUniforms(descriptors, List.of());
+        try {
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_MINIMAL_CONFIG_READ_SHADER_RESOURCE);
+            if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
+                throw new IllegalStateException("Preprocessed cmdgen config read probe shader file missing before compile: " + preprocessedShader.shaderPath());
+            }
+            builder.compileShader(preprocessedShader.rootUrl(), CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to compile section cmdgen config read probe shader (compute=" + CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME + ")", e);
+        }
+        ComputePipeline pipeline;
+        try {
+            pipeline = builder.createPipeline();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create section cmdgen config read probe compute pipeline (compute=" + CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME + ")", e);
+        }
+        if (pipeline == null || pipeline.getId() == 0L) {
+            throw new IllegalStateException("Failed to create section cmdgen config read probe compute pipeline: " + CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME);
+        }
+        bindConfigReadProbePlaceholders(pipeline);
+        VulkanBerylDebugLog.once("cmdgen-config-read-probe-pipeline-created", "cmdgen config read probe pipeline created: label=CmdGenMinimalConfigReadProbe"
+                + ", shader=" + CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME
+                + ", descriptorBinding=" + CMDGEN_CONFIG_BINDING
+                + ", descriptorMode=manual_dense_placeholders_0_to_5");
+        return pipeline;
+    }
+
+    private void bindConfigReadProbePlaceholders(ComputePipeline pipeline) {
+        for (int binding = 0; binding < CMDGEN_CONFIG_BINDING; binding++) {
+            final int targetBinding = binding;
+            UBO ubo = pipeline.getUBO(candidate -> candidate.binding == targetBinding);
+            if (ubo == null) throw new IllegalStateException("cmdgen config read probe placeholder descriptor missing: binding=" + binding);
+            ubo.getBufferSlice().set(this.cmdGenMinimalConfigReadProbePlaceholderBuffer, 0L, Integer.BYTES);
+        }
     }
 
     private ComputePipeline createSingleSsboReadProbePipeline(String shaderResource, String shaderName, int descriptorBinding, Buffer descriptorBuffer, String label) {
