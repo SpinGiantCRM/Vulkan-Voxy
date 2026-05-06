@@ -1607,11 +1607,12 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private void logCmdGenConfigBufferState(String stage) {
+        String logKey = "cmdgen-config-buffer-state:" + stage;
         if (this.cmdGenConfigBuffer == null) {
-            VulkanBerylDebugLog.always("cmdGenConfigBuffer state: stage=" + stage + ", buffer=null");
+            VulkanBerylDebugLog.once(logKey, "cmdGenConfigBuffer state: stage=" + stage + ", buffer=null");
             return;
         }
-        VulkanBerylDebugLog.always("cmdGenConfigBuffer state: stage=" + stage
+        VulkanBerylDebugLog.once(logKey, "cmdGenConfigBuffer state: stage=" + stage
                 + ", bufferId=" + this.cmdGenConfigBuffer.getId()
                 + ", capacityBytes=" + this.cmdGenConfigBuffer.getBufferSize()
                 + ", usage=" + cmdGenConfigUsageString()
