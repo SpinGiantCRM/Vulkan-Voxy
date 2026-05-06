@@ -32,17 +32,29 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 public final class SectionRendererBackendSelector {
     private static final String VULKANMOD_MOD_ID = "vulkanmod";
     private static final String BERYL_MOD_ID = "beryl";
+    private static volatile SectionRendererBackend activeBackend;
 
     private SectionRendererBackendSelector() {
     }
 
     public static SectionRendererBackend getActiveBackend() {
-        boolean vulkanModLoaded = FabricLoader.getInstance().isModLoaded(VULKANMOD_MOD_ID);
-        boolean berylLoaded = FabricLoader.getInstance().isModLoaded(BERYL_MOD_ID);
+        SectionRendererBackend cached = activeBackend;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (SectionRendererBackendSelector.class) {
+            if (activeBackend != null) {
+                return activeBackend;
+            }
 
-        if (vulkanModLoaded && berylLoaded) {
-            Logger.info("Detected VulkanMod and Beryl. Selecting required VULKANMOD_BERYL backend.");
-            return SectionRendererBackend.VULKANMOD_BERYL;
+            boolean vulkanModLoaded = FabricLoader.getInstance().isModLoaded(VULKANMOD_MOD_ID);
+            boolean berylLoaded = FabricLoader.getInstance().isModLoaded(BERYL_MOD_ID);
+
+            if (vulkanModLoaded && berylLoaded) {
+                activeBackend = SectionRendererBackend.VULKANMOD_BERYL;
+                Logger.info("Detected VulkanMod and Beryl. Selecting required VULKANMOD_BERYL backend.");
+                return activeBackend;
+            }
         }
 
         throw new IllegalStateException("This fork requires both VulkanMod and Beryl mods to run the VULKANMOD_BERYL backend.");

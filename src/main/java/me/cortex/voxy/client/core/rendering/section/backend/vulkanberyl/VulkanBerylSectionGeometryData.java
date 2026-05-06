@@ -20,6 +20,8 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
     private final int[] sectionMetadataMirror;
     private final boolean geometryCapacityCapped;
     private final long requestedGeometryCapacityBytes;
+    private long geometrySyncGeneration;
+    private long sectionMetadataMirrorWriteCount;
     private boolean freed;
 
     public VulkanBerylSectionGeometryData(int maxSectionCount, long maxCapacity) {
@@ -111,6 +113,21 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         this.usedGeometryBytes = usedGeometryBytes;
     }
 
+    public void markGeometrySyncApplied() {
+        if (this.freed) {
+            throw new IllegalStateException("Cannot mark geometry sync after free");
+        }
+        this.geometrySyncGeneration++;
+    }
+
+    public long getGeometrySyncGeneration() {
+        return this.geometrySyncGeneration;
+    }
+
+    public long getSectionMetadataMirrorWriteCount() {
+        return this.sectionMetadataMirrorWriteCount;
+    }
+
     public void mirrorSectionMetadataUpload(long destinationOffsetBytes, long sourceAddress, long copySizeBytes) {
         if (this.freed) {
             throw new IllegalStateException("Cannot mirror section metadata after free");
@@ -127,6 +144,34 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         for (int i = 0; i < intCount; i++) {
             this.sectionMetadataMirror[intOffset + i] = org.lwjgl.system.MemoryUtil.memGetInt(sourceAddress + (long) i * Integer.BYTES);
         }
+        this.sectionMetadataMirrorWriteCount++;
+    }
+
+    public int findFirstNonZeroSectionMetadata() {
+        int wordsPerSection = SECTION_METADATA_SIZE / Integer.BYTES;
+        for (int sectionId = 0; sectionId < this.maxSectionCount; sectionId++) {
+            int base = sectionId * wordsPerSection;
+            for (int word = 0; word < wordsPerSection; word++) {
+                if (this.sectionMetadataMirror[base + word] != 0) {
+                    return sectionId;
+                }
+            }
+        }
+        return -1;
+    }
+
+    public boolean hasNonZeroSectionMetadata(int sectionId) {
+        if (sectionId < 0 || sectionId >= this.maxSectionCount) {
+            throw new IllegalArgumentException("sectionId out of range: " + sectionId);
+        }
+        int wordsPerSection = SECTION_METADATA_SIZE / Integer.BYTES;
+        int base = sectionId * wordsPerSection;
+        for (int word = 0; word < wordsPerSection; word++) {
+            if (this.sectionMetadataMirror[base + word] != 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public int getSectionMetadataInt(int sectionId, int wordIndex) {

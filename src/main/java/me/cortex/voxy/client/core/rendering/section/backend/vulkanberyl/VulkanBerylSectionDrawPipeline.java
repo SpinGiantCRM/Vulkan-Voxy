@@ -77,6 +77,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean sceneUniformBound;
     private boolean graphicsPipelineCreated;
     private boolean commandGenPipelineCreated;
+    private String lastControlledSmokeDiagnostic = "";
     private boolean freed;
 
     public void ensureDrawPipeline() {
@@ -404,10 +405,17 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private ControlledRenderListSmoke recordControlledRenderListSmoke(VkCommandBuffer commandBuffer, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         ControlledRenderListSmoke smoke = findControlledRenderListSmokeSection(geometryData, renderList);
+        if (!smoke.safe()) {
+            renderList.setLastVisibleCount(0);
+            VulkanBerylLodBringupDiagnostics.updateControlledRenderList(false, -1, smoke.reason());
+            logControlledSmokeDiagnosticIfChanged(geometryData, smoke);
+            return smoke;
+        }
+
         try (MemoryStack stack = MemoryStack.stackPush()) {
             var renderListHeader = stack.mallocInt(2);
-            renderListHeader.put(0, smoke.safe() ? 1 : 0);
-            renderListHeader.put(1, smoke.safe() ? smoke.sectionId() : 0);
+            renderListHeader.put(0, 1);
+            renderListHeader.put(1, smoke.sectionId());
             VK10.vkCmdUpdateBuffer(commandBuffer, renderList.getBuffer().getId(), 0L, renderListHeader);
 
             VkMemoryBarrier.Buffer transferToCompute = VkMemoryBarrier.calloc(1, stack)
@@ -419,17 +427,9 @@ public final class VulkanBerylSectionDrawPipeline {
                     VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
                     0, transferToCompute, null, null);
         }
-        renderList.setLastVisibleCount(smoke.safe() ? 1 : 0);
-        VulkanBerylLodBringupDiagnostics.updateControlledRenderList(smoke.safe(), smoke.safe() ? smoke.sectionId() : -1, smoke.reason());
-        if (!smoke.safe()) {
-            VulkanBerylDebugLog.once("renderlist-smoke-no-safe-section:" + smoke.reason(), "Controlled render-list smoke blocked: " + smoke.reason());
-        } else {
-            VulkanBerylDebugLog.once("renderlist-smoke-safe-section", "Controlled render-list smoke section: sectionId=" + smoke.sectionId()
-                    + " quadCount=" + smoke.quadCount()
-                    + " quadStart=" + smoke.quadStart()
-                    + " geometryUsedBytes=" + geometryData.getUsedGeometryBytes()
-                    + " geometryCapacityBytes=" + geometryData.getGeometryCapacityBytes());
-        }
+        renderList.setLastVisibleCount(1);
+        VulkanBerylLodBringupDiagnostics.updateControlledRenderList(true, smoke.sectionId(), smoke.reason());
+        logControlledSmokeDiagnosticIfChanged(geometryData, smoke);
         return smoke;
     }
 
@@ -438,23 +438,33 @@ public final class VulkanBerylSectionDrawPipeline {
             return ControlledRenderListSmoke.failed("render-list capacity is zero");
         }
         if (geometryData.getMaxSectionCount() <= 0 || geometryData.getMetadataCapacityBytes() <= 0L) {
-            return ControlledRenderListSmoke.failed("no section metadata yet");
+            return ControlledRenderListSmoke.failed("metadata_capacity_zero");
         }
         if (geometryData.getGeometryCapacityBytes() <= 0L) {
-            return ControlledRenderListSmoke.failed("geometry used bytes is zero: geometry buffer capacity is zero");
+            return ControlledRenderListSmoke.failed("geometry_capacity_zero");
+        }
+        if (geometryData.getGeometrySyncGeneration() <= 0L) {
+            return ControlledRenderListSmoke.failed("geometry_sync_not_seen");
         }
         int sectionCount = Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount());
         if (sectionCount <= 0) {
-            return ControlledRenderListSmoke.failed("no section metadata yet");
+            return ControlledRenderListSmoke.failed("section_count_zero");
         }
         long usedGeometryBytes = geometryData.getUsedGeometryBytes();
         if (usedGeometryBytes <= 0L) {
-            return ControlledRenderListSmoke.failed("geometry used bytes is zero");
+            return ControlledRenderListSmoke.failed("geometry_used_bytes_zero");
+        }
+        int firstNonZeroMetadataSection = geometryData.findFirstNonZeroSectionMetadata();
+        if (firstNonZeroMetadataSection < 0) {
+            return ControlledRenderListSmoke.failed("metadata_mirror_empty");
         }
 
         boolean sawOpaqueQuads = false;
         String firstOutOfBounds = null;
         for (int sectionId = 0; sectionId < sectionCount; sectionId++) {
+            if (!geometryData.hasNonZeroSectionMetadata(sectionId)) {
+                continue;
+            }
             int quadStart = geometryData.getSectionMetadataInt(sectionId, 3);
             long translucentQuadCount = extractTranslucentQuadCount(geometryData, sectionId);
             long opaqueQuadCount = extractOpaqueQuadCount(geometryData, sectionId);
@@ -480,9 +490,31 @@ public final class VulkanBerylSectionDrawPipeline {
             return ControlledRenderListSmoke.safe(sectionId, (int) opaqueQuadStart, opaqueQuadCount);
         }
         if (!sawOpaqueQuads) {
-            return ControlledRenderListSmoke.failed("opaque quad count is zero");
+            return ControlledRenderListSmoke.failed("opaque_quad_count_zero");
         }
-        return ControlledRenderListSmoke.failed(firstOutOfBounds == null ? "quadStart/quadCount out of bounds" : firstOutOfBounds);
+        return ControlledRenderListSmoke.failed(firstOutOfBounds == null ? "quad_bounds_invalid" : firstOutOfBounds);
+    }
+
+    private void logControlledSmokeDiagnosticIfChanged(VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke smoke) {
+        int sectionCount = Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount());
+        int firstNonZeroMetadataSection = geometryData.findFirstNonZeroSectionMetadata();
+        String diagnostic = "sectionCount=" + sectionCount
+                + " usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
+                + " metadataCapacityBytes=" + geometryData.getMetadataCapacityBytes()
+                + " firstNonzeroMetadataSection=" + firstNonZeroMetadataSection
+                + " blocker=" + smoke.reason();
+        if (diagnostic.equals(this.lastControlledSmokeDiagnostic)) {
+            return;
+        }
+        this.lastControlledSmokeDiagnostic = diagnostic;
+        if (smoke.safe()) {
+            VulkanBerylDebugLog.always("Controlled render-list smoke ready: " + diagnostic
+                    + " sectionId=" + smoke.sectionId()
+                    + " quadStart=" + smoke.quadStart()
+                    + " quadCount=" + smoke.quadCount());
+        } else {
+            VulkanBerylDebugLog.always("Controlled render-list smoke blocked: " + diagnostic);
+        }
     }
 
     private long extractTranslucentQuadCount(VulkanBerylSectionGeometryData geometryData, int sectionId) {
