@@ -1270,7 +1270,8 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void bindConfigReadProbePlaceholders(ComputePipeline pipeline) {
         for (int binding = 0; binding < CMDGEN_CONFIG_BINDING; binding++) {
-            UBO ubo = pipeline.getUBO(candidate -> candidate.binding == binding);
+            final int targetBinding = binding;
+            UBO ubo = pipeline.getUBO(candidate -> candidate.binding == targetBinding);
             if (ubo == null) throw new IllegalStateException("cmdgen config read probe placeholder descriptor missing: binding=" + binding);
             ubo.getBufferSlice().set(this.cmdGenMinimalConfigReadProbePlaceholderBuffer, 0L, Integer.BYTES);
         }
