@@ -13,6 +13,9 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
     public static final long MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES = Integer.MAX_VALUE - 7L;
 
     private final int maxSectionCount;
+    private static final int GEOMETRY_BUFFER_USAGE_FLAGS = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    private static final int METADATA_BUFFER_USAGE_FLAGS = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
     private final Buffer geometryBuffer;
     private final Buffer metadataBuffer;
     private int sectionCount;
@@ -40,9 +43,9 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         this.maxSectionCount = maxSectionCount;
         this.requestedGeometryCapacityBytes = maxCapacity;
         this.geometryCapacityCapped = descriptorCompatibleCapacity != maxCapacity;
-        this.geometryBuffer = new Buffer("voxy_vulkanberyl_geometry", VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        this.geometryBuffer = new Buffer("voxy_vulkanberyl_geometry", GEOMETRY_BUFFER_USAGE_FLAGS, MemoryTypes.GPU_MEM);
         this.geometryBuffer.createBuffer(descriptorCompatibleCapacity);
-        this.metadataBuffer = new Buffer("voxy_vulkanberyl_metadata", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        this.metadataBuffer = new Buffer("voxy_vulkanberyl_metadata", METADATA_BUFFER_USAGE_FLAGS, MemoryTypes.GPU_MEM);
         this.metadataBuffer.createBuffer(metadataCapacity);
         this.sectionMetadataMirror = new int[Math.multiplyExact(maxSectionCount, SECTION_METADATA_SIZE / Integer.BYTES)];
     }
@@ -97,6 +100,18 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
 
     public long getMetadataCapacityBytes() {
         return this.metadataBuffer.getBufferSize();
+    }
+
+    public int getMetadataUsageFlags() {
+        return METADATA_BUFFER_USAGE_FLAGS;
+    }
+
+    public boolean isMetadataStorageBufferCapable() {
+        return (METADATA_BUFFER_USAGE_FLAGS & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0;
+    }
+
+    public String getMetadataUsageString() {
+        return "STORAGE|TRANSFER_DST(" + METADATA_BUFFER_USAGE_FLAGS + ")";
     }
 
     public long getUsedGeometryBytes() {
