@@ -217,7 +217,7 @@ public final class VulkanBerylTraversalResources {
         }
     }
 
-    public void uploadTraversalUniforms(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen, int maxNodeCount) {
+    public void uploadTraversalUniforms(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen, int maxNodeCount, boolean uniformSmokeMode) {
         requireNotFreed();
         if (viewport == null) {
             throw new IllegalArgumentException("viewport must not be null");
@@ -263,14 +263,15 @@ public final class VulkanBerylTraversalResources {
 
             MemoryUtil.memPutInt(ptr, renderList.getMaxEntryCount()); ptr += Integer.BYTES;
 
-            // visibilityId is 0 until Vulkan/Beryl visibility tracking exists.
-            MemoryUtil.memPutInt(ptr, 0); ptr += Integer.BYTES;
+            // frameId is 0 until Vulkan/Beryl frame tracking exists; uniform smoke uses sentinel.
+            MemoryUtil.memPutInt(ptr, uniformSmokeMode ? 0x53554D4B : 0); ptr += Integer.BYTES;
 
             final double targetCount = 4000.0;
             double fillness = Math.max(0.0, (targetCount - renderGen.getTaskCount()) / targetCount);
             fillness *= fillness;
             final int requestSize = (int) Math.ceil(fillness * MAX_REQUEST_QUEUE_SIZE);
-            MemoryUtil.memPutInt(ptr, Math.max(0, Math.min(MAX_REQUEST_QUEUE_SIZE, requestSize))); ptr += Integer.BYTES;
+            int finalRequestSize = Math.max(0, Math.min(MAX_REQUEST_QUEUE_SIZE, requestSize));
+            MemoryUtil.memPutInt(ptr, finalRequestSize); ptr += Integer.BYTES;
 
             MemoryUtil.memPutInt(ptr, Math.max(0, maxNodeCount)); ptr += Integer.BYTES;
 
