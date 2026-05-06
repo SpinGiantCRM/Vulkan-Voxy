@@ -37,6 +37,11 @@ const uint CMDGEN_FLAG_NOOP_SMOKE = 1u;
 const uint CMDGEN_FLAG_READ_RENDERLIST_ONLY = 1u << 1u;
 const uint CMDGEN_FLAG_READ_METADATA_ONLY = 1u << 2u;
 const uint CMDGEN_FLAG_WRITE_DRAWS_ONLY = 1u << 3u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY = 1u << 4u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_COUNT_ONLY = 1u << 5u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY = 1u << 6u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY = 1u << 7u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1u << 8u;
 
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
@@ -58,6 +63,61 @@ void main() {
     uint drawIndex = gl_GlobalInvocationID.x;
     if ((flags & CMDGEN_FLAG_NOOP_SMOKE) != 0u) {
         if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint headerSmoke = visibleCount;
+        if (headerSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_COUNT_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint countSmoke = visibleCount;
+        if (countSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint sectionIdSmoke = indirectLookup[0];
+        if (sectionIdSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint quadStartSmoke = indirectLookup[1];
+        if (quadStartSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint quadCountSmoke = indirectLookup[2];
+        if (quadCountSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
             drawCount = 0u;
         }
         return;
