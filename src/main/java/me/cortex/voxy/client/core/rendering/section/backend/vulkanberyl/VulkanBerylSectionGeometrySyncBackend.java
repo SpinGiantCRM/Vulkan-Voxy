@@ -28,6 +28,7 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
         VulkanBerylSectionGeometryData vulkanGeometryData = requireVulkanGeometryData(geometryData);
         vulkanGeometryData.setSectionCount(results.getGeometrySectionCount());
         vulkanGeometryData.setUsedGeometryBytes(results.getUsedGeometry());
+        vulkanGeometryData.markGeometrySyncApplied();
 
         if (results.getUsedGeometry() > vulkanGeometryData.getGeometryCapacityBytes()) {
             throw new IllegalStateException("Vulkan/Beryl geometry usage exceeds capacity: used=" + results.getUsedGeometry() + ", max=" + vulkanGeometryData.getGeometryCapacityBytes());
