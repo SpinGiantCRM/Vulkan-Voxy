@@ -27,6 +27,7 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
     public void applyGeometrySync(IGeometryData geometryData, AsyncNodeManager.SyncResults results) {
         VulkanBerylSectionGeometryData vulkanGeometryData = requireVulkanGeometryData(geometryData);
         vulkanGeometryData.setSectionCount(results.getGeometrySectionCount());
+        vulkanGeometryData.setUsedGeometryBytes(results.getUsedGeometry());
 
         if (results.getUsedGeometry() > vulkanGeometryData.getGeometryCapacityBytes()) {
             throw new IllegalStateException("Vulkan/Beryl geometry usage exceeds capacity: used=" + results.getUsedGeometry() + ", max=" + vulkanGeometryData.getGeometryCapacityBytes());
@@ -153,6 +154,7 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
                     throw new IllegalStateException("Scatter write destination range exceeds metadata capacity: end=" + destinationEndBytes + ", capacity=" + metadataCapacityBytes);
                 }
                 uploader.upload(metadataBuffer, destinationOffsetBytes, dataAddress, SCATTER_PAYLOAD_SIZE_BYTES);
+                vulkanGeometryData.mirrorSectionMetadataUpload(destinationOffsetBytes, dataAddress, SCATTER_PAYLOAD_SIZE_BYTES);
                 hasScatterUploads[0] = true;
                 return;
             }

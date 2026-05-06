@@ -37,7 +37,7 @@ void main() {
 
     bool uniformSmoke = (frameId == 0x53554D4Bu); // "SUMK"
     if (uniformSmoke) {
-        if (renderQueueMaxSize > 0u && requestQueueSize <= 50u && maxNodeCount > 0u) {
+        if (renderQueueMaxSize > 0u && requestQueueSize <= 50u && maxNodeCount > 0u && minSSS > 0.0 && renderDistance > 0.0) {
             requestQueueIndex.x = 0u;
             renderQueueIndex = 0u;
         } else {

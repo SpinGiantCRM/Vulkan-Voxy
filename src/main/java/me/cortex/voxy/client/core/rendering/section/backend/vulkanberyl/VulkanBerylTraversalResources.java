@@ -217,8 +217,11 @@ public final class VulkanBerylTraversalResources {
         }
     }
 
-    public void uploadTraversalUniforms(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen, int maxNodeCount, boolean uniformSmokeMode) {
+    public void recordTraversalUniformUpload(VkCommandBuffer commandBuffer, Viewport<?> viewport, VulkanBerylViewportRenderList renderList, VulkanBerylTopLevelNodeStore topLevelNodeStore, RenderGenerationService renderGen, int maxNodeCount, boolean uniformSmokeMode, int traversalStageLimit) {
         requireNotFreed();
+        if (commandBuffer == null) {
+            throw new IllegalArgumentException("commandBuffer must not be null");
+        }
         if (viewport == null) {
             throw new IllegalArgumentException("viewport must not be null");
         }
@@ -239,6 +242,19 @@ public final class VulkanBerylTraversalResources {
         }
         if (this.uniformBuffer.getBufferSize() < UNIFORM_BUFFER_SIZE_BYTES) {
             throw new IllegalStateException("uniformBuffer must be at least 1024 bytes");
+        }
+        if (viewport.width <= 0 || viewport.height <= 0) {
+            throw new IllegalStateException("viewport width/height must be positive for traversal uniform upload: " + viewport.width + "x" + viewport.height);
+        }
+        if (renderList.getMaxEntryCount() <= 0) {
+            throw new IllegalStateException("renderQueueMaxSize must be positive");
+        }
+        if (maxNodeCount <= 0) {
+            throw new IllegalStateException("maxNodeCount must be positive");
+        }
+        float sectionRenderDistance = VoxyConfig.CONFIG.sectionRenderDistance;
+        if (!Float.isFinite(sectionRenderDistance) || sectionRenderDistance <= 0.0f) {
+            throw new IllegalStateException("section render distance must be finite and positive: " + sectionRenderDistance);
         }
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -263,8 +279,8 @@ public final class VulkanBerylTraversalResources {
 
             MemoryUtil.memPutInt(ptr, renderList.getMaxEntryCount()); ptr += Integer.BYTES;
 
-            // frameId is 0 until Vulkan/Beryl frame tracking exists; uniform smoke uses sentinel.
-            MemoryUtil.memPutInt(ptr, uniformSmokeMode ? 0x53554D4B : 0); ptr += Integer.BYTES;
+            // frameId doubles as a controlled bring-up word: uniform smoke uses sentinel; real traversal uses stage limit.
+            MemoryUtil.memPutInt(ptr, uniformSmokeMode ? 0x53554D4B : Math.max(0, traversalStageLimit)); ptr += Integer.BYTES;
 
             final double targetCount = 4000.0;
             double fillness = Math.max(0.0, (targetCount - renderGen.getTaskCount()) / targetCount);
@@ -275,11 +291,18 @@ public final class VulkanBerylTraversalResources {
 
             MemoryUtil.memPutInt(ptr, Math.max(0, maxNodeCount)); ptr += Integer.BYTES;
 
-            MemoryUtil.memPutFloat(ptr, (float) Math.pow(VoxyConfig.CONFIG.sectionRenderDistance * 16 * 32, 2));
+            MemoryUtil.memPutFloat(ptr, (float) Math.pow(sectionRenderDistance * 16 * 32, 2));
 
-            VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
-            uploader.upload(this.uniformBuffer, 0L, memAddress(uniformData), UNIFORM_BUFFER_SIZE_BYTES);
-            uploader.flush();
+            VK10.vkCmdUpdateBuffer(commandBuffer, this.uniformBuffer.getId(), 0L, uniformData);
+
+            VkMemoryBarrier.Buffer transferToCompute = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    0, transferToCompute, null, null);
         }
     }
 

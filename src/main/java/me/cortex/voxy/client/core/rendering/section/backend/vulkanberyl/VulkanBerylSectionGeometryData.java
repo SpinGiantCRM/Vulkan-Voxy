@@ -16,6 +16,8 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
     private final Buffer geometryBuffer;
     private final Buffer metadataBuffer;
     private int sectionCount;
+    private long usedGeometryBytes;
+    private final int[] sectionMetadataMirror;
     private final boolean geometryCapacityCapped;
     private final long requestedGeometryCapacityBytes;
     private boolean freed;
@@ -40,6 +42,7 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         this.geometryBuffer.createBuffer(descriptorCompatibleCapacity);
         this.metadataBuffer = new Buffer("voxy_vulkanberyl_metadata", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
         this.metadataBuffer.createBuffer(metadataCapacity);
+        this.sectionMetadataMirror = new int[Math.multiplyExact(maxSectionCount, SECTION_METADATA_SIZE / Integer.BYTES)];
     }
 
 
@@ -66,6 +69,7 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         this.metadataBuffer.scheduleFree();
         this.freed = true;
         this.sectionCount = 0;
+        this.usedGeometryBytes = 0L;
     }
 
     @Override
@@ -91,6 +95,48 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
 
     public long getMetadataCapacityBytes() {
         return this.metadataBuffer.getBufferSize();
+    }
+
+    public long getUsedGeometryBytes() {
+        return this.usedGeometryBytes;
+    }
+
+    public void setUsedGeometryBytes(long usedGeometryBytes) {
+        if (this.freed) {
+            throw new IllegalStateException("Cannot update used geometry after free");
+        }
+        if (usedGeometryBytes < 0L || usedGeometryBytes > this.getGeometryCapacityBytes()) {
+            throw new IllegalArgumentException("usedGeometryBytes out of range: " + usedGeometryBytes);
+        }
+        this.usedGeometryBytes = usedGeometryBytes;
+    }
+
+    public void mirrorSectionMetadataUpload(long destinationOffsetBytes, long sourceAddress, long copySizeBytes) {
+        if (this.freed) {
+            throw new IllegalStateException("Cannot mirror section metadata after free");
+        }
+        if ((destinationOffsetBytes & 3L) != 0L || (copySizeBytes & 3L) != 0L) {
+            throw new IllegalArgumentException("Section metadata mirror writes must be uint-aligned");
+        }
+        long destinationEndBytes = Math.addExact(destinationOffsetBytes, copySizeBytes);
+        if (destinationOffsetBytes < 0L || destinationEndBytes > this.getMetadataCapacityBytes()) {
+            throw new IllegalArgumentException("Section metadata mirror write out of bounds: offset=" + destinationOffsetBytes + ", size=" + copySizeBytes);
+        }
+        int intOffset = Math.toIntExact(destinationOffsetBytes / Integer.BYTES);
+        int intCount = Math.toIntExact(copySizeBytes / Integer.BYTES);
+        for (int i = 0; i < intCount; i++) {
+            this.sectionMetadataMirror[intOffset + i] = org.lwjgl.system.MemoryUtil.memGetInt(sourceAddress + (long) i * Integer.BYTES);
+        }
+    }
+
+    public int getSectionMetadataInt(int sectionId, int wordIndex) {
+        if (sectionId < 0 || sectionId >= this.maxSectionCount) {
+            throw new IllegalArgumentException("sectionId out of range: " + sectionId);
+        }
+        if (wordIndex < 0 || wordIndex >= SECTION_METADATA_SIZE / Integer.BYTES) {
+            throw new IllegalArgumentException("wordIndex out of range: " + wordIndex);
+        }
+        return this.sectionMetadataMirror[sectionId * (SECTION_METADATA_SIZE / Integer.BYTES) + wordIndex];
     }
 
 
