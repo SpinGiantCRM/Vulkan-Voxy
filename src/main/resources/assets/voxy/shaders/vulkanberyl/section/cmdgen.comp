@@ -27,7 +27,13 @@ layout(binding = 4, std430) buffer DrawCountBuffer {
 layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
     uint metadataSectionCapacity;
     uint renderListCapacity;
+    uint geometryCapacityQuads;
+    uint drawCommandCapacity;
+    uint drawCountCapacityWords;
+    uint flags;
 };
+
+const uint CMDGEN_FLAG_NOOP_SMOKE = 1u;
 
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
@@ -47,6 +53,13 @@ uint extractOpaqueQuadCount(SectionMeta meta) {
 
 void main() {
     uint drawIndex = gl_GlobalInvocationID.x;
+    if ((flags & CMDGEN_FLAG_NOOP_SMOKE) != 0u) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
+
     uint safeVisibleCount = min(visibleCount, renderListCapacity);
     if (drawIndex >= safeVisibleCount) {
         return;
@@ -59,17 +72,32 @@ void main() {
         }
         return;
     }
+    if (drawIndex >= drawCommandCapacity) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
+
     SectionMeta meta = sectionData[sectionId];
-    uint quadCount = extractOpaqueQuadCount(meta);
+    uint translucentQuadCount = extractTranslucentQuadCount(meta);
+    uint opaqueQuadCount = extractOpaqueQuadCount(meta);
+    uint opaqueQuadStart = extractQuadStart(meta) + translucentQuadCount;
+    if (opaqueQuadCount == 0u || opaqueQuadStart > geometryCapacityQuads || opaqueQuadCount > geometryCapacityQuads - opaqueQuadStart) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            drawCount = 0u;
+        }
+        return;
+    }
 
     DrawCommand cmd;
-    cmd.vertexCount = quadCount * 4u;
+    cmd.vertexCount = opaqueQuadCount * 4u;
     cmd.instanceCount = 1u;
-    cmd.firstVertex = (extractQuadStart(meta) + extractTranslucentQuadCount(meta)) * 4u;
+    cmd.firstVertex = opaqueQuadStart * 4u;
     cmd.firstInstance = drawIndex;
     commands[drawIndex] = cmd;
 
-    if (drawIndex == 0u) {
+    if (drawIndex == 0u && drawCountCapacityWords > 0u) {
         drawCount = safeVisibleCount;
     }
 }
