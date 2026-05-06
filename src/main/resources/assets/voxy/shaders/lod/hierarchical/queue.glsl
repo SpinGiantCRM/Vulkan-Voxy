@@ -18,7 +18,14 @@ layout(binding = NODE_QUEUE_SINK_BINDING, std430) restrict writeonly buffer Node
 };
 
 uint getCurrentNode() {
-    if (nodeQueueMetadata[queueIdx].w <= gl_GlobalInvocationID.x) {
+    if (queueIdx >= MAX_ITERATIONS) {
+        return SENTINAL_OUT_OF_BOUNDS;
+    }
+    if (gl_GlobalInvocationID.x >= MAX_QUEUE_SIZE) {
+        return SENTINAL_OUT_OF_BOUNDS;
+    }
+    uint queueCount = nodeQueueMetadata[queueIdx].w;
+    if (queueCount > MAX_QUEUE_SIZE || queueCount <= gl_GlobalInvocationID.x) {
         return SENTINAL_OUT_OF_BOUNDS;
     }
     return nodeQueueSource[gl_GlobalInvocationID.x];

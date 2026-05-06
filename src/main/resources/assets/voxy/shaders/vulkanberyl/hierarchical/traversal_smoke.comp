@@ -1,0 +1,52 @@
+#version 460 core
+
+#define SCENE_UNIFORM_BINDING 1
+#define REQUEST_QUEUE_BINDING 2
+#define RENDER_QUEUE_BINDING 3
+
+layout(local_size_x=32) in;
+
+layout(binding = SCENE_UNIFORM_BINDING, std140) uniform SceneUniform {
+    mat4 MVP;
+    ivec3 camSecPos;
+    uint packedHizSize;
+    vec3 camSubSecPos;
+    float minSSS;
+    vec4 frustumPlanes[6];
+    uint renderQueueMaxSize;
+    uint frameId;
+    uint requestQueueSize;
+    uint maxNodeCount;
+    float renderDistance;
+};
+
+layout(binding = REQUEST_QUEUE_BINDING, std430) restrict buffer requestQueueStruct {
+    uvec2 requestQueueIndex;
+    uvec2[] requestQueue;
+};
+
+layout(binding = RENDER_QUEUE_BINDING, std430) restrict buffer renderQueueStruct {
+    uint renderQueueIndex;
+    uint[] renderQueue;
+};
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    bool uniformSmoke = (frameId == 0x53554D4Bu); // "SUMK"
+    if (uniformSmoke) {
+        if (renderQueueMaxSize > 0u && requestQueueSize <= 50u && maxNodeCount > 0u) {
+            requestQueueIndex.x = 0u;
+            renderQueueIndex = 0u;
+        } else {
+            requestQueueIndex.x = 0xBAD00001u;
+            renderQueueIndex = 0xBAD00002u;
+        }
+        return;
+    }
+
+    requestQueueIndex.x = 0u;
+    renderQueueIndex = 0u;
+}

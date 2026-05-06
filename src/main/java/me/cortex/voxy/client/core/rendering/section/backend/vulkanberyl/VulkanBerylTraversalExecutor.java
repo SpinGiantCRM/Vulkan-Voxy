@@ -30,6 +30,7 @@ import java.util.regex.Pattern;
 
 public final class VulkanBerylTraversalExecutor {
     public static final String TRAVERSAL_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/hierarchical/traversal.comp";
+    public static final String TRAVERSAL_SMOKE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/hierarchical/traversal_smoke.comp";
     private static final String TRAVERSAL_SHADER_NAME = "vulkanberyl/hierarchical/traversal";
     private static final String TRAVERSAL_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.json";
     private static final Pattern SHADER_LINE_PATTERN = Pattern.compile(":(\\d+):\\s+error:");
@@ -96,12 +97,12 @@ public final class VulkanBerylTraversalExecutor {
         if (this.topLevelNodeStore.getTopNodeCount() < 0) throw new IllegalStateException("topNodeCount must be non-negative");
     }
 
-    public String getTraversalShaderResource() {
-        return TRAVERSAL_SHADER_RESOURCE;
+    public String getTraversalShaderResource(boolean smokeShader) {
+        return smokeShader ? TRAVERSAL_SMOKE_SHADER_RESOURCE : TRAVERSAL_SHADER_RESOURCE;
     }
 
 
-    public void ensureTraversalPipeline() {
+    public void ensureTraversalPipeline(boolean smokeShader) {
         if (this.freed) throw new IllegalStateException("traversal executor is freed");
         requireLiveResources();
         if (this.traversalPipeline != null) {
@@ -111,7 +112,6 @@ public final class VulkanBerylTraversalExecutor {
         URL configUrl = VulkanBerylTraversalExecutor.class.getResource(TRAVERSAL_SHADER_CONFIG);
         if (configUrl == null) throw new IllegalStateException("Missing traversal compute shader config: " + TRAVERSAL_SHADER_CONFIG);
 
-        ComputePipeline.Builder builder = new ComputePipeline.Builder(TRAVERSAL_SHADER_RESOURCE);
         JsonObject config;
         try (InputStreamReader reader = new InputStreamReader(configUrl.openStream(), StandardCharsets.UTF_8)) {
             config = JsonParser.parseReader(reader).getAsJsonObject();
@@ -120,6 +120,8 @@ public final class VulkanBerylTraversalExecutor {
         }
 
         validateTraversalBindings(config);
+
+        ComputePipeline.Builder builder = new ComputePipeline.Builder(getTraversalShaderResource(smokeShader));
 
         this.descriptorCreationMode = "failed-before-descriptor-create";
         int computeStage;
@@ -151,7 +153,7 @@ public final class VulkanBerylTraversalExecutor {
             builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
         } catch (RuntimeException e) {
             logTraversalShaderCompileFailureDiagnostics(e);
-            throw new IllegalStateException("Failed to compile traversal compute shader: " + TRAVERSAL_SHADER_NAME + " from " + TRAVERSAL_SHADER_RESOURCE, e);
+            throw new IllegalStateException("Failed to compile traversal compute shader: " + TRAVERSAL_SHADER_NAME + " from " + shaderResource, e);
         }
 
         ComputePipeline pipeline;
