@@ -30,6 +30,10 @@ layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
 };
 
 
+uint extractTranslucentQuadCount(SectionMeta meta) {
+    return meta.b.x & 0xFFFFu;
+}
+
 uint extractOpaqueQuadCount(SectionMeta meta) {
     uvec4 counts = meta.b;
     return ((counts.x >> 16u) & 0xFFFFu)
@@ -61,7 +65,7 @@ void main() {
     DrawCommand cmd;
     cmd.vertexCount = quadCount * 4u;
     cmd.instanceCount = 1u;
-    cmd.firstVertex = extractQuadStart(meta) * 4u;
+    cmd.firstVertex = (extractQuadStart(meta) + extractTranslucentQuadCount(meta)) * 4u;
     cmd.firstInstance = drawIndex;
     commands[drawIndex] = cmd;
 

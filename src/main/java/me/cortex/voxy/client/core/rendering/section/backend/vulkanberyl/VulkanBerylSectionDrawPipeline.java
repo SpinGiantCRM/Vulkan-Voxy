@@ -96,7 +96,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VertexFormat drawVertexFormat = resolveDummyVertexFormat();
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
-        VulkanBerylDebugLog.once("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
         try {
             builder.setUniforms(drawDescriptors, List.of());
         } catch (Exception e) {
@@ -110,7 +110,7 @@ public final class VulkanBerylSectionDrawPipeline {
         String fragmentClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(fragmentShaderResource));
         URL expectedVertexResource = VulkanBerylSectionDrawPipeline.class.getResource(vertexClasspathPath);
         URL expectedFragmentResource = VulkanBerylSectionDrawPipeline.class.getResource(fragmentClasspathPath);
-        VulkanBerylDebugLog.once("section-draw-compile-diagnostics", "Section draw compile diagnostics: compileShaderBase=" + shaderCompileBase
+        VulkanBerylDebugLog.verboseOnce("section-draw-compile-diagnostics", "Section draw compile diagnostics: compileShaderBase=" + shaderCompileBase
                 + ", vertexShaderName=" + DRAW_SHADER_NAME
                 + ", fragmentShaderName=" + fragmentShaderName
                 + ", expectedVertexResource=" + vertexClasspathPath
@@ -123,7 +123,7 @@ public final class VulkanBerylSectionDrawPipeline {
         var fragmentPrepared = preprocessedShaders.shaders().stream().filter(s -> fragmentShaderName.equals(s.shaderName()) && s.tempShaderRelativePath().endsWith(".fsh")).findFirst().orElse(null);
         Path expectedVertexTempPath = preprocessedShaders.tempRootPath().resolve(DRAW_SHADER_NAME + ".vsh");
         Path expectedFragmentTempPath = preprocessedShaders.tempRootPath().resolve(fragmentShaderName + ".fsh");
-        VulkanBerylDebugLog.once("section-draw-compile-file-diagnostics", "Section draw compile file diagnostics: compileShaders.firstArg=" + shaderCompileBase
+        VulkanBerylDebugLog.verboseOnce("section-draw-compile-file-diagnostics", "Section draw compile file diagnostics: compileShaders.firstArg=" + shaderCompileBase
                 + ", expectedVertexTempPath=" + expectedVertexTempPath
                 + ", expectedFragmentTempPath=" + expectedFragmentTempPath
                 + ", vertexTempExists=" + java.nio.file.Files.exists(expectedVertexTempPath)
@@ -145,13 +145,13 @@ public final class VulkanBerylSectionDrawPipeline {
         String vertexSource = new String(vertexBytes, StandardCharsets.UTF_8);
         String fragmentSource = new String(fragmentBytes, StandardCharsets.UTF_8);
         boolean declaresVertexInputs = declaresVertexInputs(vertexSource);
-        VulkanBerylDebugLog.once("section-draw-vertex-input-diagnostics", "Section draw vertex input diagnostics: vertexFormatSet=" + (drawVertexFormat != null)
+        VulkanBerylDebugLog.verboseOnce("section-draw-vertex-input-diagnostics", "Section draw vertex input diagnostics: vertexFormatSet=" + (drawVertexFormat != null)
                 + ", vertexFormatClass=" + (drawVertexFormat == null ? "<null>" : drawVertexFormat.getClass().getName())
                 + ", vertexFormat=" + drawVertexFormat
                 + ", vertexSize=" + (drawVertexFormat == null ? -1 : drawVertexFormat.getVertexSize())
                 + ", shaderDeclaresVertexInputs=" + declaresVertexInputs
                 + ", usingDummyVertexInputMode=true");
-        VulkanBerylDebugLog.once("section-draw-compile-shaders-contract", "Section draw compileShaders contract: Pipeline.Builder.compileShaders(name, vertexSource, fragmentSource) where args 2/3 are GLSL source text, not file paths. "
+        VulkanBerylDebugLog.verboseOnce("section-draw-compile-shaders-contract", "Section draw compileShaders contract: Pipeline.Builder.compileShaders(name, vertexSource, fragmentSource) where args 2/3 are GLSL source text, not file paths. "
                 + "Using name=" + DRAW_SHADER_NAME
                 + ", vertexSourceLength=" + vertexSource.length()
                 + ", fragmentSourceLength=" + fragmentSource.length());
@@ -340,8 +340,13 @@ public final class VulkanBerylSectionDrawPipeline {
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
         VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety = VulkanBerylRenderBackendRuntime.getLastFrameSafetyState();
         boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (frameSafety.allowCmdGen() || controlledSmoke.safe());
-        boolean indirectAllowed = ENABLE_INDIRECT_DRAW && (frameSafety.allowIndirectDraw() || controlledSmoke.safe());
+        boolean cmdgenSampleValid = this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0;
+        boolean indirectSafetyAllowed = frameSafety.allowIndirectDraw() || controlledSmoke.safe();
+        boolean indirectAllowed = ENABLE_INDIRECT_DRAW && cmdgenSampleValid && indirectSafetyAllowed;
         String gateReason = controlledSmoke.enabled() ? controlledSmoke.reason() : frameSafety.reason();
+        String indirectGateReason = !ENABLE_INDIRECT_DRAW
+                ? "indirect_draw_disabled"
+                : (!cmdgenSampleValid ? "waiting_for_valid_cmdgen_sample" : (!indirectSafetyAllowed ? gateReason : "ready"));
         VulkanBerylDebugLog.trace("gpu-stage-gate", "GPU stage gate: traversalDispatch=true cmdgenDispatch=" + cmdgenAllowed + " indirectDraw=" + indirectAllowed + " reason=" + gateReason);
         if (visibleCount <= 0) {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "visible_count_zero_or_negative");
@@ -384,8 +389,8 @@ public final class VulkanBerylSectionDrawPipeline {
         int sampledCommandCount = Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount);
         scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
         if (!indirectAllowed) {
-            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + gateReason);
-            return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + gateReason);
+            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
+            return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + indirectGateReason);
         }
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(viewport);
@@ -417,7 +422,7 @@ public final class VulkanBerylSectionDrawPipeline {
         renderList.setLastVisibleCount(smoke.safe() ? 1 : 0);
         VulkanBerylLodBringupDiagnostics.updateControlledRenderList(smoke.safe(), smoke.safe() ? smoke.sectionId() : -1, smoke.reason());
         if (!smoke.safe()) {
-            VulkanBerylDebugLog.warnRateLimited("renderlist-smoke-no-safe-section", "no safe render-list smoke section found: " + smoke.reason());
+            VulkanBerylDebugLog.once("renderlist-smoke-no-safe-section:" + smoke.reason(), "Controlled render-list smoke blocked: " + smoke.reason());
         } else {
             VulkanBerylDebugLog.once("renderlist-smoke-safe-section", "Controlled render-list smoke section: sectionId=" + smoke.sectionId()
                     + " quadCount=" + smoke.quadCount()
@@ -433,39 +438,55 @@ public final class VulkanBerylSectionDrawPipeline {
             return ControlledRenderListSmoke.failed("render-list capacity is zero");
         }
         if (geometryData.getMaxSectionCount() <= 0 || geometryData.getMetadataCapacityBytes() <= 0L) {
-            return ControlledRenderListSmoke.failed("no metadata");
+            return ControlledRenderListSmoke.failed("no section metadata yet");
         }
         if (geometryData.getGeometryCapacityBytes() <= 0L) {
-            return ControlledRenderListSmoke.failed("geometry buffer empty");
+            return ControlledRenderListSmoke.failed("geometry used bytes is zero: geometry buffer capacity is zero");
         }
         int sectionCount = Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount());
         if (sectionCount <= 0) {
-            return ControlledRenderListSmoke.failed("no metadata");
+            return ControlledRenderListSmoke.failed("no section metadata yet");
         }
-        String firstFailure = "section metadata exists but opaque quad count is zero";
+        long usedGeometryBytes = geometryData.getUsedGeometryBytes();
+        if (usedGeometryBytes <= 0L) {
+            return ControlledRenderListSmoke.failed("geometry used bytes is zero");
+        }
+
+        boolean sawOpaqueQuads = false;
+        String firstOutOfBounds = null;
         for (int sectionId = 0; sectionId < sectionCount; sectionId++) {
             int quadStart = geometryData.getSectionMetadataInt(sectionId, 3);
-            long quadCount = extractOpaqueQuadCount(geometryData, sectionId);
-            if (quadCount <= 0L) {
+            long translucentQuadCount = extractTranslucentQuadCount(geometryData, sectionId);
+            long opaqueQuadCount = extractOpaqueQuadCount(geometryData, sectionId);
+            if (opaqueQuadCount <= 0L) {
                 continue;
             }
-            if (quadStart < 0) {
-                firstFailure = "geometry out of bounds: negative quad start";
+            sawOpaqueQuads = true;
+            long opaqueQuadStart = Integer.toUnsignedLong(quadStart) + translucentQuadCount;
+            long requiredBytes = Math.addExact(Math.multiplyExact(opaqueQuadStart, 8L), Math.multiplyExact(opaqueQuadCount, 8L));
+            if (requiredBytes > usedGeometryBytes || requiredBytes > geometryData.getGeometryCapacityBytes()) {
+                if (firstOutOfBounds == null) {
+                    firstOutOfBounds = "quadStart/quadCount out of bounds: sectionId=" + sectionId
+                            + " quadStart=" + Integer.toUnsignedLong(quadStart)
+                            + " translucentQuadCount=" + translucentQuadCount
+                            + " opaqueQuadStart=" + opaqueQuadStart
+                            + " opaqueQuadCount=" + opaqueQuadCount
+                            + " requiredBytes=" + requiredBytes
+                            + " usedGeometryBytes=" + usedGeometryBytes
+                            + " geometryCapacityBytes=" + geometryData.getGeometryCapacityBytes();
+                }
                 continue;
             }
-            long startBytes = Integer.toUnsignedLong(quadStart) * 8L;
-            long requiredBytes = Math.addExact(startBytes, Math.multiplyExact(quadCount, 8L));
-            long availableGeometryBytes = geometryData.getUsedGeometryBytes() > 0L ? geometryData.getUsedGeometryBytes() : geometryData.getGeometryCapacityBytes();
-            if (requiredBytes > availableGeometryBytes || requiredBytes > geometryData.getGeometryCapacityBytes()) {
-                firstFailure = "geometry out of bounds: sectionId=" + sectionId + " quadStart=" + Integer.toUnsignedLong(quadStart) + " quadCount=" + quadCount + " requiredBytes=" + requiredBytes + " availableBytes=" + availableGeometryBytes;
-                continue;
-            }
-            return ControlledRenderListSmoke.safe(sectionId, quadStart, quadCount);
+            return ControlledRenderListSmoke.safe(sectionId, (int) opaqueQuadStart, opaqueQuadCount);
         }
-        if (geometryData.getUsedGeometryBytes() <= 0L) {
-            return ControlledRenderListSmoke.failed("geometryData has no drawable sections yet: geometry buffer exists but no valid section offsets");
+        if (!sawOpaqueQuads) {
+            return ControlledRenderListSmoke.failed("opaque quad count is zero");
         }
-        return ControlledRenderListSmoke.failed(firstFailure);
+        return ControlledRenderListSmoke.failed(firstOutOfBounds == null ? "quadStart/quadCount out of bounds" : firstOutOfBounds);
+    }
+
+    private long extractTranslucentQuadCount(VulkanBerylSectionGeometryData geometryData, int sectionId) {
+        return geometryData.getSectionMetadataInt(sectionId, 4) & 0xFFFFL;
     }
 
     private long extractOpaqueQuadCount(VulkanBerylSectionGeometryData geometryData, int sectionId) {
@@ -583,9 +604,27 @@ public final class VulkanBerylSectionDrawPipeline {
     private void scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int sampledCommandCount, int visibleCount, long geometryBufferBytes) {
         if (sampledCommandCount <= 0 || this.drawCommandDebugReadbackBuffer == null) return;
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkMemoryBarrier.Buffer shaderToTransfer = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0, shaderToTransfer, null, null);
+
             VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
             copyRegion.srcOffset(0L).dstOffset(0L).size((long) sampledCommandCount * DRAW_COMMAND_STRIDE_BYTES);
             VK10.vkCmdCopyBuffer(commandBuffer, this.drawCommandBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), copyRegion);
+
+            VkMemoryBarrier.Buffer transferToHost = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_HOST_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_HOST_BIT,
+                    0, transferToHost, null, null);
         }
         this.pendingDebugSampleCommandCount = sampledCommandCount;
         this.pendingDebugSampleVisibleCount = visibleCount;
@@ -613,8 +652,10 @@ public final class VulkanBerylSectionDrawPipeline {
             int firstInstance = MemoryUtil.memGetInt(base + 12L);
             boolean valid = vertexCount > 0 && (vertexCount & 3) == 0 && instanceCount == 1 && firstVertex >= 0 && (firstVertex & 3) == 0 && firstInstance == i && firstInstance < visibleCount;
             if (valid && firstVertex >= 0 && geometryBufferBytes > 0L) {
-                long maxFirstVertex = (geometryBufferBytes >>> 3) * 4L;
-                valid = Integer.toUnsignedLong(firstVertex) < maxFirstVertex;
+                long maxVertexExclusive = (geometryBufferBytes >>> 3) * 4L;
+                long firstVertexUnsigned = Integer.toUnsignedLong(firstVertex);
+                valid = firstVertexUnsigned < maxVertexExclusive
+                        && firstVertexUnsigned + Integer.toUnsignedLong(vertexCount) <= maxVertexExclusive;
             }
             if (!valid) invalid++;
             if ((vertexCount & 3) == 0 && vertexCount >= 0) quadCount += (vertexCount >>> 2);
@@ -656,7 +697,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int minBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(0);
         int maxBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(cmdgenBindings.size() - 1);
         boolean dummyPresent = cmdgenBindings.contains(CMDGEN_DUMMY_BINDING);
-        VulkanBerylDebugLog.once("section-cmdgen-descriptor-layout", "Section cmdgen descriptor layout: descriptorMode=manual_dense, count=" + cmdgenBindings.size()
+        VulkanBerylDebugLog.verboseOnce("section-cmdgen-descriptor-layout", "Section cmdgen descriptor layout: descriptorMode=manual_dense, count=" + cmdgenBindings.size()
                 + ", bindings=" + cmdgenBindings
                 + ", minBinding=" + minBinding
                 + ", maxBinding=" + maxBinding
@@ -667,7 +708,7 @@ public final class VulkanBerylSectionDrawPipeline {
             if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed cmdgen shader file missing before compile: " + preprocessedShader.shaderPath());
             }
-            VulkanBerylDebugLog.once("section-cmdgen-compile-input-verified", "compileShader input verified: shader=" + preprocessedShader.shaderName()
+            VulkanBerylDebugLog.verboseOnce("section-cmdgen-compile-input-verified", "compileShader input verified: shader=" + preprocessedShader.shaderName()
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
@@ -713,7 +754,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
         int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
-        VulkanBerylDebugLog.once("manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
+        VulkanBerylDebugLog.verboseOnce("manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
         return new ManualUBO(binding, computeStage, structSizeInts);
     }
 

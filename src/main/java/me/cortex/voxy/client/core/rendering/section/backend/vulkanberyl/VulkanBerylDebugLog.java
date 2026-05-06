@@ -37,8 +37,20 @@ final class VulkanBerylDebugLog {
         }
     }
 
+    static void verboseOnce(String key, String message) {
+        if (VERBOSE_LOGS && ONCE_KEYS.add("verbose:" + key)) {
+            info(message);
+        }
+    }
+
     static void trace(String key, String message) {
         if (TRACE_LOGS) {
+            info(message);
+        }
+    }
+
+    static void traceOnce(String key, String message) {
+        if (TRACE_LOGS && ONCE_KEYS.add("trace:" + key)) {
             info(message);
         }
     }

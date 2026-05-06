@@ -2,6 +2,7 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
 final class VulkanBerylLodBringupDiagnostics {
     private static String lastSummary = "";
+    private static String lastConciseReason = "";
 
     private static boolean smokeNoop;
     private static boolean shaderSmoke;
@@ -72,7 +73,15 @@ final class VulkanBerylLodBringupDiagnostics {
                 + " lastSafeSectionId=" + lastSafeSectionId
                 + " reason=" + reasonLodNotVisible;
         if (!summary.equals(lastSummary)) {
-            VulkanBerylDebugLog.rateLimited("lod-bringup-summary", summary, 120);
+            if (VulkanBerylDebugLog.VERBOSE_LOGS || VulkanBerylDebugLog.TRACE_LOGS) {
+                VulkanBerylDebugLog.rateLimited("lod-bringup-summary", summary, 120);
+            }
+            String conciseReason = reasonLodNotVisible;
+            if (!"ready".equals(conciseReason) && !conciseReason.equals(lastConciseReason)
+                    && (!lastSummary.isEmpty() || controlledRenderList || cmdgenEnabled || indirectDrawEnabled)) {
+                VulkanBerylDebugLog.once("lod-gated:" + conciseReason, "Vulkan/Beryl LODs gated: " + conciseReason);
+                lastConciseReason = conciseReason;
+            }
             lastSummary = summary;
         }
     }
