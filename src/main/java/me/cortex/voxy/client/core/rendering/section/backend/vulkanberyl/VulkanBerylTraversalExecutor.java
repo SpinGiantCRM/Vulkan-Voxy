@@ -109,6 +109,11 @@ public final class VulkanBerylTraversalExecutor {
             return;
         }
 
+        String shaderResource = getTraversalShaderResource(smokeShader);
+        String shaderName = smokeShader
+                ? "vulkanberyl/hierarchical/traversal_smoke"
+                : TRAVERSAL_SHADER_NAME;
+
         URL configUrl = VulkanBerylTraversalExecutor.class.getResource(TRAVERSAL_SHADER_CONFIG);
         if (configUrl == null) throw new IllegalStateException("Missing traversal compute shader config: " + TRAVERSAL_SHADER_CONFIG);
 
@@ -121,7 +126,7 @@ public final class VulkanBerylTraversalExecutor {
 
         validateTraversalBindings(config);
 
-        ComputePipeline.Builder builder = new ComputePipeline.Builder(getTraversalShaderResource(smokeShader));
+        ComputePipeline.Builder builder = new ComputePipeline.Builder(shaderResource);
 
         this.descriptorCreationMode = "failed-before-descriptor-create";
         int computeStage;
@@ -142,7 +147,7 @@ public final class VulkanBerylTraversalExecutor {
                     + describeTraversalBindings(config), e);
         }
         try {
-            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SHADER_RESOURCE);
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(shaderResource);
             if (!Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed traversal shader file missing before compile: " + preprocessedShader.shaderPath());
             }
@@ -150,17 +155,17 @@ public final class VulkanBerylTraversalExecutor {
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
-            builder.compileShader(preprocessedShader.rootUrl(), preprocessedShader.shaderName());
+            builder.compileShader(preprocessedShader.rootUrl(), shaderName);
         } catch (RuntimeException e) {
-            logTraversalShaderCompileFailureDiagnostics(e);
-            throw new IllegalStateException("Failed to compile traversal compute shader: " + TRAVERSAL_SHADER_NAME + " from " + shaderResource, e);
+            logTraversalShaderCompileFailureDiagnostics(shaderResource, e);
+            throw new IllegalStateException("Failed to compile traversal compute shader: " + shaderName + " from " + shaderResource, e);
         }
 
         ComputePipeline pipeline;
         try {
             pipeline = builder.createPipeline();
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to create traversal compute pipeline for shader " + TRAVERSAL_SHADER_NAME
+            throw new IllegalStateException("Failed to create traversal compute pipeline for shader " + shaderName
                     + "; descriptorLayout={" + manualDescriptorDiagnostics + "}", e);
         }
         if (pipeline == null || pipeline.getId() == 0L) {
@@ -506,12 +511,12 @@ public final class VulkanBerylTraversalExecutor {
         }
     }
 
-    private static void logTraversalShaderCompileFailureDiagnostics(RuntimeException compileFailure) {
+    private static void logTraversalShaderCompileFailureDiagnostics(String shaderResource, RuntimeException compileFailure) {
         try {
-            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SHADER_RESOURCE);
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(shaderResource);
             Path shaderPath = preprocessedShader.shaderPath();
             System.out.println("[Voxy][VulkanBeryl] Traversal shader compile failure diagnostics:");
-            System.out.println("  shaderResourceId=" + TRAVERSAL_SHADER_RESOURCE);
+            System.out.println("  shaderResourceId=" + shaderResource);
             System.out.println("  tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath());
             System.out.println("  tempShaderPath=" + shaderPath);
             if (!Files.isRegularFile(shaderPath)) {
