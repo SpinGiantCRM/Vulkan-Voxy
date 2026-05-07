@@ -89,6 +89,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_drawcount_literal_one_write";
     private static final String CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_standalone_drawcount_no_config_literal_zero_write.comp";
     private static final String CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_drawcount_no_config_literal_zero_write";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_standalone_drawcount_declared_no_write.comp";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_drawcount_declared_no_write";
     private static final String CMDGEN_NO_IMPORT_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import.comp";
     private static final String CMDGEN_NO_IMPORT_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import";
     private static final String CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_read_metadata0_only.comp";
@@ -145,6 +147,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int DRAW_COMMAND_STRIDE_BYTES = 16;
     private static final int CMDGEN_CONFIG_SIZE_BYTES = 24;
     private static final int CMDGEN_UNUSED_BINDING2_SIZE_BYTES = 32;
+    private static final int CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES = 256;
     private static final int CMDGEN_BINDING2_PROBE_SIZE_BYTES = VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE;
     private static final int CMDGEN_CONFIG_USAGE_FLAGS = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     private static final int CMDGEN_FLAG_NOOP_SMOKE = 1;
@@ -202,6 +205,11 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER", "false"));
     private static final boolean CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER", "false"));
     private static final boolean CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER", "false"));
+    private static final boolean CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER", "false"));
+    private static final boolean CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER", "false"));
+    private static final boolean CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER", "false"));
+    private static final boolean CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER", "false"));
+    private static final boolean CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE", "false"));
     private static final boolean CMDGEN_DUMP_SHADER_DIAGNOSTICS = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DUMP_SHADER_DIAGNOSTICS", "false"));
     private static final boolean CMDGEN_NO_IMPORT_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE", "false"));
     private static final boolean CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE", "false"));
@@ -308,6 +316,7 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE");
@@ -367,6 +376,7 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER");
         return active;
     }
 
@@ -413,6 +423,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private ComputePipeline commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline;
     private Buffer drawCommandBuffer;
     private Buffer drawCountBuffer;
+    private Buffer cmdgenDrawCountScratchBuffer;
     private Buffer drawCommandDebugReadbackBuffer;
     private Buffer drawCountDebugReadbackBuffer;
     private Buffer cmdGenConfigBuffer;
@@ -432,6 +443,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean drawCountClearedThisFrame;
     private int drawCommandBufferUsageFlags;
     private int drawCountBufferUsageFlags;
+    private int cmdgenDrawCountScratchBufferUsageFlags;
     private int drawCommandDebugReadbackBufferUsageFlags;
     private int drawCountDebugReadbackBufferUsageFlags;
     private int drawCommandCapacity;
@@ -774,7 +786,9 @@ public final class VulkanBerylSectionDrawPipeline {
         bindComputeStorageBinding(CMDGEN_UNUSED_BINDING2_BINDING, this.cmdGenUnusedBinding2Buffer, "cmdGenUnusedBinding2Buffer");
         logCmdgenRenderListDescriptorState("main", renderList.getBuffer(), renderList.getBuffer().getBufferSize(), true);
         bindComputeStorageBinding(CMDGEN_DRAW_COMMAND_BINDING, this.drawCommandBuffer, "drawCommandBuffer");
-        bindComputeStorageBinding(CMDGEN_DRAW_COUNT_BINDING, this.drawCountBuffer, "drawCountBuffer");
+        Buffer drawCountDescriptorBuffer = cmdgenDrawCountDescriptorBuffer();
+        bindComputeStorageBinding(CMDGEN_DRAW_COUNT_BINDING, drawCountDescriptorBuffer, drawCountDescriptorLabel());
+        logCmdgenDrawCountDescriptorOverride(drawCountDescriptorBuffer, "resource_bind");
         this.cmdgenDescriptorsReboundThisFrame = true;
         logDrawCountBufferDiagnostics("descriptor_bind", true);
         bindComputeStorageBinding(CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
@@ -1620,6 +1634,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCountBuffer.scheduleFree();
             this.drawCountBuffer = null;
         }
+        if (this.cmdgenDrawCountScratchBuffer != null) {
+            this.cmdgenDrawCountScratchBuffer.scheduleFree();
+            this.cmdgenDrawCountScratchBuffer = null;
+        }
         if (this.cmdGenConfigBuffer != null) {
             this.cmdGenConfigBuffer.scheduleFree();
             this.cmdGenConfigBuffer = null;
@@ -1688,9 +1706,14 @@ public final class VulkanBerylSectionDrawPipeline {
         this.drawCommandBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         this.drawCommandBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands", this.drawCommandBufferUsageFlags, MemoryTypes.GPU_MEM);
         this.drawCommandBuffer.createBuffer(commandBytes);
+        long drawCountBytes = largeDrawCountBufferActive() ? CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES : Integer.BYTES;
         this.drawCountBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        if (drawCountWithIndirectUsageActive()) {
+            this.drawCountBufferUsageFlags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        }
         this.drawCountBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_count", this.drawCountBufferUsageFlags, MemoryTypes.GPU_MEM);
-        this.drawCountBuffer.createBuffer(Integer.BYTES);
+        this.drawCountBuffer.createBuffer(drawCountBytes);
+        logDiagnosticDrawCountAllocation(drawCountBytes);
         if (this.drawCommandDebugReadbackBuffer != null) this.drawCommandDebugReadbackBuffer.scheduleFree();
         this.drawCommandDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         this.drawCommandDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands_readback", this.drawCommandDebugReadbackBufferUsageFlags, MemoryTypes.HOST_MEM);
@@ -1732,8 +1755,115 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", usage=STORAGE|TRANSFER_DST");
     }
 
+
+    private static boolean isExplicitCmdgenShaderSelectionDiagnosticActive() {
+        return activeCmdgenShaderSelectionEnvVar() != null;
+    }
+
+    private static boolean bindDrawCountToScratchActive() {
+        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER;
+    }
+
+    private static boolean largeDrawCountBufferActive() {
+        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER;
+    }
+
+    private static boolean drawCountWithIndirectUsageActive() {
+        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE;
+    }
+
+    private static boolean drawCountFullDescriptorRangeActive() {
+        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER;
+    }
+
+    private void logDiagnosticDrawCountAllocation(long drawCountBytes) {
+        if (!isExplicitCmdgenShaderSelectionDiagnosticActive()) {
+            logInactiveDrawCountDiagnosticEnvVars();
+            return;
+        }
+        if (CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER || CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE) {
+            VulkanBerylDebugLog.once("cmdgen-diagnostic-drawcount-allocation", "cmdgen diagnostic drawCount allocation: shaderSelectionEnv=" + activeCmdgenShaderSelectionEnvVar()
+                    + ", requestedDefaultCapacityBytes=" + Integer.BYTES
+                    + ", actualCapacityBytes=" + drawCountBytes
+                    + ", largeDrawCountBufferActive=" + largeDrawCountBufferActive()
+                    + ", indirectUsageActive=" + drawCountWithIndirectUsageActive()
+                    + ", usageFlags=" + this.drawCountBufferUsageFlags
+                    + ", usage=" + bufferUsageString(this.drawCountBufferUsageFlags));
+        }
+    }
+
+    private static void logInactiveDrawCountDiagnosticEnvVars() {
+        if (CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER || CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER || CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER || CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE) {
+            VulkanBerylDebugLog.once("cmdgen-drawcount-diagnostic-env-inactive", "cmdgen drawCount buffer diagnostic env var ignored because no explicit cmdgen shader-selection env var is active: scratch="
+                    + CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER
+                    + ", largeBuffer=" + CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER
+                    + ", fullDescriptorRange=" + CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER
+                    + ", indirectUsage=" + CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE);
+        }
+    }
+
+    private Buffer cmdgenDrawCountDescriptorBuffer() {
+        if (bindDrawCountToScratchActive()) {
+            ensureCmdgenDrawCountScratchBuffer();
+            return this.cmdgenDrawCountScratchBuffer;
+        }
+        return this.drawCountBuffer;
+    }
+
+    private String drawCountDescriptorLabel() {
+        return bindDrawCountToScratchActive() ? "cmdgenDrawCountScratchBuffer" : "drawCountBuffer";
+    }
+
+    private void ensureCmdgenDrawCountScratchBuffer() {
+        if (this.cmdgenDrawCountScratchBuffer != null && this.cmdgenDrawCountScratchBuffer.getBufferSize() >= CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES) return;
+        if (this.cmdgenDrawCountScratchBuffer != null) this.cmdgenDrawCountScratchBuffer.scheduleFree();
+        this.cmdgenDrawCountScratchBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        this.cmdgenDrawCountScratchBuffer = new Buffer("voxy_vulkanberyl_cmdgen_drawcount_scratch", this.cmdgenDrawCountScratchBufferUsageFlags, MemoryTypes.GPU_MEM);
+        this.cmdgenDrawCountScratchBuffer.createBuffer(CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES);
+        VulkanBerylDebugLog.once("cmdgen-drawcount-scratch-created", "cmdgen diagnostic drawCount scratch buffer created for binding4: bufferId="
+                + this.cmdgenDrawCountScratchBuffer.getId()
+                + ", handle=" + this.cmdgenDrawCountScratchBuffer.getId()
+                + ", capacityBytes=" + this.cmdgenDrawCountScratchBuffer.getBufferSize()
+                + ", usageFlags=" + this.cmdgenDrawCountScratchBufferUsageFlags
+                + ", usage=" + bufferUsageString(this.cmdgenDrawCountScratchBufferUsageFlags)
+                + ", binding4ReboundToScratch=true");
+    }
+
+    private void logCmdgenDrawCountDescriptorOverride(Buffer descriptorBuffer, String stage) {
+        if (!isExplicitCmdgenShaderSelectionDiagnosticActive()) return;
+        if (descriptorBuffer == null) return;
+        boolean scratch = descriptorBuffer == this.cmdgenDrawCountScratchBuffer;
+        if (scratch || CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER || CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER || CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE) {
+            VulkanBerylDebugLog.once("cmdgen-drawcount-descriptor-override:" + stage, "cmdgen drawCount descriptor binding4 diagnostics: stage=" + stage
+                    + ", binding=" + CMDGEN_DRAW_COUNT_BINDING
+                    + ", reboundToScratch=" + scratch
+                    + ", descriptorBufferId=" + descriptorBuffer.getId()
+                    + ", handle=" + descriptorBuffer.getId()
+                    + ", descriptorCapacityBytes=" + descriptorBuffer.getBufferSize()
+                    + ", descriptorRangeBytes=" + descriptorBuffer.getBufferSize()
+                    + ", realDrawCountBufferId=" + (this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId())
+                    + ", realDrawCountCapacityBytes=" + (this.drawCountBuffer == null ? -1L : this.drawCountBuffer.getBufferSize())
+                    + ", realDrawCountUsage=" + bufferUsageString(this.drawCountBufferUsageFlags)
+                    + ", scratchUsage=" + (scratch ? bufferUsageString(this.cmdgenDrawCountScratchBufferUsageFlags) : "<not-bound>")
+                    + ", fullDescriptorRangeActive=" + drawCountFullDescriptorRangeActive()
+                    + ", existingAbstractionOnlyFourBytes=" + (!scratch && descriptorBuffer.getBufferSize() == Integer.BYTES));
+        }
+    }
+
+    private static long alignedFillBytes(long bufferBytes) {
+        return Math.max(4L, bufferBytes & ~3L);
+    }
+
     private void clearDrawCommandState(VkCommandBuffer commandBuffer) {
         VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, 4L, 0);
+        Buffer drawCountDescriptorBuffer = cmdgenDrawCountDescriptorBuffer();
+        if (drawCountDescriptorBuffer != this.drawCountBuffer) {
+            VK10.vkCmdFillBuffer(commandBuffer, drawCountDescriptorBuffer.getId(), 0L, alignedFillBytes(drawCountDescriptorBuffer.getBufferSize()), 0);
+            VulkanBerylDebugLog.once("cmdgen-drawcount-scratch-cleared", "cmdgen drawCount diagnostic scratch buffer cleared before dispatch: bufferId="
+                    + drawCountDescriptorBuffer.getId()
+                    + ", capacityBytes=" + drawCountDescriptorBuffer.getBufferSize()
+                    + ", clearBytes=" + alignedFillBytes(drawCountDescriptorBuffer.getBufferSize()));
+        }
         this.drawCountClearedThisFrame = true;
         long clearBytes = Math.min(this.drawCommandBuffer.getBufferSize(), (long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
         if (clearBytes > 0L) {
@@ -2457,6 +2587,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER_RESOURCE;
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER_RESOURCE;
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_RESOURCE;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_RESOURCE;
         return CMDGEN_SHADER_RESOURCE;
     }
 
@@ -2475,6 +2606,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER_NAME;
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER_NAME;
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_NAME;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_NAME;
         return CMDGEN_SHADER_NAME;
     }
 
@@ -2493,6 +2625,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER";
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER";
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER";
         return null;
     }
 
@@ -2511,6 +2644,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return "standalone drawcount literal zero write";
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return "standalone drawcount literal one write";
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return "standalone drawcount no-config literal zero write";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return "standalone drawcount declared no write";
         return "normal cmdgen.comp";
     }
 
@@ -2523,10 +2657,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", selectionEnv=" + (activeCmdgenShaderSelectionEnvVar() == null ? "<default>" : activeCmdgenShaderSelectionEnvVar())
                 + ", compareWith=glslangValidator -V selected-cmdgen-shader.comp && spirv-val selected-cmdgen-shader.spv && spirv-dis selected-cmdgen-shader.spv");
         try {
+            String shaderSource = readShaderResourceSource(shaderResource);
+            logSelectedCmdgenShaderSourceAnalysis(shaderResource, shaderSource);
             Path debugDir = selectedCmdgenShaderDebugDirectory();
             Files.createDirectories(debugDir);
             Path rawDump = debugDir.resolve("selected-cmdgen-shader.comp");
-            Files.writeString(rawDump, readShaderResourceSource(shaderResource), StandardCharsets.UTF_8);
+            Files.writeString(rawDump, shaderSource, StandardCharsets.UTF_8);
             VulkanBerylDebugLog.once("cmdgen-selected-shader-source-dumped", "selected cmdgen shader source dumped: path=" + rawDump
                     + "; compare with: glslangValidator -V " + rawDump + " && spirv-val selected-cmdgen-shader.spv && spirv-dis selected-cmdgen-shader.spv");
         } catch (Exception e) {
@@ -2547,6 +2683,34 @@ public final class VulkanBerylSectionDrawPipeline {
         } catch (Exception e) {
             VulkanBerylDebugLog.error("selected cmdgen preprocessed shader dump unavailable: error=" + e);
         }
+    }
+
+
+    private static void logSelectedCmdgenShaderSourceAnalysis(String shaderResource, String shaderSource) {
+        if (activeCmdgenShaderSelectionEnvVar() == null && !CMDGEN_DUMP_SHADER_DIAGNOSTICS) return;
+        int drawCountBindingDeclarations = countOccurrences(shaderSource, "layout(binding = " + CMDGEN_DRAW_COUNT_BINDING + ", std430)") + countOccurrences(shaderSource, "layout(binding=" + CMDGEN_DRAW_COUNT_BINDING + ",std430)");
+        int drawCountStores = countOccurrences(shaderSource, "drawCount =") + countOccurrences(shaderSource, "drawCount[0] =") + countOccurrences(shaderSource, "atomicAdd(drawCount") + countOccurrences(shaderSource, "atomicExchange(drawCount");
+        int commandStores = countOccurrences(shaderSource, "commands[");
+        boolean noConfigZero = CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER;
+        VulkanBerylDebugLog.once("cmdgen-selected-shader-source-analysis:" + shaderResource, "selected cmdgen shader source analysis: resource=" + shaderResource
+                + ", mode=" + activeCmdgenShaderMode()
+                + ", drawCountGlslBlockBinding=" + CMDGEN_DRAW_COUNT_BINDING
+                + ", drawCountBindingDeclarationCount=" + drawCountBindingDeclarations
+                + ", drawCountStoreTokenCount=" + drawCountStores
+                + ", commandStoreTokenCount=" + commandStores
+                + ", noConfigLiteralZeroExpectedOnlyBinding4Write=" + noConfigZero
+                + ", noConfigLiteralZeroBinding4OnlyWriteConfirmedByJavaTokenCheck=" + (noConfigZero && drawCountBindingDeclarations >= 1 && drawCountStores == 1 && commandStores == 0));
+    }
+
+    private static int countOccurrences(String text, String needle) {
+        if (text == null || text.isEmpty() || needle == null || needle.isEmpty()) return 0;
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(needle, index)) >= 0) {
+            count++;
+            index += needle.length();
+        }
+        return count;
     }
 
     private static Path selectedCmdgenShaderDebugDirectory() {
@@ -2570,6 +2734,9 @@ public final class VulkanBerylSectionDrawPipeline {
         Objects.requireNonNull(configUrl, "Missing section cmdgen shader config: " + CMDGEN_SHADER_CONFIG);
         String cmdgenShaderResource = activeCmdgenShaderResource();
         String cmdgenShaderName = activeCmdgenShaderName();
+        if (activeCmdgenShaderSelectionEnvVar() != null) {
+            logSelectedCmdgenShaderSourceAnalysis(cmdgenShaderResource, readShaderResourceSource(cmdgenShaderResource));
+        }
         logSelectedCmdgenShaderDiagnostics(cmdgenShaderResource, cmdgenShaderName);
         if (activeCmdgenShaderSelectionEnvVar() != null) {
             VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-active", "selected normal-cmdgen shader active: env=" + activeCmdgenShaderSelectionEnvVar() + ", mode=" + activeCmdgenShaderMode());
@@ -2736,10 +2903,14 @@ public final class VulkanBerylSectionDrawPipeline {
                 throw new IllegalStateException("Cmdgen shader reflection mismatch: expected " + entry.getValue() + " at binding=" + entry.getKey());
             }
         }
+        VulkanBerylDebugLog.once("section-cmdgen-intended-binding-map", "Section cmdgen intended binding map: binding0=renderList(RenderListBuffer), binding1=metadata(MetadataBuffer), binding2=unused dense padding(CmdGenUnusedBinding2, shaderAccess=false), binding3=commands(DrawCommandsBuffer), binding4=drawCount(DrawCountBuffer), binding5=config(CmdGenConfigBuffer)");
         VulkanBerylDebugLog.verboseOnce("section-cmdgen-layout-contract", "Section cmdgen layout contract validated: renderListBinding=" + CMDGEN_RENDER_LIST_BINDING
                 + ", metadataBinding=" + CMDGEN_METADATA_BINDING
                 + ", unusedBinding2=" + CMDGEN_UNUSED_BINDING2_BINDING
                 + ", unusedBinding2ShaderAccess=false"
+                + ", drawCommandsBinding=" + CMDGEN_DRAW_COMMAND_BINDING
+                + ", drawCountBinding=" + CMDGEN_DRAW_COUNT_BINDING
+                + ", configBinding=" + CMDGEN_CONFIG_BINDING
                 + ", bindings=" + jsonBindings);
     }
 
@@ -2751,7 +2922,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenMetadata"),
                 createManualDescriptor(CMDGEN_UNUSED_BINDING2_BINDING, computeStage, this.cmdGenUnusedBinding2Buffer, "CmdGenUnusedBinding2"),
                 createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenDrawCommand"),
-                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount"),
+                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, cmdgenDrawCountDescriptorBuffer(), drawCountDescriptorLabel()),
                 createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenConfig")
         );
     }
@@ -2765,7 +2936,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenProbeMetadata"),
                 createManualDescriptor(CMDGEN_BINDING2_PROBE_BINDING, computeStage, this.cmdGenBinding2ProbeBuffer, "CmdGenProbeBinding2"),
                 createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenProbeDrawCommand"),
-                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenProbeDrawCount"),
+                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, cmdgenDrawCountDescriptorBuffer(), drawCountDescriptorLabel()),
                 createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenProbeConfig")
         );
     }
@@ -2826,7 +2997,8 @@ public final class VulkanBerylSectionDrawPipeline {
             this.lastCmdGenConfigRenderListCapacity = renderListCapacity;
             this.lastCmdGenConfigGeometryCapacityQuads = Math.toIntExact(geometryData.getGeometryCapacityBytes() / 8L);
             this.lastCmdGenConfigDrawCommandCapacity = this.drawCommandCapacity;
-            this.lastCmdGenConfigDrawCountCapacityWords = (int) (this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getBufferSize() / Integer.BYTES);
+            Buffer drawCountDescriptorBuffer = cmdgenDrawCountDescriptorBuffer();
+            this.lastCmdGenConfigDrawCountCapacityWords = (int) (drawCountDescriptorBuffer == null ? 0L : drawCountDescriptorBuffer.getBufferSize() / Integer.BYTES);
             this.lastCmdGenConfigFlags = flags;
             MemoryUtil.memPutInt(scratch, this.lastCmdGenConfigMetadataSectionCapacity);
             MemoryUtil.memPutInt(scratch + 4L, this.lastCmdGenConfigRenderListCapacity);
@@ -2845,12 +3017,15 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private void logDrawCountBufferDiagnostics(String stage, boolean descriptorRangeValidExpected) {
+        Buffer descriptorBuffer = cmdgenDrawCountDescriptorBuffer();
         long capacityBytes = this.drawCountBuffer == null ? -1L : this.drawCountBuffer.getBufferSize();
         long bufferId = this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId();
-        long descriptorRangeBytes = capacityBytes;
+        long descriptorCapacityBytes = descriptorBuffer == null ? -1L : descriptorBuffer.getBufferSize();
+        long descriptorBufferId = descriptorBuffer == null ? 0L : descriptorBuffer.getId();
+        long descriptorRangeBytes = descriptorCapacityBytes;
         long requiredRangeBytes = Integer.BYTES;
-        boolean descriptorRangeValid = descriptorRangeValidExpected && capacityBytes >= requiredRangeBytes && capacityBytes <= VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES;
-        int javaSideCapacityWords = capacityBytes <= 0L ? 0 : (int) (capacityBytes / Integer.BYTES);
+        boolean descriptorRangeValid = descriptorRangeValidExpected && descriptorCapacityBytes >= requiredRangeBytes && descriptorCapacityBytes <= VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES;
+        int javaSideCapacityWords = descriptorCapacityBytes <= 0L ? 0 : (int) (descriptorCapacityBytes / Integer.BYTES);
         boolean capacityMatchesConfig = javaSideCapacityWords == this.lastCmdGenConfigDrawCountCapacityWords;
         VulkanBerylDebugLog.once("cmdgen-drawcount-buffer-state:" + stage, "drawCountBuffer state: stage=" + stage
                 + ", bufferId=" + bufferId
@@ -2859,9 +3034,14 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", usageFlags=" + this.drawCountBufferUsageFlags
                 + ", usage=" + bufferUsageString(this.drawCountBufferUsageFlags)
                 + ", descriptorBinding=" + CMDGEN_DRAW_COUNT_BINDING
+                + ", descriptorBufferId=" + descriptorBufferId
+                + ", descriptorHandle=" + descriptorBufferId
+                + ", descriptorLabel=" + drawCountDescriptorLabel()
                 + ", descriptorRangeBytes=" + descriptorRangeBytes
                 + ", requiredRangeBytes=" + requiredRangeBytes
                 + ", descriptorRangeValid=" + descriptorRangeValid
+                + ", descriptorRangeFullBufferRequested=" + drawCountFullDescriptorRangeActive()
+                + ", existingRealDrawCountAbstractionOnlyFourBytes=" + (capacityBytes == Integer.BYTES)
                 + ", hasStorageUsage=" + ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0)
                 + ", hasTransferDstUsage=" + ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0)
                 + ", hasTransferSrcUsage=" + ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0)
