@@ -186,6 +186,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY", "false"));
     private static final boolean CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
+    private static final boolean FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED", "false"));
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
 
     static {
@@ -728,9 +729,11 @@ public final class VulkanBerylSectionDrawPipeline {
         int rawVisibleCount = controlledSmoke.enabled() ? (controlledSmoke.safe() ? 1 : 0) : renderList.getLastVisibleCount();
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
         VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety = VulkanBerylRenderBackendRuntime.getLastFrameSafetyState();
-        boolean debugReadbackWithoutIndirectDraw = CMDGEN_DEBUG_READBACK && ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW;
+        CmdgenIsolationStage isolationStage = selectedCmdgenIsolationStage();
         boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK;
-        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (noOpCmdgenSmoke || debugReadbackWithoutIndirectDraw || frameSafety.allowCmdGen() || controlledSmoke.safe());
+        boolean fullCmdgenDispatchAllowed = ENABLE_CMDGEN_DISPATCH && (isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED);
+        String fullCmdgenDispatchBlocker = fullCmdgenDispatchAllowed ? "ready" : (!ENABLE_CMDGEN_DISPATCH ? "cmdgen_dispatch_disabled" : "select_isolation_stage_or_force_full_cmdgen_dispatch_with_indirect_disabled");
+        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (noOpCmdgenSmoke || isolationStage != null || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED || frameSafety.allowCmdGen() || controlledSmoke.safe());
         boolean cmdgenSampleValid = this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0;
         boolean indirectSafetyAllowed = frameSafety.allowIndirectDraw() || controlledSmoke.safe();
         boolean indirectAllowed = ENABLE_INDIRECT_DRAW && cmdgenSampleValid && indirectSafetyAllowed;
@@ -738,12 +741,27 @@ public final class VulkanBerylSectionDrawPipeline {
         String indirectGateReason = !ENABLE_INDIRECT_DRAW
                 ? "indirect_draw_disabled"
                 : (!cmdgenSampleValid ? "waiting_for_valid_cmdgen_sample" : (!indirectSafetyAllowed ? gateReason : "ready"));
+        String cmdgenGateReason = !ENABLE_CMDGEN_DISPATCH ? "cmdgen_dispatch_disabled" : (!cmdgenAllowed ? gateReason : "ready");
         VulkanBerylDebugLog.trace("gpu-stage-gate", "GPU stage gate: traversalDispatch=true cmdgenDispatch=" + cmdgenAllowed + " indirectDraw=" + indirectAllowed + " reason=" + gateReason);
+        if (FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED) {
+            VulkanBerylDebugLog.once("cmdgen-force-full-with-indirect-disabled", "forced full cmdgen dispatch with indirect draw disabled is active: env=VOXY_VULKAN_BERYL_FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED");
+        }
+        VulkanBerylDebugLog.once("cmdgen-dispatch-gate-state", "cmdgen dispatch gate: enableCmdgenDispatch=" + ENABLE_CMDGEN_DISPATCH
+                + ", enableIndirectDraw=" + ENABLE_INDIRECT_DRAW
+                + ", debugReadback=" + CMDGEN_DEBUG_READBACK
+                + ", forceFullCmdgenDispatchWithIndirectDisabled=" + FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED
+                + ", fullCmdgenDispatchAllowed=" + fullCmdgenDispatchAllowed
+                + ", finalGateReason=" + cmdgenGateReason
+                + ", finalBlockerReason=" + fullCmdgenDispatchBlocker);
         if (visibleCount <= 0) {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "visible_count_zero_or_negative");
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
         }
         if (!cmdgenAllowed) {
+            if (CMDGEN_DEBUG_READBACK && !fullCmdgenDispatchAllowed) {
+                VulkanBerylDebugLog.once("cmdgen-debug-readback-full-dispatch-gated", "cmdgen debug readback requested but skipped because full cmdgen dispatch was gated: reason=" + fullCmdgenDispatchBlocker);
+                logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
+            }
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "cmdgen_gate:" + gateReason);
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "cmdgen_gate:" + gateReason);
         }
@@ -751,8 +769,6 @@ public final class VulkanBerylSectionDrawPipeline {
         if (commandBuffer == null) {
             throw new IllegalStateException("VULKANMOD_BERYL command buffer is unavailable");
         }
-
-        CmdgenIsolationStage isolationStage = selectedCmdgenIsolationStage();
 
         if (CMDGEN_CREATE_ONLY) {
             VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, this.commandGenPipeline.getId());
@@ -927,8 +943,12 @@ public final class VulkanBerylSectionDrawPipeline {
             if (CMDGEN_BIND_FULL_ONLY) {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_bind_full_only");
             }
-            if (isolationStage == null && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK) {
-                return stopCmdgenIsolation(visibleCount, "cmdgen_dispatch_blocked:select_isolation_stage_with_indirect_disabled");
+            if (isolationStage == null && !fullCmdgenDispatchAllowed) {
+                if (CMDGEN_DEBUG_READBACK) {
+                    VulkanBerylDebugLog.once("cmdgen-debug-readback-full-dispatch-gated", "cmdgen debug readback requested but skipped because full cmdgen dispatch was gated: reason=" + fullCmdgenDispatchBlocker);
+                    logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
+                }
+                return stopCmdgenIsolation(visibleCount, "cmdgen_dispatch_blocked:" + fullCmdgenDispatchBlocker);
             }
             int groupCountX = isolationStage == null ? (noOpCmdgenSmoke ? 1 : ((visibleCount + 127) >>> 7)) : 1;
             VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
