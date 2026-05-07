@@ -179,8 +179,33 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE", "false"));
     private static final boolean CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE", "false"));
     private static final boolean CMDGEN_DEBUG_READBACK = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK", "false"));
+    private static final boolean CMDGEN_DEBUG_READBACK_NO_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_COPY", "false"));
+    private static final boolean CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY", "false"));
+    private static final boolean CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
+
+    static {
+        List<String> activeDebugReadbackCopyModes = activeDebugReadbackCopyModeEnvVars();
+        if (activeDebugReadbackCopyModes.size() > 1) {
+            throw new IllegalStateException("only one cmdgen debug readback copy submode may be enabled at once: " + String.join(", ", activeDebugReadbackCopyModes));
+        }
+    }
+
+    private static List<String> activeDebugReadbackCopyModeEnvVars() {
+        List<String> active = new ArrayList<>();
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_NO_COPY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_COPY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY");
+        return active;
+    }
+
+    private static String debugReadbackCopyModeName() {
+        if (CMDGEN_DEBUG_READBACK_NO_COPY) return "no_copy";
+        if (CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY) return "draw_count_only";
+        if (CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY) return "draw_commands_only";
+        return "default";
+    }
 
     private static List<String> activeCmdgenProbeEnvVars() {
         List<String> active = new ArrayList<>();
@@ -1814,9 +1839,28 @@ public final class VulkanBerylSectionDrawPipeline {
         int destinationSampleCount = (int) Math.min(Integer.MAX_VALUE, drawCommandDestinationBytes / DRAW_COMMAND_STRIDE_BYTES);
         int sampledCommandCount = Math.max(0, Math.min(Math.min(requestedSampledCommandCount, capacitySampleCount), destinationSampleCount));
         long commandCopyBytes = (long) sampledCommandCount * DRAW_COMMAND_STRIDE_BYTES;
+        boolean copyDrawCommands = commandCopyBytes > 0L;
         boolean copyDrawCount = this.drawCountBuffer.getBufferSize() >= Integer.BYTES && this.drawCountDebugReadbackBuffer.getBufferSize() >= Integer.BYTES;
+        if (CMDGEN_DEBUG_READBACK_NO_COPY) {
+            copyDrawCommands = false;
+            copyDrawCount = false;
+        } else if (CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY) {
+            copyDrawCommands = false;
+        } else if (CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY) {
+            copyDrawCount = false;
+        }
         long countCopyBytes = copyDrawCount ? Integer.BYTES : 0L;
-        if (sampledCommandCount <= 0 && !copyDrawCount) return;
+        VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-mode", "cmdgen debug readback copy mode: mode=" + debugReadbackCopyModeName()
+                + ", copyDrawCommands=" + copyDrawCommands
+                + ", copyDrawCount=" + copyDrawCount
+                + ", requestedSampleCount=" + requestedSampledCommandCount
+                + ", finalSampleCount=" + sampledCommandCount);
+        if (!copyDrawCommands && !copyDrawCount) {
+            VulkanBerylDebugLog.once("cmdgen-debug-readback-no-copy", "cmdgen debug readback no-copy mode: would read back drawCommandBuffer copyBytes="
+                    + commandCopyBytes + ", drawCountBuffer copyBytes=" + (this.drawCountBuffer.getBufferSize() >= Integer.BYTES && this.drawCountDebugReadbackBuffer.getBufferSize() >= Integer.BYTES ? Integer.BYTES : 0)
+                    + "; skipping vkCmdCopyBuffer and leaving debugSamplePending=false");
+            return;
+        }
 
         VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-draw-commands", "cmdgen debug readback copy: source=drawCommandBuffer"
                 + ", sourceBufferId=" + this.drawCommandBuffer.getId()
@@ -1825,7 +1869,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", drawCommandCapacity=" + this.drawCommandCapacity
                 + ", destinationBufferId=" + this.drawCommandDebugReadbackBuffer.getId()
                 + ", destinationCapacityBytes=" + drawCommandDestinationBytes
-                + ", copyBytes=" + commandCopyBytes
+                + ", copyEnabled=" + copyDrawCommands
+                + ", copyBytes=" + (copyDrawCommands ? commandCopyBytes : 0L)
                 + ", requestedSampleCount=" + requestedSampledCommandCount
                 + ", finalSampleCount=" + sampledCommandCount
                 + ", barrier=COMPUTE_SHADER/SHADER_WRITE->TRANSFER/TRANSFER_READ before vkCmdCopyBuffer");
@@ -1835,6 +1880,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sourceUsage=" + bufferUsageString(this.drawCountBufferUsageFlags)
                 + ", destinationBufferId=" + this.drawCountDebugReadbackBuffer.getId()
                 + ", destinationCapacityBytes=" + this.drawCountDebugReadbackBuffer.getBufferSize()
+                + ", copyEnabled=" + copyDrawCount
                 + ", copyBytes=" + countCopyBytes
                 + ", barrier=COMPUTE_SHADER/SHADER_WRITE->TRANSFER/TRANSFER_READ before vkCmdCopyBuffer");
 
@@ -1848,7 +1894,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
                     0, shaderToTransfer, null, null);
 
-            if (commandCopyBytes > 0L) {
+            if (copyDrawCommands) {
                 VkBufferCopy.Buffer commandCopyRegion = VkBufferCopy.calloc(1, stack);
                 commandCopyRegion.srcOffset(0L).dstOffset(0L).size(commandCopyBytes);
                 VK10.vkCmdCopyBuffer(commandBuffer, this.drawCommandBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), commandCopyRegion);
@@ -1868,7 +1914,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     VK10.VK_PIPELINE_STAGE_HOST_BIT,
                     0, transferToHost, null, null);
         }
-        this.pendingDebugSampleCommandCount = sampledCommandCount;
+        this.pendingDebugSampleCommandCount = copyDrawCommands ? sampledCommandCount : 0;
         this.pendingDebugSampleVisibleCount = visibleCount;
         this.pendingDebugSampleGeometryBufferBytes = geometryBufferBytes;
         this.debugSamplePending = true;
