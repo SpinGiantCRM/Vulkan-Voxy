@@ -230,7 +230,6 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE");
-        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK");
         return active;
     }
 
@@ -688,8 +687,9 @@ public final class VulkanBerylSectionDrawPipeline {
         int rawVisibleCount = controlledSmoke.enabled() ? (controlledSmoke.safe() ? 1 : 0) : renderList.getLastVisibleCount();
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
         VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety = VulkanBerylRenderBackendRuntime.getLastFrameSafetyState();
-        boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW;
-        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (noOpCmdgenSmoke || frameSafety.allowCmdGen() || controlledSmoke.safe());
+        boolean debugReadbackWithoutIndirectDraw = CMDGEN_DEBUG_READBACK && ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW;
+        boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK;
+        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (noOpCmdgenSmoke || debugReadbackWithoutIndirectDraw || frameSafety.allowCmdGen() || controlledSmoke.safe());
         boolean cmdgenSampleValid = this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0;
         boolean indirectSafetyAllowed = frameSafety.allowIndirectDraw() || controlledSmoke.safe();
         boolean indirectAllowed = ENABLE_INDIRECT_DRAW && cmdgenSampleValid && indirectSafetyAllowed;
@@ -886,7 +886,7 @@ public final class VulkanBerylSectionDrawPipeline {
             if (CMDGEN_BIND_FULL_ONLY) {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_bind_full_only");
             }
-            if (isolationStage == null && !ENABLE_INDIRECT_DRAW) {
+            if (isolationStage == null && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK) {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_dispatch_blocked:select_isolation_stage_with_indirect_disabled");
             }
             int groupCountX = isolationStage == null ? (noOpCmdgenSmoke ? 1 : ((visibleCount + 127) >>> 7)) : 1;
