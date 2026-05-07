@@ -18,9 +18,6 @@ layout(binding = 0, std430) readonly buffer RenderListBuffer {
 layout(binding = 1, std430) readonly buffer MetadataBuffer {
     SectionMeta sectionData[];
 };
-layout(binding = 2, std430) readonly buffer Binding2ProbeBuffer {
-    uint binding2ProbeWord;
-};
 layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
     DrawCommand commands[];
 };
@@ -47,7 +44,6 @@ const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY = 1u << 7u;
 const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1u << 8u;
 const uint CMDGEN_FLAG_READ_BINDING0_ONLY = 1u << 9u;
 const uint CMDGEN_FLAG_READ_BINDING1_ONLY = 1u << 10u;
-const uint CMDGEN_FLAG_READ_BINDING2_PROBE_ONLY = 1u << 11u;
 
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
@@ -96,16 +92,6 @@ void main() {
         return;
     }
 
-    if ((flags & CMDGEN_FLAG_READ_BINDING2_PROBE_ONLY) != 0u) {
-        if (drawIndex != 0u) {
-            return;
-        }
-        uint binding2Smoke = binding2ProbeWord;
-        if (binding2Smoke == 0xffffffffu && drawCountCapacityWords > 0u) {
-            drawCount = 0u;
-        }
-        return;
-    }
 
     if ((flags & CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY) != 0u) {
         if (drawIndex != 0u) {

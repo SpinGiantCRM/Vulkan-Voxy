@@ -125,7 +125,6 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1 << 8;
     private static final int CMDGEN_FLAG_READ_BINDING0_ONLY = 1 << 9;
     private static final int CMDGEN_FLAG_READ_BINDING1_ONLY = 1 << 10;
-    private static final int CMDGEN_FLAG_READ_BINDING2_PROBE_ONLY = 1 << 11;
     private static final int DRAW_COMMAND_DEBUG_SAMPLE_LIMIT = 16;
     private static final boolean DEBUG_COLOUR_MODE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DEBUG_COLOUR", "false"));
     private static final boolean ENABLE_CMDGEN_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", "false"));
@@ -145,7 +144,6 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_SHADER_WRITE_DRAWS_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_WRITE_DRAWS_ONLY", "false"));
     private static final boolean CMDGEN_SHADER_READ_BINDING0_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY", "false"));
     private static final boolean CMDGEN_SHADER_READ_BINDING1_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY", "false"));
-    private static final boolean CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY", "false"));
     private static final boolean CMDGEN_RENDERLIST_ALT_BUFFER_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_RENDERLIST_ALT_BUFFER_PROBE", "false"));
     private static final boolean CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE", "false"));
     private static final boolean CMDGEN_MINIMAL_RENDERLIST_MANUALUBO_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_RENDERLIST_MANUALUBO_READ_PROBE", "false"));
@@ -199,7 +197,6 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_WRITE_DRAWS_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_WRITE_DRAWS_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING0_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING1_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY");
-        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_RENDERLIST_ALT_BUFFER_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_RENDERLIST_ALT_BUFFER_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_RENDERLIST_MANUALUBO_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_RENDERLIST_MANUALUBO_READ_PROBE");
@@ -635,7 +632,6 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         bindComputeStorageBinding(CMDGEN_METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindComputeStorageBinding(CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
-        ensureAndBindCmdgenBinding2ProbeBuffer();
         this.cmdgenDescriptorsReboundThisFrame = true;
         logCmdgenRenderListDescriptorState("main", renderList.getBuffer(), renderList.getBuffer().getBufferSize(), true);
         bindComputeStorageBinding(CMDGEN_DRAW_COMMAND_BINDING, this.drawCommandBuffer, "drawCommandBuffer");
@@ -1086,6 +1082,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private void bindFullLayoutProbeDescriptors(ComputePipeline pipeline, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
+        ensureCmdgenBinding2ProbeBuffer();
         bindPipelineStorageBinding(pipeline, CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
         bindPipelineStorageBinding(pipeline, CMDGEN_METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindPipelineStorageBinding(pipeline, CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, "cmdGenBinding2ProbeBuffer");
@@ -1136,7 +1133,6 @@ public final class VulkanBerylSectionDrawPipeline {
         CmdgenIsolationStage selected = null;
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING0_ONLY, CmdgenIsolationStage.READ_BINDING0_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING1_ONLY, CmdgenIsolationStage.READ_BINDING1_ONLY);
-        selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY, CmdgenIsolationStage.READ_BINDING2_PROBE_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY, CmdgenIsolationStage.READ_RENDERLIST_HEADER_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY, CmdgenIsolationStage.READ_RENDERLIST_COUNT_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY, CmdgenIsolationStage.READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY);
@@ -1160,7 +1156,6 @@ public final class VulkanBerylSectionDrawPipeline {
     private enum CmdgenIsolationStage {
         READ_BINDING0_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY", CMDGEN_FLAG_READ_BINDING0_ONLY, Integer.BYTES),
         READ_BINDING1_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY", CMDGEN_FLAG_READ_BINDING1_ONLY, 0),
-        READ_BINDING2_PROBE_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY", CMDGEN_FLAG_READ_BINDING2_PROBE_ONLY, 0),
         READ_RENDERLIST_HEADER_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY", CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY, Integer.BYTES),
         READ_RENDERLIST_COUNT_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY", CMDGEN_FLAG_READ_RENDERLIST_COUNT_ONLY, Integer.BYTES),
         READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY", CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY, 2 * Integer.BYTES),
@@ -1498,7 +1493,6 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandDebugReadbackBuffer != null) this.drawCommandDebugReadbackBuffer.scheduleFree();
         this.drawCommandDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
         this.drawCommandDebugReadbackBuffer.createBuffer((long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
-        ensureCmdgenBinding2ProbeBuffer();
         this.drawCommandCapacity = maxEntryCount;
     }
 
@@ -1548,11 +1542,6 @@ public final class VulkanBerylSectionDrawPipeline {
             var words = stack.ints(0x13572468, 0x24681357, 0xabcdef01, 0x10fedcba, 0, 0, 0, 0);
             VK10.vkCmdUpdateBuffer(commandBuffer, this.cmdGenTinyMetadataProbeBuffer.getId(), 0L, words);
         }
-    }
-
-    private void ensureAndBindCmdgenBinding2ProbeBuffer() {
-        ensureCmdgenBinding2ProbeBuffer();
-        bindComputeStorageBinding(CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, "cmdGenBinding2ProbeBuffer");
     }
 
     private void ensureCmdgenBinding2ProbeBuffer() {
@@ -1655,7 +1644,6 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE
                 || CMDGEN_SHADER_READ_BINDING0_ONLY
                 || CMDGEN_SHADER_READ_BINDING1_ONLY
-                || CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY
                 || CMDGEN_RENDERLIST_ALT_BUFFER_PROBE
                 || RENDERLIST_SMOKE_ONE_ENTRY
                 || VulkanBerylDebugLog.TRACE_LOGS
@@ -1667,7 +1655,6 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer == null) return "draw_command_buffer_missing";
         if (this.drawCountBuffer == null) return "draw_count_buffer_missing";
         if (this.cmdGenConfigBuffer == null) return "cmdgen_config_buffer_missing";
-        if (this.cmdGenBinding2ProbeBuffer == null) return "cmdgen_binding2_probe_buffer_missing";
         if (geometryData.isFreed()) return "geometry_data_freed";
         if (renderList.isFreed()) return "render_list_freed";
         if (visibleCount <= 0) return "visible_count_zero_or_negative";
@@ -1703,9 +1690,6 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         if (this.cmdGenConfigBuffer.getBufferSize() < CMDGEN_CONFIG_SIZE_BYTES) {
             return "cmdgen_config_capacity_too_small: bufferBytes=" + this.cmdGenConfigBuffer.getBufferSize() + " required=" + CMDGEN_CONFIG_SIZE_BYTES;
-        }
-        if (this.cmdGenBinding2ProbeBuffer.getBufferSize() < CMDGEN_BINDING2_PROBE_SIZE_BYTES) {
-            return "cmdgen_binding2_probe_capacity_too_small: bufferBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize() + " required=" + CMDGEN_BINDING2_PROBE_SIZE_BYTES;
         }
         if (noOpCmdgenSmoke || (isolationStage != null && !isolationStage.requiresControlledSection())) {
             return null;
@@ -2096,8 +2080,9 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private ComputePipeline createFullLayoutProbePipeline(String shaderResource, String shaderName, String label) {
+        ensureCmdgenBinding2ProbeBuffer();
         ComputePipeline.Builder builder = new ComputePipeline.Builder(shaderResource);
-        builder.setUniforms(createManualCmdGenDescriptors(), List.of());
+        builder.setUniforms(createManualCmdGenProbeDescriptors(), List.of());
         try {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(shaderResource);
             if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
@@ -2146,13 +2131,11 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         int minBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(0);
         int maxBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(cmdgenBindings.size() - 1);
-        boolean binding2ProbePresent = cmdgenBindings.contains(CMDGEN_BINDING2_PROBE_BINDING);
-        VulkanBerylDebugLog.verboseOnce("section-cmdgen-descriptor-layout", "Section cmdgen descriptor layout: descriptorMode=manual_dense, count=" + cmdgenBindings.size()
+        VulkanBerylDebugLog.verboseOnce("section-cmdgen-descriptor-layout", "Section cmdgen descriptor layout: descriptorMode=manual_without_binding2, count=" + cmdgenBindings.size()
                 + ", bindings=" + cmdgenBindings
                 + ", minBinding=" + minBinding
                 + ", maxBinding=" + maxBinding
-                + ", denseFromZero=" + denseFromZero
-                + ", binding2ProbePresent=" + binding2ProbePresent);
+                + ", denseFromZero=" + denseFromZero);
         try {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_SHADER_RESOURCE);
             if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
@@ -2187,7 +2170,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.commandGenNoopPipeline != null) return;
         ComputePipeline.Builder builder = new ComputePipeline.Builder(CMDGEN_NOOP_SHADER_RESOURCE);
         if (CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE) {
-            builder.setUniforms(createManualCmdGenDescriptors(), List.of());
+            builder.setUniforms(createManualCmdGenProbeDescriptors(), List.of());
         } else {
             builder.setUniforms(List.of(), List.of());
         }
@@ -2234,7 +2217,6 @@ public final class VulkanBerylSectionDrawPipeline {
         java.util.Map<String, Integer> expectedBindings = java.util.Map.of(
                 "RenderListBuffer", CMDGEN_RENDER_LIST_BINDING,
                 "MetadataBuffer", CMDGEN_METADATA_BINDING,
-                "Binding2ProbeBuffer", CMDGEN_BINDING2_PROBE_BINDING,
                 "DrawCommandsBuffer", CMDGEN_DRAW_COMMAND_BINDING,
                 "DrawCountBuffer", CMDGEN_DRAW_COUNT_BINDING,
                 "CmdGenConfigBuffer", CMDGEN_CONFIG_BINDING
@@ -2242,7 +2224,6 @@ public final class VulkanBerylSectionDrawPipeline {
         java.util.Map<Integer, String> expectedShaderDeclarations = java.util.Map.of(
                 CMDGEN_RENDER_LIST_BINDING, "RenderListBuffer",
                 CMDGEN_METADATA_BINDING, "MetadataBuffer",
-                CMDGEN_BINDING2_PROBE_BINDING, "Binding2ProbeBuffer",
                 CMDGEN_DRAW_COMMAND_BINDING, "DrawCommandsBuffer",
                 CMDGEN_DRAW_COUNT_BINDING, "DrawCountBuffer",
                 CMDGEN_CONFIG_BINDING, "CmdGenConfigBuffer"
@@ -2285,7 +2266,6 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         VulkanBerylDebugLog.verboseOnce("section-cmdgen-layout-contract", "Section cmdgen layout contract validated: renderListBinding=" + CMDGEN_RENDER_LIST_BINDING
                 + ", metadataBinding=" + CMDGEN_METADATA_BINDING
-                + ", binding2ProbeBinding=" + CMDGEN_BINDING2_PROBE_BINDING
                 + ", bindings=" + jsonBindings);
     }
 
@@ -2294,10 +2274,23 @@ public final class VulkanBerylSectionDrawPipeline {
         return List.of(
                 createManualDescriptor(CMDGEN_RENDER_LIST_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == RENDER_LIST_BINDING).getBufferSlice().getBuffer(), "CmdGenRenderList"),
                 createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenMetadata"),
-                createManualDescriptor(CMDGEN_BINDING2_PROBE_BINDING, computeStage, this.cmdGenBinding2ProbeBuffer, "CmdGenBinding2Probe"),
                 createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenDrawCommand"),
                 createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount"),
                 createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenConfig")
+        );
+    }
+
+
+    private List<UBO> createManualCmdGenProbeDescriptors() {
+        ensureCmdgenBinding2ProbeBuffer();
+        int computeStage = ComputePipeline.Builder.getStageFromString("compute");
+        return List.of(
+                createManualDescriptor(CMDGEN_RENDER_LIST_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == RENDER_LIST_BINDING).getBufferSlice().getBuffer(), "CmdGenProbeRenderList"),
+                createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenProbeMetadata"),
+                createManualDescriptor(CMDGEN_BINDING2_PROBE_BINDING, computeStage, this.cmdGenBinding2ProbeBuffer, "CmdGenProbeBinding2"),
+                createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenProbeDrawCommand"),
+                createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenProbeDrawCount"),
+                createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenProbeConfig")
         );
     }
 

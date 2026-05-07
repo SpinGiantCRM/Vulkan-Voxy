@@ -17,14 +17,6 @@
       ]
     },
     {
-      "name": "Binding2ProbeBuffer",
-      "binding": 2,
-      "type": "storageBuffer",
-      "stages": [
-        "compute"
-      ]
-    },
-    {
       "name": "DrawCommandsBuffer",
       "binding": 3,
       "type": "storageBuffer",
