@@ -211,6 +211,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER", "false"));
     private static final boolean CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE", "false"));
     private static final boolean CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT", "false"));
+    private static final boolean CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR", "false"));
+    private static final boolean CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH", "false"));
     private static final boolean CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH", "false"));
     private static final boolean CMDGEN_DUMP_SHADER_DIAGNOSTICS = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DUMP_SHADER_DIAGNOSTICS", "false"));
     private static final boolean CMDGEN_NO_IMPORT_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE", "false"));
@@ -446,6 +448,9 @@ public final class VulkanBerylSectionDrawPipeline {
     private int drawCommandBufferUsageFlags;
     private int drawCountBufferUsageFlags;
     private int cmdgenDrawCountScratchBufferUsageFlags;
+    private boolean drawCountClearCommandRecordedThisFrame;
+    private boolean drawCountUsedRealClearPathThisFrame;
+    private boolean drawCountUsedScratchClearPathThisFrame;
     private int drawCommandDebugReadbackBufferUsageFlags;
     private int drawCountDebugReadbackBufferUsageFlags;
     private int drawCommandCapacity;
@@ -836,13 +841,16 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         guardCmdgenProbeExclusivity();
         this.drawCountClearedThisFrame = false;
+        this.drawCountClearCommandRecordedThisFrame = false;
+        this.drawCountUsedRealClearPathThisFrame = false;
+        this.drawCountUsedScratchClearPathThisFrame = false;
         if (CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN && !isExplicitCmdgenDiagnosticEnvActive()) {
             VulkanBerylDebugLog.once("cmdgen-skip-render-draw-submit-inactive", "VOXY_VULKAN_BERYL_CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN ignored because no explicit cmdgen diagnostic env var is active");
         }
         if (CMDGEN_WAIT_IDLE_AFTER_DISPATCH && !isExplicitCmdgenDiagnosticEnvActive()) {
             VulkanBerylDebugLog.once("cmdgen-wait-idle-after-dispatch-inactive", "VOXY_VULKAN_BERYL_CMDGEN_WAIT_IDLE_AFTER_DISPATCH ignored because no explicit cmdgen diagnostic env var is active");
         }
-        if ((CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT || CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH) && !isExplicitCmdgenShaderSelectionDiagnosticActive()) {
+        if ((CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT || CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR || CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH || CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH) && !isExplicitCmdgenShaderSelectionDiagnosticActive()) {
             logInactiveDrawCountDiagnosticEnvVars();
         }
 
@@ -973,6 +981,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_upload_config_only");
             }
             clearDrawCommandState(commandBuffer);
+            logPassingScratchAsRealComparison();
             logDrawCountBufferDiagnostics(isolationStage == null ? "before_dispatch:full" : "before_dispatch:" + isolationStage.envName(), true);
             if (useAltRenderListBuffer) {
                 recordCmdgenRenderListAltProbeUpload(commandBuffer);
@@ -1068,6 +1077,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline, "no_import_single_invocation_real_command_no_atomic_probe");
             }
             barrierTransferToCompute(commandBuffer);
+            logDrawCountBarrierDiagnostic("before_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_TRANSFER_BIT, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_ACCESS_TRANSFER_WRITE_BIT, VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT);
             if (CMDGEN_CLEAR_OUTPUTS_ONLY) {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_clear_outputs_only");
             }
@@ -1106,6 +1116,7 @@ public final class VulkanBerylSectionDrawPipeline {
                         null,
                         null
                 );
+                logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
             }
         }
 
@@ -1647,13 +1658,17 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCommandBuffer.scheduleFree();
             this.drawCommandBuffer = null;
         }
-        if (this.drawCountBuffer != null) {
+        if (this.drawCountBuffer != null && this.drawCountBuffer != this.cmdgenDrawCountScratchBuffer) {
             this.drawCountBuffer.scheduleFree();
             this.drawCountBuffer = null;
         }
         if (this.cmdgenDrawCountScratchBuffer != null) {
+            boolean drawCountAliasesScratch = this.drawCountBuffer == this.cmdgenDrawCountScratchBuffer;
             this.cmdgenDrawCountScratchBuffer.scheduleFree();
             this.cmdgenDrawCountScratchBuffer = null;
+            if (drawCountAliasesScratch) {
+                this.drawCountBuffer = null;
+            }
         }
         if (this.cmdGenConfigBuffer != null) {
             this.cmdGenConfigBuffer.scheduleFree();
@@ -1724,7 +1739,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.drawCommandBuffer.createBuffer(commandBytes);
         Buffer oldDrawCountBuffer = this.drawCountBuffer;
         long oldDrawCountBufferId = oldDrawCountBuffer == null ? 0L : oldDrawCountBuffer.getId();
-        if (oldDrawCountBuffer != null) oldDrawCountBuffer.scheduleFree();
+        if (oldDrawCountBuffer != null && oldDrawCountBuffer != this.cmdgenDrawCountScratchBuffer) oldDrawCountBuffer.scheduleFree();
         allocateRealDrawCountBuffer(oldDrawCountBufferId);
         if (this.drawCommandDebugReadbackBuffer != null) this.drawCommandDebugReadbackBuffer.scheduleFree();
         this.drawCommandDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -1773,7 +1788,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private static boolean bindDrawCountToScratchActive() {
-        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER;
+        return isExplicitCmdgenShaderSelectionDiagnosticActive() && (CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER || usePassingScratchBindingAsRealDrawCountDescriptorActive());
     }
 
     private static boolean largeDrawCountBufferActive() {
@@ -1788,6 +1803,14 @@ public final class VulkanBerylSectionDrawPipeline {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT;
     }
 
+    private static boolean usePassingScratchBindingAsRealDrawCountDescriptorActive() {
+        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR;
+    }
+
+    private static boolean skipDrawCountClearBeforeDispatchActive() {
+        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH;
+    }
+
     private static boolean disableAnyDrawCountConsumerPathActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH;
     }
@@ -1797,6 +1820,16 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private void allocateRealDrawCountBuffer(long oldDrawCountBufferId) {
+        if (usePassingScratchBindingAsRealDrawCountDescriptorActive()) {
+            ensureCmdgenDrawCountScratchBuffer();
+            this.drawCountBuffer = this.cmdgenDrawCountScratchBuffer;
+            this.drawCountBufferUsageFlags = this.cmdgenDrawCountScratchBufferUsageFlags;
+            this.drawCountAllocationGeneration++;
+            this.lastDrawCountAllocationUsedScratchPath = true;
+            this.lastOldRealDrawCountBufferStillExists = oldDrawCountBufferId != 0L;
+            logPassingScratchAsRealAllocation(oldDrawCountBufferId);
+            return;
+        }
         boolean scratchStyle = useScratchAllocationForRealDrawCountActive();
         long drawCountBytes = scratchStyle || largeDrawCountBufferActive() ? CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES : Integer.BYTES;
         this.drawCountBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -1839,13 +1872,15 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private static void logInactiveDrawCountDiagnosticEnvVars() {
-        if (CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER || CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER || CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER || CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE || CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT || CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH) {
+        if (CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER || CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER || CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER || CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE || CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT || CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR || CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH || CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH) {
             VulkanBerylDebugLog.once("cmdgen-drawcount-diagnostic-env-inactive", "cmdgen drawCount buffer diagnostic env var ignored because no explicit cmdgen shader-selection env var is active: scratch="
                     + CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER
                     + ", largeBuffer=" + CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER
                     + ", fullDescriptorRange=" + CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER
                     + ", indirectUsage=" + CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE
                     + ", scratchAllocationForRealDrawCount=" + CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT
+                    + ", passingScratchBindingAsRealDrawCountDescriptor=" + CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR
+                    + ", skipDrawCountClearBeforeDispatch=" + CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH
                     + ", disableAnyDrawCountConsumerPath=" + CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH);
         }
     }
@@ -1860,6 +1895,53 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private String drawCountDescriptorLabel() {
         return bindDrawCountToScratchActive() ? "cmdgenDrawCountScratchBuffer" : "drawCountBuffer";
+    }
+
+    private void logPassingScratchAsRealAllocation(long oldDrawCountBufferId) {
+        VulkanBerylDebugLog.once("cmdgen-passing-scratch-as-real-drawcount-allocation:" + this.drawCountAllocationGeneration, "cmdgen passing scratch binding is current drawCountBuffer: shaderSelectionEnv=" + activeCmdgenShaderSelectionEnvVar()
+                + ", allocationPath=passing_scratch_binding_as_current_drawCountBuffer"
+                + ", realDrawCountObjectCreated=false"
+                + ", bufferId=" + (this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId())
+                + ", capacityBytes=" + (this.drawCountBuffer == null ? -1L : this.drawCountBuffer.getBufferSize())
+                + ", usageFlags=" + this.drawCountBufferUsageFlags
+                + ", usage=" + bufferUsageString(this.drawCountBufferUsageFlags)
+                + ", oldRealDrawCountBufferId=" + oldDrawCountBufferId
+                + ", oldRealDrawCountBufferStillExists=" + (oldDrawCountBufferId != 0L));
+    }
+
+    private void logPassingScratchAsRealComparison() {
+        if (!usePassingScratchBindingAsRealDrawCountDescriptorActive()) return;
+        Buffer descriptorBuffer = cmdgenDrawCountDescriptorBuffer();
+        long descriptorId = descriptorBuffer == null ? 0L : descriptorBuffer.getId();
+        long currentId = this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId();
+        VulkanBerylDebugLog.once("cmdgen-passing-scratch-as-real-comparison", "cmdgen passing scratch/current drawCount comparison: passingScratchPath=true"
+                + ", realDrawCountObjectCreated=false"
+                + ", descriptorBinding4BufferId=" + descriptorId
+                + ", currentDrawCountBufferId=" + currentId
+                + ", descriptorAndCurrentDrawCountSame=" + (descriptorBuffer == this.drawCountBuffer && descriptorId == currentId)
+                + ", usedRealClearPath=" + this.drawCountUsedRealClearPathThisFrame
+                + ", usedScratchClearPath=" + this.drawCountUsedScratchClearPathThisFrame);
+    }
+
+    private void logDrawCountBarrierDiagnostic(String stage, boolean recorded, int srcStageMask, int dstStageMask, int srcAccessMask, int dstAccessMask) {
+        if (!isExplicitCmdgenShaderSelectionDiagnosticActive()) return;
+        if (!(CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER || CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT || CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR || CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH || CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH)) return;
+        Buffer descriptorBuffer = cmdgenDrawCountDescriptorBuffer();
+        VulkanBerylDebugLog.once("cmdgen-drawcount-barrier-diagnostics:" + stage, "cmdgen drawCount barrier diagnostics: stage=" + stage
+                + ", barrierRecorded=" + recorded
+                + ", clearCommandRecorded=" + this.drawCountClearCommandRecordedThisFrame
+                + ", drawCountClearedInitialisedThisFrame=" + this.drawCountClearedThisFrame
+                + ", descriptorBinding4BufferId=" + (descriptorBuffer == null ? 0L : descriptorBuffer.getId())
+                + ", currentDrawCountBufferId=" + (this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId())
+                + ", descriptorAndCurrentDrawCountSame=" + (descriptorBuffer == this.drawCountBuffer)
+                + ", srcStageMask=" + srcStageMask
+                + ", srcStage=" + pipelineStageMaskString(srcStageMask)
+                + ", srcAccessMask=" + srcAccessMask
+                + ", srcAccess=" + accessMaskString(srcAccessMask)
+                + ", dstStageMask=" + dstStageMask
+                + ", dstStage=" + pipelineStageMaskString(dstStageMask)
+                + ", dstAccessMask=" + dstAccessMask
+                + ", dstAccess=" + accessMaskString(dstAccessMask));
     }
 
     private void ensureCmdgenDrawCountScratchBuffer() {
@@ -1903,24 +1985,53 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private void clearDrawCommandState(VkCommandBuffer commandBuffer) {
-        long drawCountClearBytes = useScratchAllocationForRealDrawCountActive() ? alignedFillBytes(this.drawCountBuffer.getBufferSize()) : 4L;
-        VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, drawCountClearBytes, 0);
-        if (useScratchAllocationForRealDrawCountActive()) {
-            VulkanBerylDebugLog.once("cmdgen-drawcount-scratch-real-cleared", "cmdgen real drawCount scratch-allocation buffer cleared before dispatch: bufferId="
-                    + this.drawCountBuffer.getId()
-                    + ", capacityBytes=" + this.drawCountBuffer.getBufferSize()
-                    + ", clearBytes=" + drawCountClearBytes
-                    + ", usage=" + bufferUsageString(this.drawCountBufferUsageFlags));
-        }
-        Buffer drawCountDescriptorBuffer = cmdgenDrawCountDescriptorBuffer();
-        if (drawCountDescriptorBuffer != this.drawCountBuffer) {
-            VK10.vkCmdFillBuffer(commandBuffer, drawCountDescriptorBuffer.getId(), 0L, alignedFillBytes(drawCountDescriptorBuffer.getBufferSize()), 0);
-            VulkanBerylDebugLog.once("cmdgen-drawcount-scratch-cleared", "cmdgen drawCount diagnostic scratch buffer cleared before dispatch: bufferId="
+        logDrawCountBarrierDiagnostic("before_clear", false, 0, 0, 0, 0);
+        if (skipDrawCountClearBeforeDispatchActive()) {
+            this.drawCountClearedThisFrame = false;
+            this.drawCountClearCommandRecordedThisFrame = false;
+            VulkanBerylDebugLog.once("cmdgen-drawcount-clear-skipped-before-dispatch", "cmdgen drawCount clear/initialise before dispatch skipped: env=VOXY_VULKAN_BERYL_CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH, shaderSelectionEnv=" + activeCmdgenShaderSelectionEnvVar());
+            logDrawCountBarrierDiagnostic("after_clear", false, 0, 0, 0, 0);
+        } else if (usePassingScratchBindingAsRealDrawCountDescriptorActive()) {
+            Buffer drawCountDescriptorBuffer = cmdgenDrawCountDescriptorBuffer();
+            long clearBytes = alignedFillBytes(drawCountDescriptorBuffer.getBufferSize());
+            VK10.vkCmdFillBuffer(commandBuffer, drawCountDescriptorBuffer.getId(), 0L, clearBytes, 0);
+            this.drawCountClearedThisFrame = true;
+            this.drawCountClearCommandRecordedThisFrame = true;
+            this.drawCountUsedScratchClearPathThisFrame = true;
+            VulkanBerylDebugLog.once("cmdgen-drawcount-passing-scratch-current-cleared", "cmdgen current drawCount uses passing scratch-binding clear path before dispatch: bufferId="
                     + drawCountDescriptorBuffer.getId()
                     + ", capacityBytes=" + drawCountDescriptorBuffer.getBufferSize()
-                    + ", clearBytes=" + alignedFillBytes(drawCountDescriptorBuffer.getBufferSize()));
+                    + ", clearBytes=" + clearBytes);
+            logDrawCountBarrierDiagnostic("after_clear", false, 0, 0, 0, 0);
+        } else {
+            long drawCountClearBytes = useScratchAllocationForRealDrawCountActive() ? alignedFillBytes(this.drawCountBuffer.getBufferSize()) : 4L;
+            VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, drawCountClearBytes, 0);
+            this.drawCountClearCommandRecordedThisFrame = true;
+            this.drawCountUsedRealClearPathThisFrame = true;
+            if (useScratchAllocationForRealDrawCountActive()) {
+                VulkanBerylDebugLog.once("cmdgen-drawcount-scratch-real-cleared", "cmdgen real drawCount scratch-allocation buffer cleared before dispatch: bufferId="
+                        + this.drawCountBuffer.getId()
+                        + ", capacityBytes=" + this.drawCountBuffer.getBufferSize()
+                        + ", clearBytes=" + drawCountClearBytes
+                        + ", usage=" + bufferUsageString(this.drawCountBufferUsageFlags));
+            }
+            Buffer drawCountDescriptorBuffer = cmdgenDrawCountDescriptorBuffer();
+            if (drawCountDescriptorBuffer != this.drawCountBuffer) {
+                long scratchClearBytes = alignedFillBytes(drawCountDescriptorBuffer.getBufferSize());
+                VK10.vkCmdFillBuffer(commandBuffer, drawCountDescriptorBuffer.getId(), 0L, scratchClearBytes, 0);
+                this.drawCountUsedScratchClearPathThisFrame = true;
+                VulkanBerylDebugLog.once("cmdgen-drawcount-scratch-cleared", "cmdgen drawCount diagnostic scratch buffer cleared before dispatch: bufferId="
+                        + drawCountDescriptorBuffer.getId()
+                        + ", capacityBytes=" + drawCountDescriptorBuffer.getBufferSize()
+                        + ", clearBytes=" + scratchClearBytes);
+            }
+            this.drawCountClearedThisFrame = true;
+            logDrawCountBarrierDiagnostic("after_clear", false, 0, 0, 0, 0);
         }
-        this.drawCountClearedThisFrame = true;
+        VulkanBerylDebugLog.once("cmdgen-drawcount-clear-recorded", "cmdgen drawCount clear command recorded=" + this.drawCountClearCommandRecordedThisFrame
+                + ", skippedByEnv=" + skipDrawCountClearBeforeDispatchActive()
+                + ", usedRealClearPath=" + this.drawCountUsedRealClearPathThisFrame
+                + ", usedScratchClearPath=" + this.drawCountUsedScratchClearPathThisFrame);
         long clearBytes = Math.min(this.drawCommandBuffer.getBufferSize(), (long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
         if (clearBytes > 0L) {
             VK10.vkCmdFillBuffer(commandBuffer, this.drawCommandBuffer.getId(), 0L, clearBytes, 0);
@@ -2300,6 +2411,26 @@ public final class VulkanBerylSectionDrawPipeline {
         if ((usageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0) usages.add("TRANSFER_DST");
         if ((usageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0) usages.add("TRANSFER_SRC");
         return usages.isEmpty() ? "0" : String.join("|", usages);
+    }
+
+    private static String pipelineStageMaskString(int stageMask) {
+        if (stageMask == 0) return "none";
+        List<String> stages = new ArrayList<>();
+        if ((stageMask & VK10.VK_PIPELINE_STAGE_TRANSFER_BIT) != 0) stages.add("TRANSFER");
+        if ((stageMask & VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0) stages.add("COMPUTE_SHADER");
+        if ((stageMask & VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT) != 0) stages.add("DRAW_INDIRECT");
+        if ((stageMask & VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT) != 0) stages.add("VERTEX_SHADER");
+        return stages.isEmpty() ? Integer.toString(stageMask) : String.join("|", stages);
+    }
+
+    private static String accessMaskString(int accessMask) {
+        if (accessMask == 0) return "none";
+        List<String> accesses = new ArrayList<>();
+        if ((accessMask & VK10.VK_ACCESS_TRANSFER_WRITE_BIT) != 0) accesses.add("TRANSFER_WRITE");
+        if ((accessMask & VK10.VK_ACCESS_SHADER_READ_BIT) != 0) accesses.add("SHADER_READ");
+        if ((accessMask & VK10.VK_ACCESS_SHADER_WRITE_BIT) != 0) accesses.add("SHADER_WRITE");
+        if ((accessMask & VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT) != 0) accesses.add("INDIRECT_COMMAND_READ");
+        return accesses.isEmpty() ? Integer.toString(accessMask) : String.join("|", accesses);
     }
 
     private void consumePendingDebugCommandSampleIfReady() {
