@@ -18,6 +18,10 @@ layout(binding = 0, std430) readonly volatile buffer RenderListBuffer {
 layout(binding = 1, std430) readonly buffer MetadataBuffer {
     SectionMeta sectionData[];
 };
+// Unused binding2 padding keeps Beryl's dense ManualUBO descriptor layout at bindings 0..5.
+layout(binding = 2, std430) readonly buffer CmdGenUnusedBinding2 {
+    uint unusedBinding2Word;
+};
 layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
     DrawCommand commands[];
 };
