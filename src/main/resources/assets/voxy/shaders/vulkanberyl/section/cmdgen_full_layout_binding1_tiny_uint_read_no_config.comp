@@ -1,0 +1,13 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+layout(binding = 1, std430) readonly volatile buffer MetadataUintBuffer {
+    uint metadataWord;
+};
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) return;
+    uint value = metadataWord;
+    if (value == 0xffffffffu) memoryBarrierBuffer();
+}
