@@ -975,6 +975,7 @@ public final class VulkanBerylSectionDrawPipeline {
         logPipelineBindingState(pipeline, CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, stage, "cmdGenBinding2ProbeBuffer");
         logCmdGenConfigBufferState("before_dispatch:" + stage);
         barrierTransferToCompute(commandBuffer);
+        logCmdgenProbeTransferBarrierAfterUploads(stage, false, true, true);
         VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getId());
         pipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
@@ -1019,6 +1020,7 @@ public final class VulkanBerylSectionDrawPipeline {
         logPipelineBindingState(pipeline, CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, stage, "cmdGenBinding2ProbeBuffer");
         logCmdGenConfigBufferState("before_dispatch:" + stage);
         barrierTransferToCompute(commandBuffer);
+        logCmdgenProbeTransferBarrierAfterUploads(stage, true, true, true);
         VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getId());
         pipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
@@ -1735,13 +1737,25 @@ public final class VulkanBerylSectionDrawPipeline {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkMemoryBarrier.Buffer transferToCompute = VkMemoryBarrier.calloc(1, stack)
                     .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
-                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
                     .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT);
             VK10.vkCmdPipelineBarrier(commandBuffer,
-                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
                     VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                     0, transferToCompute, null, null);
         }
+    }
+
+    private void logCmdgenProbeTransferBarrierAfterUploads(String stage, boolean readsTinyMetadataProbe, boolean readsBinding2Probe, boolean readsConfig) {
+        VulkanBerylDebugLog.once("cmdgen-transfer-barrier-after-uploads:" + stage, "cmdgen probe transfer barrier placed after uploads: stage=" + stage
+                + ", srcStage=TRANSFER"
+                + ", srcAccess=TRANSFER_WRITE"
+                + ", dstStage=COMPUTE_SHADER"
+                + ", dstAccess=SHADER_READ|SHADER_WRITE"
+                + ", afterCmdGenConfigUpload=" + readsConfig
+                + ", afterCmdGenBinding2ProbeUpload=" + readsBinding2Probe
+                + ", afterCmdGenTinyMetadataProbeUpload=" + readsTinyMetadataProbe
+                + ", beforeDispatch=true");
     }
 
     private void validateDrawCommandBuffer(int visibleCount) {
