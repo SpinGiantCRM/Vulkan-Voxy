@@ -23,6 +23,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -163,6 +164,71 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_DEBUG_READBACK = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
+
+    private static List<String> activeCmdgenProbeEnvVars() {
+        List<String> active = new ArrayList<>();
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_CREATE_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_CREATE_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DISPATCH_NOOP, "VOXY_VULKAN_BERYL_CMDGEN_DISPATCH_NOOP");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_UPLOAD_CONFIG_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_UPLOAD_CONFIG_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_CLEAR_OUTPUTS_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_CLEAR_OUTPUTS_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_BIND_FULL_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_BIND_FULL_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_RENDERLIST_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_METADATA_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_METADATA_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_WRITE_DRAWS_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_WRITE_DRAWS_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING0_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING1_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING2_PROBE_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_RENDERLIST_ALT_BUFFER_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_RENDERLIST_ALT_BUFFER_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_RENDERLIST_MANUALUBO_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_RENDERLIST_MANUALUBO_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_CONFIG_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_CONFIG_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_CONFIG_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_CONFIG_BINDING0_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_HARDCODED_READ_BINDING0_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_HARDCODED_READ_BINDING0_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_NOOP_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_NOOP_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_TINY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_TINY_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_NO_READ_TINY_BIND_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_NO_READ_TINY_BIND_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_CONST_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_CONST_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_RAW_METADATA_UVEC4_BINDING0_REAL_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_RAW_METADATA_UVEC4_BINDING0_REAL_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK");
+        return active;
+    }
+
+    private static void addActiveCmdgenProbeEnvVar(List<String> active, boolean enabled, String envVar) {
+        if (enabled) {
+            active.add(envVar);
+        }
+    }
+
+    private static void guardCmdgenProbeExclusivity() {
+        List<String> active = activeCmdgenProbeEnvVars();
+        if (active.size() > 1) {
+            throw new IllegalStateException("Multiple cmdgen isolation/probe env flags are active: " + active);
+        }
+        if (active.size() == 1) {
+            VulkanBerylDebugLog.once("active-cmdgen-probe", "active cmdgen probe: " + active.get(0));
+        }
+    }
 
     private GraphicsPipeline graphicsPipeline;
     private ComputePipeline commandGenPipeline;
@@ -418,6 +484,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (geometryData == null) throw new IllegalArgumentException("geometryData must not be null");
         if (renderList == null) throw new IllegalArgumentException("renderList must not be null");
         if (this.graphicsPipeline == null) throw new IllegalStateException("graphics pipeline must be created before resources are bound");
+        guardCmdgenProbeExclusivity();
 
         long geometryBytes = geometryData.getGeometryBuffer().getBufferSize();
         long metadataBytes = geometryData.getMetadataBuffer().getBufferSize();
@@ -563,6 +630,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.graphicsPipeline == null || !this.resourcesBound) {
             throw new IllegalStateException("section draw pipeline/resources are not initialized");
         }
+        guardCmdgenProbeExclusivity();
 
         int maxEntryCount = renderList.getMaxEntryCount();
         ControlledRenderListSmoke controlledSmoke = ControlledRenderListSmoke.disabled();
