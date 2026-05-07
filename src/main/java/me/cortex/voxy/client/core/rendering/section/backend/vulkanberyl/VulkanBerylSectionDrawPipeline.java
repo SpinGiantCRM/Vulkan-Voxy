@@ -59,6 +59,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_hardcoded_binding0_read";
     private static final String CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_full_layout_config_binding0_read.comp";
     private static final String CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_config_binding0_read";
+    private static final String CMDGEN_STANDALONE_BINDING0_CONFIG_READ_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_standalone_binding0_config_read.comp";
+    private static final String CMDGEN_STANDALONE_BINDING0_CONFIG_READ_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_binding0_config_read";
     private static final String CMDGEN_NO_IMPORT_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import.comp";
     private static final String CMDGEN_NO_IMPORT_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import";
     private static final String CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_read_metadata0_only.comp";
@@ -158,6 +160,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_FULL_LAYOUT_NOOP_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_NOOP_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE", "false"));
+    private static final boolean CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER", "false"));
     private static final boolean CMDGEN_NO_IMPORT_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE", "false"));
     private static final boolean CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE", "false"));
     private static final boolean CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE", "false"));
@@ -247,6 +250,7 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_NOOP_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_NOOP_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE");
@@ -774,6 +778,9 @@ public final class VulkanBerylSectionDrawPipeline {
         }
 
         if (CMDGEN_CREATE_ONLY) {
+            if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER) {
+                VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-dispatch-path", "standalone normal-cmdgen shader uses same dispatch path as normal cmdgen");
+            }
             VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, this.commandGenPipeline.getId());
             this.commandGenPipeline.bindDescriptorSets(commandBuffer, 0);
             logCmdgenCommandBufferUse(isolationStage == null ? "create_only" : isolationStage.envName(), commandBuffer, commandBuffer, true);
@@ -939,6 +946,9 @@ public final class VulkanBerylSectionDrawPipeline {
             barrierTransferToCompute(commandBuffer);
             if (CMDGEN_CLEAR_OUTPUTS_ONLY) {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_clear_outputs_only");
+            }
+            if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER) {
+                VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-dispatch-path", "standalone normal-cmdgen shader uses same dispatch path as normal cmdgen");
             }
             VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, this.commandGenPipeline.getId());
             this.commandGenPipeline.bindDescriptorSets(commandBuffer, 0);
@@ -2326,11 +2336,25 @@ public final class VulkanBerylSectionDrawPipeline {
         return pipeline;
     }
 
+    private static String activeCmdgenShaderResource() {
+        return CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER ? CMDGEN_STANDALONE_BINDING0_CONFIG_READ_SHADER_RESOURCE : CMDGEN_SHADER_RESOURCE;
+    }
+
+    private static String activeCmdgenShaderName() {
+        return CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER ? CMDGEN_STANDALONE_BINDING0_CONFIG_READ_SHADER_NAME : CMDGEN_SHADER_NAME;
+    }
+
     private void ensureCommandGenPipeline() {
         if (this.commandGenPipeline != null) return;
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(CMDGEN_SHADER_CONFIG);
         Objects.requireNonNull(configUrl, "Missing section cmdgen shader config: " + CMDGEN_SHADER_CONFIG);
-        ComputePipeline.Builder builder = new ComputePipeline.Builder(CMDGEN_SHADER_RESOURCE);
+        String cmdgenShaderResource = activeCmdgenShaderResource();
+        String cmdgenShaderName = activeCmdgenShaderName();
+        if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER) {
+            VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-active", "standalone normal-cmdgen shader active: env=VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER");
+            VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-resource", "standalone normal-cmdgen shader resource name: " + cmdgenShaderResource);
+        }
+        ComputePipeline.Builder builder = new ComputePipeline.Builder(cmdgenShaderResource);
         JsonObject config;
         try (InputStreamReader reader = new InputStreamReader(configUrl.openStream(), StandardCharsets.UTF_8)) {
             config = JsonParser.parseReader(reader).getAsJsonObject();
@@ -2355,8 +2379,11 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", minBinding=" + minBinding
                 + ", maxBinding=" + maxBinding
                 + ", denseFromZero=" + denseFromZero);
+        if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER) {
+            VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-descriptor-path", "standalone normal-cmdgen shader uses same descriptor path as normal cmdgen: descriptorMode=manual_dense_with_unused_binding2, bindings=" + cmdgenBindings);
+        }
         try {
-            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_SHADER_RESOURCE);
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(cmdgenShaderResource);
             if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed cmdgen shader file missing before compile: " + preprocessedShader.shaderPath());
             }
@@ -2371,7 +2398,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 throw e;
             }
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to compile section cmdgen shader (compute=" + CMDGEN_SHADER_NAME + ", config=" + CMDGEN_SHADER_CONFIG + ")", e);
+            throw new IllegalStateException("Failed to compile section cmdgen shader (compute=" + cmdgenShaderName + ", config=" + CMDGEN_SHADER_CONFIG + ")", e);
         }
         try {
             this.commandGenPipeline = builder.createPipeline();
@@ -2382,7 +2409,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to create section cmdgen compute pipeline");
         }
         this.commandGenPipelineCreated = true;
-        VulkanBerylDebugLog.once("cmdgen-pipeline-created", "cmdgen pipeline created");
+        VulkanBerylDebugLog.once("cmdgen-pipeline-created", "cmdgen pipeline created: shader=" + cmdgenShaderName);
     }
 
     private void ensureCommandGenNoopPipeline() {
@@ -2444,6 +2471,7 @@ public final class VulkanBerylSectionDrawPipeline {
         java.util.Map<Integer, String> expectedShaderDeclarations = java.util.Map.of(
                 CMDGEN_RENDER_LIST_BINDING, "RenderListBuffer",
                 CMDGEN_METADATA_BINDING, "MetadataBuffer",
+                CMDGEN_UNUSED_BINDING2_BINDING, "CmdGenUnusedBinding2",
                 CMDGEN_DRAW_COMMAND_BINDING, "DrawCommandsBuffer",
                 CMDGEN_DRAW_COUNT_BINDING, "DrawCountBuffer",
                 CMDGEN_CONFIG_BINDING, "CmdGenConfigBuffer"
@@ -2470,13 +2498,15 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Cmdgen descriptor layout mismatch: jsonBindings=" + jsonBindings + ", expected=" + expectedBindings);
         }
         String shaderSource;
-        try (var stream = VulkanBerylSectionDrawPipeline.class.getResourceAsStream("/assets/voxy/shaders/vulkanberyl/section/cmdgen.comp")) {
+        String cmdgenShaderResource = activeCmdgenShaderResource();
+        String resourcePath = cmdgenShaderResource.replace("voxy:", "/assets/voxy/");
+        try (var stream = VulkanBerylSectionDrawPipeline.class.getResourceAsStream(resourcePath)) {
             if (stream == null) {
-                throw new IllegalStateException("Missing cmdgen shader resource for layout validation: " + CMDGEN_SHADER_RESOURCE);
+                throw new IllegalStateException("Missing cmdgen shader resource for layout validation: " + cmdgenShaderResource);
             }
             shaderSource = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to read cmdgen shader for layout validation: " + CMDGEN_SHADER_RESOURCE, e);
+            throw new IllegalStateException("Failed to read cmdgen shader for layout validation: " + cmdgenShaderResource, e);
         }
         for (var entry : expectedShaderDeclarations.entrySet()) {
             String declaration = "layout(binding = " + entry.getKey() + ", std430)";
