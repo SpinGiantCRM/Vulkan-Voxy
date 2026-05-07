@@ -30,6 +30,7 @@ import java.util.Objects;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 import static org.lwjgl.vulkan.VK10.VK_PIPELINE_BIND_POINT_COMPUTE;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 
@@ -283,6 +284,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private Buffer drawCommandBuffer;
     private Buffer drawCountBuffer;
     private Buffer drawCommandDebugReadbackBuffer;
+    private Buffer drawCountDebugReadbackBuffer;
     private Buffer cmdGenConfigBuffer;
     private Buffer cmdGenUnusedBinding2Buffer;
     private Buffer cmdGenBinding2ProbeBuffer;
@@ -298,6 +300,9 @@ public final class VulkanBerylSectionDrawPipeline {
     private int lastCmdGenConfigFlags;
     private boolean cmdGenConfigUploaded;
     private int drawCommandBufferUsageFlags;
+    private int drawCountBufferUsageFlags;
+    private int drawCommandDebugReadbackBufferUsageFlags;
+    private int drawCountDebugReadbackBufferUsageFlags;
     private int drawCommandCapacity;
     private int pendingDebugSampleCommandCount;
     private int pendingDebugSampleVisibleCount;
@@ -1460,6 +1465,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCommandDebugReadbackBuffer.scheduleFree();
             this.drawCommandDebugReadbackBuffer = null;
         }
+        if (this.drawCountDebugReadbackBuffer != null) {
+            this.drawCountDebugReadbackBuffer.scheduleFree();
+            this.drawCountDebugReadbackBuffer = null;
+        }
         this.resourcesBound = false;
     }
     private static long readTempFileSize(Path path) {
@@ -1493,14 +1502,20 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer != null) this.drawCommandBuffer.scheduleFree();
         if (this.drawCountBuffer != null) this.drawCountBuffer.scheduleFree();
         long commandBytes = Math.multiplyExact((long) maxEntryCount, DRAW_COMMAND_STRIDE_BYTES);
-        this.drawCommandBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        this.drawCommandBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         this.drawCommandBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands", this.drawCommandBufferUsageFlags, MemoryTypes.GPU_MEM);
         this.drawCommandBuffer.createBuffer(commandBytes);
-        this.drawCountBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_count", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
-        this.drawCountBuffer.createBuffer(4L);
+        this.drawCountBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        this.drawCountBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_count", this.drawCountBufferUsageFlags, MemoryTypes.GPU_MEM);
+        this.drawCountBuffer.createBuffer(Integer.BYTES);
         if (this.drawCommandDebugReadbackBuffer != null) this.drawCommandDebugReadbackBuffer.scheduleFree();
-        this.drawCommandDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
+        this.drawCommandDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        this.drawCommandDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands_readback", this.drawCommandDebugReadbackBufferUsageFlags, MemoryTypes.HOST_MEM);
         this.drawCommandDebugReadbackBuffer.createBuffer((long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
+        if (this.drawCountDebugReadbackBuffer != null) this.drawCountDebugReadbackBuffer.scheduleFree();
+        this.drawCountDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        this.drawCountDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_count_readback", this.drawCountDebugReadbackBufferUsageFlags, MemoryTypes.HOST_MEM);
+        this.drawCountDebugReadbackBuffer.createBuffer(Integer.BYTES);
         this.drawCommandCapacity = maxEntryCount;
     }
 
@@ -1769,12 +1784,60 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer == null) throw new IllegalStateException("drawCommandBuffer must not be null");
         if (this.drawCommandBuffer.getId() == 0L) throw new IllegalStateException("drawCommandBuffer has invalid Vulkan buffer id");
         if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) == 0) throw new IllegalStateException("drawCommandBuffer missing VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT");
+        if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0) throw new IllegalStateException("drawCommandBuffer missing VK_BUFFER_USAGE_TRANSFER_SRC_BIT");
         long requiredBytes = Math.multiplyExact((long) visibleCount, DRAW_COMMAND_STRIDE_BYTES);
         if (this.drawCommandBuffer.getBufferSize() < requiredBytes) throw new IllegalStateException("drawCommandBuffer is too small for visible draws");
     }
 
-    private void scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int sampledCommandCount, int visibleCount, long geometryBufferBytes) {
-        if (sampledCommandCount <= 0 || this.drawCommandDebugReadbackBuffer == null) return;
+    private void scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int requestedSampledCommandCount, int visibleCount, long geometryBufferBytes) {
+        if (requestedSampledCommandCount <= 0 || this.drawCommandDebugReadbackBuffer == null || this.drawCountDebugReadbackBuffer == null) return;
+        if (this.drawCommandBuffer == null || this.drawCountBuffer == null) return;
+        if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0) {
+            throw new IllegalStateException("cmdgen debug readback source drawCommandBuffer missing VK_BUFFER_USAGE_TRANSFER_SRC_BIT");
+        }
+        if ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0) {
+            throw new IllegalStateException("cmdgen debug readback source drawCountBuffer missing VK_BUFFER_USAGE_TRANSFER_SRC_BIT");
+        }
+        if ((this.drawCommandDebugReadbackBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0) {
+            throw new IllegalStateException("cmdgen debug readback destination drawCommandDebugReadbackBuffer missing VK_BUFFER_USAGE_TRANSFER_DST_BIT");
+        }
+        if ((this.drawCountDebugReadbackBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0) {
+            throw new IllegalStateException("cmdgen debug readback destination drawCountDebugReadbackBuffer missing VK_BUFFER_USAGE_TRANSFER_DST_BIT");
+        }
+        if (this.drawCommandDebugReadbackBuffer.getDataPtr() == 0L || this.drawCountDebugReadbackBuffer.getDataPtr() == 0L) {
+            throw new IllegalStateException("cmdgen debug readback destination buffers must be host-readable/mapped");
+        }
+
+        long drawCommandSourceBytes = Math.min(this.drawCommandBuffer.getBufferSize(), (long) this.drawCommandCapacity * DRAW_COMMAND_STRIDE_BYTES);
+        long drawCommandDestinationBytes = this.drawCommandDebugReadbackBuffer.getBufferSize();
+        int capacitySampleCount = (int) Math.min(Integer.MAX_VALUE, drawCommandSourceBytes / DRAW_COMMAND_STRIDE_BYTES);
+        int destinationSampleCount = (int) Math.min(Integer.MAX_VALUE, drawCommandDestinationBytes / DRAW_COMMAND_STRIDE_BYTES);
+        int sampledCommandCount = Math.max(0, Math.min(Math.min(requestedSampledCommandCount, capacitySampleCount), destinationSampleCount));
+        long commandCopyBytes = (long) sampledCommandCount * DRAW_COMMAND_STRIDE_BYTES;
+        boolean copyDrawCount = this.drawCountBuffer.getBufferSize() >= Integer.BYTES && this.drawCountDebugReadbackBuffer.getBufferSize() >= Integer.BYTES;
+        long countCopyBytes = copyDrawCount ? Integer.BYTES : 0L;
+        if (sampledCommandCount <= 0 && !copyDrawCount) return;
+
+        VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-draw-commands", "cmdgen debug readback copy: source=drawCommandBuffer"
+                + ", sourceBufferId=" + this.drawCommandBuffer.getId()
+                + ", sourceCapacityBytes=" + this.drawCommandBuffer.getBufferSize()
+                + ", sourceUsage=" + bufferUsageString(this.drawCommandBufferUsageFlags)
+                + ", drawCommandCapacity=" + this.drawCommandCapacity
+                + ", destinationBufferId=" + this.drawCommandDebugReadbackBuffer.getId()
+                + ", destinationCapacityBytes=" + drawCommandDestinationBytes
+                + ", copyBytes=" + commandCopyBytes
+                + ", requestedSampleCount=" + requestedSampledCommandCount
+                + ", finalSampleCount=" + sampledCommandCount
+                + ", barrier=COMPUTE_SHADER/SHADER_WRITE->TRANSFER/TRANSFER_READ before vkCmdCopyBuffer");
+        VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-draw-count", "cmdgen debug readback copy: source=drawCountBuffer"
+                + ", sourceBufferId=" + this.drawCountBuffer.getId()
+                + ", sourceCapacityBytes=" + this.drawCountBuffer.getBufferSize()
+                + ", sourceUsage=" + bufferUsageString(this.drawCountBufferUsageFlags)
+                + ", destinationBufferId=" + this.drawCountDebugReadbackBuffer.getId()
+                + ", destinationCapacityBytes=" + this.drawCountDebugReadbackBuffer.getBufferSize()
+                + ", copyBytes=" + countCopyBytes
+                + ", barrier=COMPUTE_SHADER/SHADER_WRITE->TRANSFER/TRANSFER_READ before vkCmdCopyBuffer");
+
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkMemoryBarrier.Buffer shaderToTransfer = VkMemoryBarrier.calloc(1, stack)
                     .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
@@ -1785,9 +1848,16 @@ public final class VulkanBerylSectionDrawPipeline {
                     VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
                     0, shaderToTransfer, null, null);
 
-            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
-            copyRegion.srcOffset(0L).dstOffset(0L).size((long) sampledCommandCount * DRAW_COMMAND_STRIDE_BYTES);
-            VK10.vkCmdCopyBuffer(commandBuffer, this.drawCommandBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), copyRegion);
+            if (commandCopyBytes > 0L) {
+                VkBufferCopy.Buffer commandCopyRegion = VkBufferCopy.calloc(1, stack);
+                commandCopyRegion.srcOffset(0L).dstOffset(0L).size(commandCopyBytes);
+                VK10.vkCmdCopyBuffer(commandBuffer, this.drawCommandBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), commandCopyRegion);
+            }
+            if (countCopyBytes == Integer.BYTES) {
+                VkBufferCopy.Buffer countCopyRegion = VkBufferCopy.calloc(1, stack);
+                countCopyRegion.srcOffset(0L).dstOffset(0L).size(Integer.BYTES);
+                VK10.vkCmdCopyBuffer(commandBuffer, this.drawCountBuffer.getId(), this.drawCountDebugReadbackBuffer.getId(), countCopyRegion);
+            }
 
             VkMemoryBarrier.Buffer transferToHost = VkMemoryBarrier.calloc(1, stack)
                     .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
@@ -1802,6 +1872,15 @@ public final class VulkanBerylSectionDrawPipeline {
         this.pendingDebugSampleVisibleCount = visibleCount;
         this.pendingDebugSampleGeometryBufferBytes = geometryBufferBytes;
         this.debugSamplePending = true;
+    }
+
+    private static String bufferUsageString(int usageFlags) {
+        List<String> usages = new ArrayList<>();
+        if ((usageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0) usages.add("STORAGE");
+        if ((usageFlags & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0) usages.add("INDIRECT");
+        if ((usageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0) usages.add("TRANSFER_DST");
+        if ((usageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0) usages.add("TRANSFER_SRC");
+        return usages.isEmpty() ? "0" : String.join("|", usages);
     }
 
     private void consumePendingDebugCommandSampleIfReady() {
