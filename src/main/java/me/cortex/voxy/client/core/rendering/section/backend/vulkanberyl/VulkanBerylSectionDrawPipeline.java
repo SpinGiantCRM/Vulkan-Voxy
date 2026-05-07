@@ -112,6 +112,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int CMDGEN_CONFIG_BINDING = 5;
     private static final int DRAW_COMMAND_STRIDE_BYTES = 16;
     private static final int CMDGEN_CONFIG_SIZE_BYTES = 24;
+    private static final int CMDGEN_BINDING2_PROBE_SIZE_BYTES = VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE;
     private static final int CMDGEN_CONFIG_USAGE_FLAGS = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     private static final int CMDGEN_FLAG_NOOP_SMOKE = 1;
     private static final int CMDGEN_FLAG_READ_RENDERLIST_ONLY = 1 << 1;
@@ -1495,10 +1496,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandDebugReadbackBuffer != null) this.drawCommandDebugReadbackBuffer.scheduleFree();
         this.drawCommandDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
         this.drawCommandDebugReadbackBuffer.createBuffer((long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
-        if (this.cmdGenBinding2ProbeBuffer == null) {
-            this.cmdGenBinding2ProbeBuffer = new Buffer("voxy_vulkanberyl_cmdgen_binding2_probe", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
-            this.cmdGenBinding2ProbeBuffer.createBuffer(Integer.BYTES);
-        }
+        ensureCmdgenBinding2ProbeBuffer();
         this.drawCommandCapacity = maxEntryCount;
     }
 
@@ -1524,7 +1522,7 @@ public final class VulkanBerylSectionDrawPipeline {
             VK10.vkCmdFillBuffer(commandBuffer, this.drawCommandBuffer.getId(), 0L, clearBytes, 0);
         }
         if (this.cmdGenBinding2ProbeBuffer != null) {
-            VK10.vkCmdFillBuffer(commandBuffer, this.cmdGenBinding2ProbeBuffer.getId(), 0L, Integer.BYTES, 0);
+            uploadCmdgenBinding2ProbeBuffer(commandBuffer);
         }
     }
 
@@ -1551,17 +1549,32 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private void ensureAndBindCmdgenBinding2ProbeBuffer() {
-        if (this.cmdGenBinding2ProbeBuffer == null) {
-            this.cmdGenBinding2ProbeBuffer = new Buffer("voxy_vulkanberyl_cmdgen_binding2_probe",
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                    MemoryTypes.GPU_MEM);
-            this.cmdGenBinding2ProbeBuffer.createBuffer(Integer.BYTES);
-            VulkanBerylDebugLog.once("cmdgen-binding2-probe-created", "cmdgen binding-2 probe buffer created: bufferId="
-                    + this.cmdGenBinding2ProbeBuffer.getId()
-                    + ", capacityBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize()
-                    + ", usage=STORAGE|TRANSFER_DST");
-        }
+        ensureCmdgenBinding2ProbeBuffer();
         bindComputeStorageBinding(CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, "cmdGenBinding2ProbeBuffer");
+    }
+
+    private void ensureCmdgenBinding2ProbeBuffer() {
+        if (this.cmdGenBinding2ProbeBuffer != null) {
+            if (this.cmdGenBinding2ProbeBuffer.getBufferSize() >= CMDGEN_BINDING2_PROBE_SIZE_BYTES) return;
+            this.cmdGenBinding2ProbeBuffer.scheduleFree();
+        }
+        this.cmdGenBinding2ProbeBuffer = new Buffer("voxy_vulkanberyl_cmdgen_binding2_probe",
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                MemoryTypes.GPU_MEM);
+        this.cmdGenBinding2ProbeBuffer.createBuffer(CMDGEN_BINDING2_PROBE_SIZE_BYTES);
+        VulkanBerylDebugLog.once("cmdgen-binding2-probe-created", "cmdgen binding-2 probe buffer created: bufferId="
+                + this.cmdGenBinding2ProbeBuffer.getId()
+                + ", capacityBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize()
+                + ", usage=STORAGE|TRANSFER_DST"
+                + ", sectionMetaStrideBytes=" + VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE);
+    }
+
+    private void uploadCmdgenBinding2ProbeBuffer(VkCommandBuffer commandBuffer) {
+        ensureCmdgenBinding2ProbeBuffer();
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var words = stack.ints(0, 0, 0, 0, 0, 0, 0, 0);
+            VK10.vkCmdUpdateBuffer(commandBuffer, this.cmdGenBinding2ProbeBuffer.getId(), 0L, words);
+        }
     }
 
     private void ensureAndBindCmdgenRenderListAltProbeBuffer() {
@@ -1689,8 +1702,8 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.cmdGenConfigBuffer.getBufferSize() < CMDGEN_CONFIG_SIZE_BYTES) {
             return "cmdgen_config_capacity_too_small: bufferBytes=" + this.cmdGenConfigBuffer.getBufferSize() + " required=" + CMDGEN_CONFIG_SIZE_BYTES;
         }
-        if (this.cmdGenBinding2ProbeBuffer.getBufferSize() < Integer.BYTES) {
-            return "cmdgen_binding2_probe_capacity_too_small: bufferBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize() + " required=" + Integer.BYTES;
+        if (this.cmdGenBinding2ProbeBuffer.getBufferSize() < CMDGEN_BINDING2_PROBE_SIZE_BYTES) {
+            return "cmdgen_binding2_probe_capacity_too_small: bufferBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize() + " required=" + CMDGEN_BINDING2_PROBE_SIZE_BYTES;
         }
         if (noOpCmdgenSmoke || (isolationStage != null && !isolationStage.requiresControlledSection())) {
             return null;
