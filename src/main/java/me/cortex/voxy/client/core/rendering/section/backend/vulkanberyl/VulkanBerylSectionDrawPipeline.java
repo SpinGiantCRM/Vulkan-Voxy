@@ -106,12 +106,14 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int SCENE_UNIFORM_BINDING = 0;
     private static final int CMDGEN_RENDER_LIST_BINDING = 0;
     private static final int CMDGEN_METADATA_BINDING = 1;
+    private static final int CMDGEN_UNUSED_BINDING2_BINDING = 2;
     private static final int CMDGEN_BINDING2_PROBE_BINDING = 2;
     private static final int CMDGEN_DRAW_COMMAND_BINDING = 3;
     private static final int CMDGEN_DRAW_COUNT_BINDING = 4;
     private static final int CMDGEN_CONFIG_BINDING = 5;
     private static final int DRAW_COMMAND_STRIDE_BYTES = 16;
     private static final int CMDGEN_CONFIG_SIZE_BYTES = 24;
+    private static final int CMDGEN_UNUSED_BINDING2_SIZE_BYTES = 32;
     private static final int CMDGEN_BINDING2_PROBE_SIZE_BYTES = VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE;
     private static final int CMDGEN_CONFIG_USAGE_FLAGS = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     private static final int CMDGEN_FLAG_NOOP_SMOKE = 1;
@@ -283,6 +285,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private Buffer drawCountBuffer;
     private Buffer drawCommandDebugReadbackBuffer;
     private Buffer cmdGenConfigBuffer;
+    private Buffer cmdGenUnusedBinding2Buffer;
     private Buffer cmdGenBinding2ProbeBuffer;
     private Buffer cmdGenRenderListAltProbeBuffer;
     private Buffer cmdGenMinimalTinySsboReadProbeBuffer;
@@ -632,6 +635,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         bindComputeStorageBinding(CMDGEN_METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindComputeStorageBinding(CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
+        bindComputeStorageBinding(CMDGEN_UNUSED_BINDING2_BINDING, this.cmdGenUnusedBinding2Buffer, "cmdGenUnusedBinding2Buffer");
         this.cmdgenDescriptorsReboundThisFrame = true;
         logCmdgenRenderListDescriptorState("main", renderList.getBuffer(), renderList.getBuffer().getBufferSize(), true);
         bindComputeStorageBinding(CMDGEN_DRAW_COMMAND_BINDING, this.drawCommandBuffer, "drawCommandBuffer");
@@ -1432,6 +1436,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.cmdGenConfigBuffer.scheduleFree();
             this.cmdGenConfigBuffer = null;
         }
+        if (this.cmdGenUnusedBinding2Buffer != null) {
+            this.cmdGenUnusedBinding2Buffer.scheduleFree();
+            this.cmdGenUnusedBinding2Buffer = null;
+        }
         if (this.cmdGenBinding2ProbeBuffer != null) {
             this.cmdGenBinding2ProbeBuffer.scheduleFree();
             this.cmdGenBinding2ProbeBuffer = null;
@@ -1509,6 +1517,21 @@ public final class VulkanBerylSectionDrawPipeline {
                 + this.cmdGenConfigBuffer.getId()
                 + ", capacityBytes=" + this.cmdGenConfigBuffer.getBufferSize()
                 + ", usage=" + cmdGenConfigUsageString());
+    }
+
+    private void ensureCmdGenUnusedBinding2Buffer() {
+        if (this.cmdGenUnusedBinding2Buffer != null) {
+            if (this.cmdGenUnusedBinding2Buffer.getBufferSize() >= CMDGEN_UNUSED_BINDING2_SIZE_BYTES) return;
+            this.cmdGenUnusedBinding2Buffer.scheduleFree();
+        }
+        this.cmdGenUnusedBinding2Buffer = new Buffer("voxy_vulkanberyl_cmdgen_unused_binding2",
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                MemoryTypes.GPU_MEM);
+        this.cmdGenUnusedBinding2Buffer.createBuffer(CMDGEN_UNUSED_BINDING2_SIZE_BYTES);
+        VulkanBerylDebugLog.once("cmdgen-unused-binding2-created", "cmdgen unused binding-2 padding buffer created for dense normal ManualUBO layout; shaderAccess=false: bufferId="
+                + this.cmdGenUnusedBinding2Buffer.getId()
+                + ", capacityBytes=" + this.cmdGenUnusedBinding2Buffer.getBufferSize()
+                + ", usage=STORAGE|TRANSFER_DST");
     }
 
     private void clearDrawCommandState(VkCommandBuffer commandBuffer) {
@@ -2131,7 +2154,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         int minBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(0);
         int maxBinding = cmdgenBindings.isEmpty() ? -1 : cmdgenBindings.get(cmdgenBindings.size() - 1);
-        VulkanBerylDebugLog.verboseOnce("section-cmdgen-descriptor-layout", "Section cmdgen descriptor layout: descriptorMode=manual_without_binding2, count=" + cmdgenBindings.size()
+        VulkanBerylDebugLog.verboseOnce("section-cmdgen-descriptor-layout", "Section cmdgen descriptor layout: descriptorMode=manual_dense_with_unused_binding2, count=" + cmdgenBindings.size()
                 + ", bindings=" + cmdgenBindings
                 + ", minBinding=" + minBinding
                 + ", maxBinding=" + maxBinding
@@ -2217,6 +2240,7 @@ public final class VulkanBerylSectionDrawPipeline {
         java.util.Map<String, Integer> expectedBindings = java.util.Map.of(
                 "RenderListBuffer", CMDGEN_RENDER_LIST_BINDING,
                 "MetadataBuffer", CMDGEN_METADATA_BINDING,
+                "CmdGenUnusedBinding2", CMDGEN_UNUSED_BINDING2_BINDING,
                 "DrawCommandsBuffer", CMDGEN_DRAW_COMMAND_BINDING,
                 "DrawCountBuffer", CMDGEN_DRAW_COUNT_BINDING,
                 "CmdGenConfigBuffer", CMDGEN_CONFIG_BINDING
@@ -2266,14 +2290,18 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         VulkanBerylDebugLog.verboseOnce("section-cmdgen-layout-contract", "Section cmdgen layout contract validated: renderListBinding=" + CMDGEN_RENDER_LIST_BINDING
                 + ", metadataBinding=" + CMDGEN_METADATA_BINDING
+                + ", unusedBinding2=" + CMDGEN_UNUSED_BINDING2_BINDING
+                + ", unusedBinding2ShaderAccess=false"
                 + ", bindings=" + jsonBindings);
     }
 
     private List<UBO> createManualCmdGenDescriptors() {
+        ensureCmdGenUnusedBinding2Buffer();
         int computeStage = ComputePipeline.Builder.getStageFromString("compute");
         return List.of(
                 createManualDescriptor(CMDGEN_RENDER_LIST_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == RENDER_LIST_BINDING).getBufferSlice().getBuffer(), "CmdGenRenderList"),
                 createManualDescriptor(CMDGEN_METADATA_BINDING, computeStage, this.graphicsPipeline.getUBO(c -> c.binding == METADATA_BINDING).getBufferSlice().getBuffer(), "CmdGenMetadata"),
+                createManualDescriptor(CMDGEN_UNUSED_BINDING2_BINDING, computeStage, this.cmdGenUnusedBinding2Buffer, "CmdGenUnusedBinding2"),
                 createManualDescriptor(CMDGEN_DRAW_COMMAND_BINDING, computeStage, this.drawCommandBuffer, "CmdGenDrawCommand"),
                 createManualDescriptor(CMDGEN_DRAW_COUNT_BINDING, computeStage, this.drawCountBuffer, "CmdGenDrawCount"),
                 createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenConfig")
