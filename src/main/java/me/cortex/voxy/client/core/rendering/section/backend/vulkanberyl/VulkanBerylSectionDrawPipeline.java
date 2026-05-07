@@ -128,6 +128,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1 << 8;
     private static final int CMDGEN_FLAG_READ_BINDING0_ONLY = 1 << 9;
     private static final int CMDGEN_FLAG_READ_BINDING1_ONLY = 1 << 10;
+    private static final int CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1 << 11;
     private static final int DRAW_COMMAND_DEBUG_SAMPLE_LIMIT = 16;
     private static final boolean DEBUG_COLOUR_MODE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DEBUG_COLOUR", "false"));
     private static final boolean ENABLE_CMDGEN_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", "false"));
@@ -146,6 +147,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_SHADER_READ_METADATA_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_METADATA_ONLY", "false"));
     private static final boolean CMDGEN_SHADER_WRITE_DRAWS_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_WRITE_DRAWS_ONLY", "false"));
     private static final boolean CMDGEN_SHADER_READ_BINDING0_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY", "false"));
+    private static final boolean CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE", "false"));
     private static final boolean CMDGEN_SHADER_READ_BINDING1_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY", "false"));
     private static final boolean CMDGEN_RENDERLIST_ALT_BUFFER_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_RENDERLIST_ALT_BUFFER_PROBE", "false"));
     private static final boolean CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE", "false"));
@@ -234,6 +236,7 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_METADATA_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_METADATA_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_WRITE_DRAWS_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_WRITE_DRAWS_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING0_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SHADER_READ_BINDING1_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_RENDERLIST_ALT_BUFFER_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_RENDERLIST_ALT_BUFFER_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_TINY_SSBO_READ_PROBE");
@@ -1203,6 +1206,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private static CmdgenIsolationStage selectedCmdgenIsolationStage() {
         CmdgenIsolationStage selected = null;
+        selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE, CmdgenIsolationStage.READ_BINDING0_ONLY_NO_OUTPUT_WRITE);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING0_ONLY, CmdgenIsolationStage.READ_BINDING0_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING1_ONLY, CmdgenIsolationStage.READ_BINDING1_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY, CmdgenIsolationStage.READ_RENDERLIST_HEADER_ONLY);
@@ -1226,6 +1230,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private enum CmdgenIsolationStage {
+        READ_BINDING0_ONLY_NO_OUTPUT_WRITE("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE", CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE, Integer.BYTES),
         READ_BINDING0_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY", CMDGEN_FLAG_READ_BINDING0_ONLY, Integer.BYTES),
         READ_BINDING1_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY", CMDGEN_FLAG_READ_BINDING1_ONLY, 0),
         READ_RENDERLIST_HEADER_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY", CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY, Integer.BYTES),
@@ -1744,6 +1749,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return ENABLE_CMDGEN_DISPATCH
                 || CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE
                 || CMDGEN_SHADER_READ_BINDING0_ONLY
+                || CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE
                 || CMDGEN_SHADER_READ_BINDING1_ONLY
                 || CMDGEN_RENDERLIST_ALT_BUFFER_PROBE
                 || RENDERLIST_SMOKE_ONE_ENTRY
