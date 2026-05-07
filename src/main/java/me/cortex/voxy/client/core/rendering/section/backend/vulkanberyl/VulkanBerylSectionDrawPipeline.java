@@ -83,6 +83,12 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_binding0_config_final_command_write_no_drawcount";
     private static final String CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_standalone_binding0_config_final_drawcount_write_only.comp";
     private static final String CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_binding0_config_final_drawcount_write_only";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_standalone_drawcount_literal_zero_write.comp";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_drawcount_literal_zero_write";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_standalone_drawcount_literal_one_write.comp";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_drawcount_literal_one_write";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_standalone_drawcount_no_config_literal_zero_write.comp";
+    private static final String CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_standalone_drawcount_no_config_literal_zero_write";
     private static final String CMDGEN_NO_IMPORT_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import.comp";
     private static final String CMDGEN_NO_IMPORT_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import";
     private static final String CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_read_metadata0_only.comp";
@@ -193,6 +199,9 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER", "false"));
     private static final boolean CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER", "false"));
     private static final boolean CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER", "false"));
+    private static final boolean CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER", "false"));
+    private static final boolean CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER", "false"));
+    private static final boolean CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER", "false"));
     private static final boolean CMDGEN_DUMP_SHADER_DIAGNOSTICS = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DUMP_SHADER_DIAGNOSTICS", "false"));
     private static final boolean CMDGEN_NO_IMPORT_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE", "false"));
     private static final boolean CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE", "false"));
@@ -225,6 +234,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
     private static final boolean FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED", "false"));
+    private static final boolean CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN", "false"));
+    private static final boolean CMDGEN_WAIT_IDLE_AFTER_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_WAIT_IDLE_AFTER_DISPATCH", "false"));
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
 
     static {
@@ -294,6 +305,9 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_PROBE");
@@ -350,6 +364,9 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER");
         return active;
     }
 
@@ -412,6 +429,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private int lastCmdGenConfigDrawCountCapacityWords;
     private int lastCmdGenConfigFlags;
     private boolean cmdGenConfigUploaded;
+    private boolean drawCountClearedThisFrame;
     private int drawCommandBufferUsageFlags;
     private int drawCountBufferUsageFlags;
     private int drawCommandDebugReadbackBufferUsageFlags;
@@ -628,6 +646,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (renderList == null) throw new IllegalArgumentException("renderList must not be null");
         if (this.graphicsPipeline == null) throw new IllegalStateException("graphics pipeline must be created before resources are bound");
         guardCmdgenProbeExclusivity();
+        this.cmdgenDescriptorsReboundThisFrame = false;
 
         long geometryBytes = geometryData.getGeometryBuffer().getBufferSize();
         long metadataBytes = geometryData.getMetadataBuffer().getBufferSize();
@@ -753,10 +772,11 @@ public final class VulkanBerylSectionDrawPipeline {
         bindComputeStorageBinding(CMDGEN_METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindComputeStorageBinding(CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
         bindComputeStorageBinding(CMDGEN_UNUSED_BINDING2_BINDING, this.cmdGenUnusedBinding2Buffer, "cmdGenUnusedBinding2Buffer");
-        this.cmdgenDescriptorsReboundThisFrame = true;
         logCmdgenRenderListDescriptorState("main", renderList.getBuffer(), renderList.getBuffer().getBufferSize(), true);
         bindComputeStorageBinding(CMDGEN_DRAW_COMMAND_BINDING, this.drawCommandBuffer, "drawCommandBuffer");
         bindComputeStorageBinding(CMDGEN_DRAW_COUNT_BINDING, this.drawCountBuffer, "drawCountBuffer");
+        this.cmdgenDescriptorsReboundThisFrame = true;
+        logDrawCountBufferDiagnostics("descriptor_bind", true);
         bindComputeStorageBinding(CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
         VulkanBerylDebugLog.once("cmdgen-descriptors-bound", "cmdgen descriptors bound");
         this.resourcesBound = true;
@@ -794,6 +814,13 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("section draw pipeline/resources are not initialized");
         }
         guardCmdgenProbeExclusivity();
+        this.drawCountClearedThisFrame = false;
+        if (CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN && !isExplicitCmdgenDiagnosticEnvActive()) {
+            VulkanBerylDebugLog.once("cmdgen-skip-render-draw-submit-inactive", "VOXY_VULKAN_BERYL_CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN ignored because no explicit cmdgen diagnostic env var is active");
+        }
+        if (CMDGEN_WAIT_IDLE_AFTER_DISPATCH && !isExplicitCmdgenDiagnosticEnvActive()) {
+            VulkanBerylDebugLog.once("cmdgen-wait-idle-after-dispatch-inactive", "VOXY_VULKAN_BERYL_CMDGEN_WAIT_IDLE_AFTER_DISPATCH ignored because no explicit cmdgen diagnostic env var is active");
+        }
 
         int maxEntryCount = renderList.getMaxEntryCount();
         ControlledRenderListSmoke controlledSmoke = ControlledRenderListSmoke.disabled();
@@ -921,6 +948,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_upload_config_only");
             }
             clearDrawCommandState(commandBuffer);
+            logDrawCountBufferDiagnostics(isolationStage == null ? "before_dispatch:full" : "before_dispatch:" + isolationStage.envName(), true);
             if (useAltRenderListBuffer) {
                 recordCmdgenRenderListAltProbeUpload(commandBuffer);
             }
@@ -1037,6 +1065,7 @@ public final class VulkanBerylSectionDrawPipeline {
             int groupCountX = isolationStage == null ? (noOpCmdgenSmoke ? 1 : ((visibleCount + 127) >>> 7)) : 1;
             VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
             VulkanBerylDebugLog.once("cmdgen-isolation-dispatch", "cmdgen dispatch submitted: stage=" + (isolationStage == null ? "full" : isolationStage.envName()) + ", groupsX=" + groupCountX);
+            logCmdgenWaitIdleAfterDispatchState(isolationStage == null ? "full" : isolationStage.envName());
 
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
@@ -1066,6 +1095,11 @@ public final class VulkanBerylSectionDrawPipeline {
             logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
         } else {
             scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
+        }
+        if (CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN && isExplicitCmdgenDiagnosticEnvActive()) {
+            VulkanBerylDebugLog.once("cmdgen-render-draw-submit-skipped", "render draw submit intentionally skipped after cmdgen dispatch for this frame: env=VOXY_VULKAN_BERYL_CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN, diagnosticEnv=" + explicitCmdgenDiagnosticEnvSummary());
+            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "render_draw_submit_skipped_after_cmdgen");
+            return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "render_draw_submit_skipped_after_cmdgen");
         }
         if (!indirectAllowed) {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
@@ -1700,6 +1734,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void clearDrawCommandState(VkCommandBuffer commandBuffer) {
         VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, 4L, 0);
+        this.drawCountClearedThisFrame = true;
         long clearBytes = Math.min(this.drawCommandBuffer.getBufferSize(), (long) DRAW_COMMAND_DEBUG_SAMPLE_LIMIT * DRAW_COMMAND_STRIDE_BYTES);
         if (clearBytes > 0L) {
             VK10.vkCmdFillBuffer(commandBuffer, this.drawCommandBuffer.getId(), 0L, clearBytes, 0);
@@ -2419,6 +2454,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER) return CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER_RESOURCE;
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER) return CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER_RESOURCE;
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER) return CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER_RESOURCE;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER_RESOURCE;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER_RESOURCE;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_RESOURCE;
         return CMDGEN_SHADER_RESOURCE;
     }
 
@@ -2434,6 +2472,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER) return CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER_NAME;
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER) return CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER_NAME;
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER) return CMDGEN_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER_NAME;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER_NAME;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER_NAME;
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_NAME;
         return CMDGEN_SHADER_NAME;
     }
 
@@ -2449,6 +2490,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER";
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER";
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER";
         return null;
     }
 
@@ -2464,6 +2508,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_BLOCK_NO_OUTPUT_SHADER) return "standalone binding0+config with final block no output";
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_COMMAND_WRITE_NO_DRAWCOUNT_SHADER) return "standalone binding0+config with final command write no drawcount";
         if (CMDGEN_USE_STANDALONE_BINDING0_CONFIG_WITH_FINAL_DRAWCOUNT_WRITE_ONLY_SHADER) return "standalone binding0+config with final drawcount write only";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ZERO_WRITE_SHADER) return "standalone drawcount literal zero write";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_LITERAL_ONE_WRITE_SHADER) return "standalone drawcount literal one write";
+        if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return "standalone drawcount no-config literal zero write";
         return "normal cmdgen.comp";
     }
 
@@ -2795,6 +2842,66 @@ public final class VulkanBerylSectionDrawPipeline {
             MemoryUtil.nmemFree(scratch);
         }
         bindComputeStorageBinding(CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
+    }
+
+    private void logDrawCountBufferDiagnostics(String stage, boolean descriptorRangeValidExpected) {
+        long capacityBytes = this.drawCountBuffer == null ? -1L : this.drawCountBuffer.getBufferSize();
+        long bufferId = this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId();
+        long descriptorRangeBytes = capacityBytes;
+        long requiredRangeBytes = Integer.BYTES;
+        boolean descriptorRangeValid = descriptorRangeValidExpected && capacityBytes >= requiredRangeBytes && capacityBytes <= VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES;
+        int javaSideCapacityWords = capacityBytes <= 0L ? 0 : (int) (capacityBytes / Integer.BYTES);
+        boolean capacityMatchesConfig = javaSideCapacityWords == this.lastCmdGenConfigDrawCountCapacityWords;
+        VulkanBerylDebugLog.once("cmdgen-drawcount-buffer-state:" + stage, "drawCountBuffer state: stage=" + stage
+                + ", bufferId=" + bufferId
+                + ", handle=" + bufferId
+                + ", capacityBytes=" + capacityBytes
+                + ", usageFlags=" + this.drawCountBufferUsageFlags
+                + ", usage=" + bufferUsageString(this.drawCountBufferUsageFlags)
+                + ", descriptorBinding=" + CMDGEN_DRAW_COUNT_BINDING
+                + ", descriptorRangeBytes=" + descriptorRangeBytes
+                + ", requiredRangeBytes=" + requiredRangeBytes
+                + ", descriptorRangeValid=" + descriptorRangeValid
+                + ", hasStorageUsage=" + ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0)
+                + ", hasTransferDstUsage=" + ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0)
+                + ", hasTransferSrcUsage=" + ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0)
+                + ", hasIndirectUsage=" + ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0)
+                + ", descriptorReboundThisFrame=" + this.cmdgenDescriptorsReboundThisFrame
+                + ", drawCountClearedInitialisedThisFrame=" + this.drawCountClearedThisFrame
+                + ", javaSideDrawCountCapacityWords=" + javaSideCapacityWords
+                + ", configDrawCountCapacityWords=" + this.lastCmdGenConfigDrawCountCapacityWords
+                + ", javaSideDrawCountCapacityMatchesDescriptorCapacity=" + capacityMatchesConfig);
+    }
+
+    private static boolean isExplicitCmdgenDiagnosticEnvActive() {
+        return activeCmdgenShaderSelectionEnvVar() != null
+                || !activeCmdgenProbeEnvVars().isEmpty()
+                || CMDGEN_DUMP_SHADER_DIAGNOSTICS
+                || CMDGEN_DEBUG_READBACK
+                || CMDGEN_DISPATCH_NOOP
+                || CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE
+                || CMDGEN_CREATE_ONLY
+                || CMDGEN_UPLOAD_CONFIG_ONLY
+                || CMDGEN_CLEAR_OUTPUTS_ONLY
+                || CMDGEN_BIND_FULL_ONLY;
+    }
+
+    private static String explicitCmdgenDiagnosticEnvSummary() {
+        String shaderEnv = activeCmdgenShaderSelectionEnvVar();
+        if (shaderEnv != null) return shaderEnv;
+        List<String> probeEnvs = activeCmdgenProbeEnvVars();
+        if (!probeEnvs.isEmpty()) return probeEnvs.toString();
+        if (CMDGEN_DUMP_SHADER_DIAGNOSTICS) return "VOXY_VULKAN_BERYL_CMDGEN_DUMP_SHADER_DIAGNOSTICS";
+        if (CMDGEN_DEBUG_READBACK) return "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK";
+        return "cmdgen_diagnostic_mode";
+    }
+
+    private static void logCmdgenWaitIdleAfterDispatchState(String stage) {
+        if (!CMDGEN_WAIT_IDLE_AFTER_DISPATCH) return;
+        if (!isExplicitCmdgenDiagnosticEnvActive()) return;
+        VulkanBerylDebugLog.once("cmdgen-wait-idle-after-dispatch", "cmdgen wait-idle-after-dispatch requested after dispatch record: stage=" + stage
+                + ", result=recorded_command_buffer_not_yet_submitted"
+                + ", note=VulkanMod owns the render command-buffer submit; VK_ERROR_DEVICE_LOST may still surface at the following submit");
     }
 
     private void logMetadataBufferState(VulkanBerylSectionGeometryData geometryData, String stage, Buffer boundMetadataBuffer, int binding) {
