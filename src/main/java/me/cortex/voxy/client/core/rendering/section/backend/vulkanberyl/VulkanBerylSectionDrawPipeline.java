@@ -74,10 +74,14 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_binding1_and_binding2_uint_read";
     private static final String CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_full_layout_binding2_probe_buffer_uint_read_no_config.comp";
     private static final String CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_binding2_probe_buffer_uint_read_no_config";
+    private static final String CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_full_layout_binding2_probe_buffer_uint_read_const.comp";
+    private static final String CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_binding2_probe_buffer_uint_read_const";
     private static final String CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_full_layout_binding1_tiny_and_binding2_tiny_uint_read_no_config.comp";
     private static final String CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_binding1_tiny_and_binding2_tiny_uint_read_no_config";
     private static final String CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_full_layout_binding1_tiny_and_binding2_probe_buffer_uint_read_no_config.comp";
     private static final String CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_binding1_tiny_and_binding2_probe_buffer_uint_read_no_config";
+    private static final String CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_full_layout_binding1_tiny_and_binding2_probe_buffer_uint_read_const.comp";
+    private static final String CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_NAME = "vulkanberyl/section/cmdgen_full_layout_binding1_tiny_and_binding2_probe_buffer_uint_read_const";
     private static final String CMDGEN_SINGLE_BINDING1_UINT_READ_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_single_binding1_uint_read.comp";
     private static final String CMDGEN_SINGLE_BINDING1_UINT_READ_SHADER_NAME = "vulkanberyl/section/cmdgen_single_binding1_uint_read";
     private static final String CMDGEN_BINDING0_UINT_READ_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_binding0_uint_read.comp";
@@ -160,8 +164,10 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE", "false"));
+    private static final boolean CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE", "false"));
+    private static final boolean CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE", "false"));
     private static final boolean CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE", "false"));
     private static final boolean CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE", "false"));
     private static final boolean CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE", "false"));
@@ -212,8 +218,10 @@ public final class VulkanBerylSectionDrawPipeline {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE");
@@ -261,8 +269,10 @@ public final class VulkanBerylSectionDrawPipeline {
     private ComputePipeline commandGenFullLayoutBinding1TinyUintReadNoConfigProbePipeline;
     private ComputePipeline commandGenFullLayoutBinding1AndBinding2UintReadProbePipeline;
     private ComputePipeline commandGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbePipeline;
+    private ComputePipeline commandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline;
     private ComputePipeline commandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline;
     private ComputePipeline commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline;
+    private ComputePipeline commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline;
     private ComputePipeline commandGenSingleBinding1UintReadProbePipeline;
     private ComputePipeline commandGenBinding0UintReadProbePipeline;
     private ComputePipeline commandGenFullLayoutBinding2UintReadProbePipeline;
@@ -572,11 +582,17 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE) {
             this.ensureCommandGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbePipeline();
         }
+        if (CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE) {
+            this.ensureCommandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline();
+        }
         if (CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE) {
             this.ensureCommandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline();
         }
         if (CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE) {
             this.ensureCommandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline();
+        }
+        if (CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE) {
+            this.ensureCommandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline();
         }
         if (CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE) {
             this.ensureCommandGenSingleBinding1UintReadProbePipeline();
@@ -598,6 +614,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE
+                || CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE
                 || CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE
                 || CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE) {
@@ -723,8 +740,10 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE
+                || CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE
+                || CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE
                 || CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE
                 || CMDGEN_BINDING1_AS_BINDING0_TINY_UINT_READ_PROBE
                 || CMDGEN_FULL_LAYOUT_BINDING2_TINY_UINT_READ_PROBE
@@ -820,11 +839,17 @@ public final class VulkanBerylSectionDrawPipeline {
             if (CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE) {
                 return dispatchBinding2ProbeBufferNoConfigProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbePipeline, "full_layout_binding2_probe_buffer_uint_read_no_config_probe");
             }
+            if (CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE) {
+                return dispatchBinding2ProbeBufferConstProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline, "full_layout_binding2_probe_buffer_uint_read_const_probe");
+            }
             if (CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_PROBE) {
                 return dispatchBinding1AndBinding2NoConfigProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline, this.cmdGenTinyMetadataProbeBuffer, "full_layout_binding1_tiny_and_binding2_tiny_uint_read_no_config_probe");
             }
             if (CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_PROBE) {
                 return dispatchBinding1AndBinding2NoConfigProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline, this.cmdGenBinding2ProbeBuffer, "full_layout_binding1_tiny_and_binding2_probe_buffer_uint_read_no_config_probe");
+            }
+            if (CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_PROBE) {
+                return dispatchBinding1AndBinding2ConstProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline, "full_layout_binding1_tiny_and_binding2_probe_buffer_uint_read_const_probe");
             }
             if (CMDGEN_SINGLE_BINDING1_TINY_UINT_READ_PROBE) {
                 return dispatchMinimalSsboReadProbe(commandBuffer, visibleCount, this.commandGenSingleBinding1UintReadProbePipeline, this.cmdGenTinyMetadataProbeBuffer, CMDGEN_METADATA_BINDING, CMDGEN_SINGLE_BINDING1_UINT_READ_SHADER_NAME, "single_binding1_tiny_uint_read_probe", true);
@@ -940,6 +965,24 @@ public final class VulkanBerylSectionDrawPipeline {
         return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
     }
 
+    private OpaqueDrawSubmission dispatchBinding2ProbeBufferConstProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
+        if (pipeline == null) throw new IllegalStateException("cmdgen full-layout binding2 probe-buffer const probe pipeline missing: stage=" + stage);
+        if (!this.cmdGenConfigUploaded) {
+            throw new IllegalStateException("cmdGenConfigBuffer full-layout binding2 probe-buffer const probe requested before config upload: stage=" + stage);
+        }
+        bindFullLayoutProbeDescriptors(pipeline, geometryData, renderList);
+        logPipelineBindingState(pipeline, CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, stage, "cmdGenBinding2ProbeBuffer");
+        logCmdGenConfigBufferState("before_dispatch:" + stage);
+        barrierTransferToCompute(commandBuffer);
+        VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getId());
+        pipeline.bindDescriptorSets(commandBuffer, 0);
+        VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
+        VulkanBerylDebugLog.once("cmdgen-" + stage + "-dispatch-submitted", "cmdgen binding2 probe-buffer const probe dispatch submitted: stage=" + stage
+                + ", binding2BufferId=" + this.cmdGenBinding2ProbeBuffer.getId()
+                + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
+        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+    }
+
     private OpaqueDrawSubmission dispatchBinding1AndBinding2NoConfigProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, Buffer binding2ProbeBuffer, String stage) {
         if (pipeline == null) throw new IllegalStateException("cmdgen full-layout binding1/binding2 no-config probe pipeline missing: stage=" + stage);
         uploadTinyMetadataProbeBuffer(commandBuffer);
@@ -958,6 +1001,31 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding1DescriptorRangeBytes=" + this.cmdGenTinyMetadataProbeBuffer.getBufferSize()
                 + ", binding2BufferId=" + binding2ProbeBuffer.getId()
                 + ", binding2DescriptorRangeBytes=" + binding2ProbeBuffer.getBufferSize());
+        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+    }
+
+    private OpaqueDrawSubmission dispatchBinding1AndBinding2ConstProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
+        if (pipeline == null) throw new IllegalStateException("cmdgen full-layout binding1/binding2 const probe pipeline missing: stage=" + stage);
+        if (!this.cmdGenConfigUploaded) {
+            throw new IllegalStateException("cmdGenConfigBuffer full-layout binding1/binding2 const probe requested before config upload: stage=" + stage);
+        }
+        uploadTinyMetadataProbeBuffer(commandBuffer);
+        bindFullLayoutProbeDescriptors(pipeline, geometryData, renderList);
+        bindPipelineStorageBinding(pipeline, CMDGEN_METADATA_BINDING, this.cmdGenTinyMetadataProbeBuffer, "cmdGenTinyMetadataProbeBuffer");
+        bindPipelineStorageBinding(pipeline, CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, "cmdGenBinding2ProbeBuffer");
+        logMetadataBufferState(geometryData, stage, this.cmdGenTinyMetadataProbeBuffer, CMDGEN_METADATA_BINDING);
+        logPipelineBindingState(pipeline, CMDGEN_METADATA_BINDING, this.cmdGenTinyMetadataProbeBuffer, stage, "cmdGenTinyMetadataProbeBuffer");
+        logPipelineBindingState(pipeline, CMDGEN_BINDING2_PROBE_BINDING, this.cmdGenBinding2ProbeBuffer, stage, "cmdGenBinding2ProbeBuffer");
+        logCmdGenConfigBufferState("before_dispatch:" + stage);
+        barrierTransferToCompute(commandBuffer);
+        VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getId());
+        pipeline.bindDescriptorSets(commandBuffer, 0);
+        VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
+        VulkanBerylDebugLog.once("cmdgen-" + stage + "-dispatch-submitted", "cmdgen binding1/binding2 const probe dispatch submitted: stage=" + stage
+                + ", binding1BufferId=" + this.cmdGenTinyMetadataProbeBuffer.getId()
+                + ", binding1DescriptorRangeBytes=" + this.cmdGenTinyMetadataProbeBuffer.getBufferSize()
+                + ", binding2BufferId=" + this.cmdGenBinding2ProbeBuffer.getId()
+                + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
         return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
     }
 
@@ -1841,6 +1909,11 @@ public final class VulkanBerylSectionDrawPipeline {
         this.commandGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_NAME, "CmdGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbe");
     }
 
+    private void ensureCommandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline() {
+        if (this.commandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline != null) return;
+        this.commandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_NAME, "CmdGenFullLayoutBinding2ProbeBufferUintReadConstProbe");
+    }
+
     private void ensureCommandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline() {
         if (this.commandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline != null) return;
         this.commandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_SHADER_NAME, "CmdGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbe");
@@ -1849,6 +1922,11 @@ public final class VulkanBerylSectionDrawPipeline {
     private void ensureCommandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline() {
         if (this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline != null) return;
         this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_NAME, "CmdGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbe");
+    }
+
+    private void ensureCommandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline() {
+        if (this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline != null) return;
+        this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_NAME, "CmdGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbe");
     }
 
     private void ensureCommandGenSingleBinding1UintReadProbePipeline() {
