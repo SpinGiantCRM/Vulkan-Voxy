@@ -182,21 +182,27 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean CMDGEN_DEBUG_READBACK_NO_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_COPY", "false"));
     private static final boolean CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY", "false"));
     private static final boolean CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY", "false"));
+    private static final boolean CMDGEN_DEBUG_READBACK_LOG_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_LOG_ONLY", "false"));
+    private static final boolean CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY", "false"));
+    private static final boolean CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
 
     static {
-        List<String> activeDebugReadbackCopyModes = activeDebugReadbackCopyModeEnvVars();
-        if (activeDebugReadbackCopyModes.size() > 1) {
-            throw new IllegalStateException("only one cmdgen debug readback copy submode may be enabled at once: " + String.join(", ", activeDebugReadbackCopyModes));
+        List<String> activeDebugReadbackSubmodes = activeDebugReadbackSubmodeEnvVars();
+        if (activeDebugReadbackSubmodes.size() > 1) {
+            throw new IllegalStateException("only one cmdgen debug readback submode may be enabled at once: " + String.join(", ", activeDebugReadbackSubmodes));
         }
     }
 
-    private static List<String> activeDebugReadbackCopyModeEnvVars() {
+    private static List<String> activeDebugReadbackSubmodeEnvVars() {
         List<String> active = new ArrayList<>();
         addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_NO_COPY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_COPY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_LOG_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_LOG_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY, "VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY");
         return active;
     }
 
@@ -204,6 +210,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_DEBUG_READBACK_NO_COPY) return "no_copy";
         if (CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY) return "draw_count_only";
         if (CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY) return "draw_commands_only";
+        if (CMDGEN_DEBUG_READBACK_LOG_ONLY) return "log_only";
+        if (CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY) return "schedule_enter_only";
+        if (CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY) return "no_barriers_no_copy";
         return "default";
     }
 
@@ -678,7 +687,9 @@ public final class VulkanBerylSectionDrawPipeline {
         return this.graphicsPipeline != null && this.resourcesBound && !this.freed;
     }
     public void pollDebugReadback() {
-        this.consumePendingDebugCommandSampleIfReady();
+        if (!CMDGEN_DEBUG_READBACK_LOG_ONLY) {
+            this.consumePendingDebugCommandSampleIfReady();
+        }
         VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, null);
     }
     public boolean isSceneUniformBound() { return this.sceneUniformBound; }
@@ -940,11 +951,18 @@ public final class VulkanBerylSectionDrawPipeline {
             }
         }
 
-        this.consumePendingDebugCommandSampleIfReady();
+        if (!CMDGEN_DEBUG_READBACK_LOG_ONLY) {
+            this.consumePendingDebugCommandSampleIfReady();
+        }
         VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, null);
         int sampledCommandCount = (!CMDGEN_DEBUG_READBACK || CMDGEN_DISPATCH_NOOP || noOpCmdgenSmoke) ? 0 : Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount);
-        VulkanBerylDebugLog.once("cmdgen-debug-readback-state", "cmdgen debug readback " + (sampledCommandCount > 0 ? "enabled" : "skipped"));
-        scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
+        boolean debugReadbackRequested = CMDGEN_DEBUG_READBACK && sampledCommandCount > 0;
+        VulkanBerylDebugLog.once("cmdgen-debug-readback-state", "cmdgen debug readback " + (debugReadbackRequested ? "requested" : "skipped"));
+        if (CMDGEN_DEBUG_READBACK_LOG_ONLY) {
+            logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
+        } else {
+            scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
+        }
         if (!indirectAllowed) {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + indirectGateReason);
@@ -1814,9 +1832,34 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer.getBufferSize() < requiredBytes) throw new IllegalStateException("drawCommandBuffer is too small for visible draws");
     }
 
+    private void logDebugReadbackIsolationDiagnostics(String mode, boolean scheduleCalled, boolean readbackVulkanCommandRecorded, boolean debugSamplePendingChanged) {
+        VulkanBerylDebugLog.once("cmdgen-debug-readback-isolation", "cmdgen debug readback isolation: mode=" + mode
+                + ", scheduleCalled=" + scheduleCalled
+                + ", readbackVulkanCommandRecorded=" + readbackVulkanCommandRecorded
+                + ", debugSamplePendingChanged=" + debugSamplePendingChanged);
+    }
+
     private void scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int requestedSampledCommandCount, int visibleCount, long geometryBufferBytes) {
-        if (requestedSampledCommandCount <= 0 || this.drawCommandDebugReadbackBuffer == null || this.drawCountDebugReadbackBuffer == null) return;
-        if (this.drawCommandBuffer == null || this.drawCountBuffer == null) return;
+        boolean debugSamplePendingBefore = this.debugSamplePending;
+        if (CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY) {
+            long intendedCommandCopyBytes = Math.max(0L, (long) requestedSampledCommandCount * DRAW_COMMAND_STRIDE_BYTES);
+            VulkanBerylDebugLog.once("cmdgen-debug-readback-schedule-enter-only", "cmdgen debug readback schedule enter only: mode=" + debugReadbackCopyModeName()
+                    + ", requestedSampleCount=" + requestedSampledCommandCount
+                    + ", visibleCount=" + visibleCount
+                    + ", geometryBufferBytes=" + geometryBufferBytes
+                    + ", intendedDrawCommandCopyBytes=" + intendedCommandCopyBytes
+                    + ", intendedDrawCountCopyBytes=" + Integer.BYTES);
+            logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, false, this.debugSamplePending != debugSamplePendingBefore);
+            return;
+        }
+        if (requestedSampledCommandCount <= 0 || this.drawCommandDebugReadbackBuffer == null || this.drawCountDebugReadbackBuffer == null) {
+            logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, false, this.debugSamplePending != debugSamplePendingBefore);
+            return;
+        }
+        if (this.drawCommandBuffer == null || this.drawCountBuffer == null) {
+            logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, false, this.debugSamplePending != debugSamplePendingBefore);
+            return;
+        }
         if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0) {
             throw new IllegalStateException("cmdgen debug readback source drawCommandBuffer missing VK_BUFFER_USAGE_TRANSFER_SRC_BIT");
         }
@@ -1841,7 +1884,7 @@ public final class VulkanBerylSectionDrawPipeline {
         long commandCopyBytes = (long) sampledCommandCount * DRAW_COMMAND_STRIDE_BYTES;
         boolean copyDrawCommands = commandCopyBytes > 0L;
         boolean copyDrawCount = this.drawCountBuffer.getBufferSize() >= Integer.BYTES && this.drawCountDebugReadbackBuffer.getBufferSize() >= Integer.BYTES;
-        if (CMDGEN_DEBUG_READBACK_NO_COPY) {
+        if (CMDGEN_DEBUG_READBACK_NO_COPY || CMDGEN_DEBUG_READBACK_NO_BARRIERS_NO_COPY) {
             copyDrawCommands = false;
             copyDrawCount = false;
         } else if (CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY) {
@@ -1858,7 +1901,8 @@ public final class VulkanBerylSectionDrawPipeline {
         if (!copyDrawCommands && !copyDrawCount) {
             VulkanBerylDebugLog.once("cmdgen-debug-readback-no-copy", "cmdgen debug readback no-copy mode: would read back drawCommandBuffer copyBytes="
                     + commandCopyBytes + ", drawCountBuffer copyBytes=" + (this.drawCountBuffer.getBufferSize() >= Integer.BYTES && this.drawCountDebugReadbackBuffer.getBufferSize() >= Integer.BYTES ? Integer.BYTES : 0)
-                    + "; skipping vkCmdCopyBuffer and leaving debugSamplePending=false");
+                    + "; skipping debug readback barriers, vkCmdCopyBuffer, and leaving debugSamplePending=false");
+            logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, false, this.debugSamplePending != debugSamplePendingBefore);
             return;
         }
 
@@ -1918,6 +1962,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.pendingDebugSampleVisibleCount = visibleCount;
         this.pendingDebugSampleGeometryBufferBytes = geometryBufferBytes;
         this.debugSamplePending = true;
+        logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, true, this.debugSamplePending != debugSamplePendingBefore);
     }
 
     private static String bufferUsageString(int usageFlags) {
