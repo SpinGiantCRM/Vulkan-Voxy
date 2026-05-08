@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 
 final class VulkanBerylShaderImportPreprocessor {
     private static final Pattern IMPORT_PATTERN = Pattern.compile("^\\s*#import\\s*<(?<namespace>[^:>]+):(?<path>[^>]+)>\\s*$");
+    private static final String DISABLE_HIZ_MACRO = "VOXY_VULKAN_BERYL_DISABLE_HIZ";
 
     private VulkanBerylShaderImportPreprocessor() {
     }
@@ -219,6 +220,7 @@ final class VulkanBerylShaderImportPreprocessor {
     private static final class ImportResolution {
         private final Set<Identifier> onceIncluded = new LinkedHashSet<>();
         private final ArrayDeque<Identifier> includeStack = new ArrayDeque<>();
+        private boolean disableHizMacroDefined;
 
         String expandRoot(Identifier shader) {
             String src = loadShaderAsset(shader);
@@ -266,7 +268,21 @@ final class VulkanBerylShaderImportPreprocessor {
         private void expandLines(Identifier owner, String[] lines, int startLine, StringBuilder out, boolean skipVersion) {
             for (int i = startLine; i < lines.length; i++) {
                 String line = lines[i];
-                if (skipVersion && line.trim().startsWith("#version")) {
+                String trimmed = line.trim();
+                if (skipVersion && trimmed.startsWith("#version")) {
+                    continue;
+                }
+                if (isDisableHizDefine(trimmed)) {
+                    disableHizMacroDefined = true;
+                    out.append(normalizeVulkanVersionDirective(line)).append('\n');
+                    continue;
+                }
+                if (disableHizMacroDefined && isDisableHizIfndef(trimmed)) {
+                    int skippedEnd = skipDisableHizIfndefBlock(lines, i);
+                    out.append("// stripped #ifndef ").append(DISABLE_HIZ_MACRO)
+                            .append(" block from ").append(owner)
+                            .append(" because ").append(DISABLE_HIZ_MACRO).append(" is defined\n");
+                    i = skippedEnd;
                     continue;
                 }
                 Matcher matcher = IMPORT_PATTERN.matcher(line);
@@ -277,6 +293,30 @@ final class VulkanBerylShaderImportPreprocessor {
                     out.append(normalizeVulkanVersionDirective(line)).append('\n');
                 }
             }
+        }
+
+        private static boolean isDisableHizDefine(String trimmed) {
+            return trimmed.matches("#\\s*define\\s+" + DISABLE_HIZ_MACRO + "(\\s+.*)?");
+        }
+
+        private static boolean isDisableHizIfndef(String trimmed) {
+            return trimmed.matches("#\\s*ifndef\\s+" + DISABLE_HIZ_MACRO + "(\\s*(?://.*)?)?");
+        }
+
+        private static int skipDisableHizIfndefBlock(String[] lines, int ifndefLine) {
+            int depth = 0;
+            for (int i = ifndefLine; i < lines.length; i++) {
+                String trimmed = lines[i].trim();
+                if (trimmed.matches("#\\s*if(n?def)?(\\s+.*)?") || trimmed.matches("#\\s*if\\s+.*")) {
+                    depth++;
+                } else if (trimmed.matches("#\\s*endif(\\s*(?://.*)?)?")) {
+                    depth--;
+                    if (depth == 0) {
+                        return i;
+                    }
+                }
+            }
+            throw new IllegalStateException("Unterminated #ifndef " + DISABLE_HIZ_MACRO + " block");
         }
 
         private String includeTrace(Identifier repeated) {
