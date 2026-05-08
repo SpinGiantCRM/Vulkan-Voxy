@@ -39,7 +39,9 @@ public final class VulkanBerylTraversalExecutor {
     private static final String TRAVERSAL_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.json";
     private static final Pattern SHADER_LINE_PATTERN = Pattern.compile(":(\\d+):\\s+error:");
     private static final String FORCE_REAL_MAIN_RETURN_DEFINE = "VOXY_VULKAN_BERYL_TRAVERSAL_FORCE_REAL_MAIN_RETURN";
-    private static final boolean FORCE_REAL_MAIN_RETURN = Boolean.parseBoolean(System.getenv().getOrDefault(FORCE_REAL_MAIN_RETURN_DEFINE, "false"));
+    private static final String STATIC_IMPORT_LEVEL_ENV = "VOXY_VULKAN_BERYL_TRAVERSAL_STATIC_IMPORT_LEVEL";
+    private static final int STATIC_IMPORT_LEVEL = parseTraversalStaticImportLevel();
+    private static final boolean FORCE_REAL_MAIN_RETURN = Boolean.parseBoolean(System.getenv().getOrDefault(FORCE_REAL_MAIN_RETURN_DEFINE, "false")) || STATIC_IMPORT_LEVEL >= 0;
 
     public static final int HIZ_BINDING = 0;
     public static final int SCENE_UNIFORM_BINDING = 1;
@@ -158,6 +160,9 @@ public final class VulkanBerylTraversalExecutor {
             if (!Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed traversal shader file missing before compile: " + preprocessedShader.shaderPath());
             }
+            if (TRAVERSAL_SHADER_RESOURCE.equals(shaderResource)) {
+                applyTraversalStaticImportBisection(preprocessedShader.shaderPath());
+            }
             if (FORCE_REAL_MAIN_RETURN && TRAVERSAL_SHADER_RESOURCE.equals(shaderResource)) {
                 forceRealTraversalMainReturn(preprocessedShader.shaderPath());
             }
@@ -165,7 +170,7 @@ public final class VulkanBerylTraversalExecutor {
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
-            logTraversalPreprocessedShaderDiagnostics(shaderResource, shaderName, preprocessedShader);
+            logTraversalPreprocessedShaderDiagnostics(shaderResource, shaderName, preprocessedShader, config);
             builder.compileShader(preprocessedShader.rootUrl(), shaderName);
         } catch (RuntimeException e) {
             logTraversalShaderCompileFailureDiagnostics(shaderResource, e);
@@ -373,6 +378,159 @@ public final class VulkanBerylTraversalExecutor {
     }
 
 
+
+    private static int parseTraversalStaticImportLevel() {
+        String raw = System.getenv(STATIC_IMPORT_LEVEL_ENV);
+        if (raw == null || raw.isBlank()) {
+            return -1;
+        }
+        try {
+            int level = Integer.parseInt(raw.trim());
+            if (level < 0) return -1;
+            return Math.min(level, 5);
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException(STATIC_IMPORT_LEVEL_ENV + " must be an integer 0..5/full, but was: " + raw, e);
+        }
+    }
+
+    private static void applyTraversalStaticImportBisection(Path shaderPath) {
+        if (STATIC_IMPORT_LEVEL < 0 || STATIC_IMPORT_LEVEL >= 5) {
+            return;
+        }
+        try {
+            String fullSource = Files.readString(shaderPath, StandardCharsets.UTF_8);
+            Files.writeString(shaderPath, buildTraversalStaticImportSource(fullSource, STATIC_IMPORT_LEVEL), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to apply traversal static import bisection level " + STATIC_IMPORT_LEVEL + " to " + shaderPath, e);
+        }
+    }
+
+    private static String buildTraversalStaticImportSource(String fullSource, int level) {
+        String frustumImport = extractPreprocessedImport(fullSource, "voxy:lod/frustum.glsl");
+        String queueImport = extractPreprocessedImport(fullSource, "voxy:lod/hierarchical/queue.glsl");
+        String nodeImport = extractPreprocessedImport(fullSource, "voxy:lod/hierarchical/node.glsl");
+        String screenspaceImport = extractPreprocessedImport(fullSource, "voxy:lod/hierarchical/screenspace.glsl");
+
+        StringBuilder out = new StringBuilder(8192);
+        out.append("#version 460\n");
+        out.append("// Diagnostic traversal static import bisection source generated from real traversal.comp.\n");
+        out.append("#define VOXY_VULKAN_BERYL_TRAVERSAL_STATIC_IMPORT_LEVEL ").append(level).append('\n');
+        out.append("#define VOXY_VULKAN_BERYL_DISABLE_HIZ 1\n");
+        out.append("#define MAX_ITERATIONS 17\n");
+        out.append("#define LOCAL_SIZE_BITS 5\n");
+        out.append("#define MAX_REQUEST_QUEUE_SIZE 50\n");
+        out.append("#define MAX_QUEUE_SIZE 200000u\n");
+        out.append("#define HIZ_BINDING 0\n");
+        out.append("#define SCENE_UNIFORM_BINDING 1\n");
+        out.append("#define REQUEST_QUEUE_BINDING 2\n");
+        out.append("#define RENDER_QUEUE_BINDING 3\n");
+        out.append("#define NODE_DATA_BINDING 4\n");
+        out.append("#define NODE_QUEUE_INDEX_BINDING 5\n");
+        out.append("#define NODE_QUEUE_META_BINDING 6\n");
+        out.append("#define NODE_QUEUE_SOURCE_BINDING 7\n");
+        out.append("#define NODE_QUEUE_SINK_BINDING 8\n");
+        out.append("#define RENDER_TRACKER_BINDING 9\n");
+        out.append("#define LOCAL_SIZE_MSK ((1u << LOCAL_SIZE_BITS) - 1u)\n");
+        out.append("#define LOCAL_SIZE (1u << LOCAL_SIZE_BITS)\n");
+        out.append("layout(local_size_x=LOCAL_SIZE) in;\n\n");
+
+        if (level >= 1) out.append(frustumImport).append('\n');
+        out.append("layout(binding = SCENE_UNIFORM_BINDING, std140) uniform SceneUniform {\n");
+        out.append("    mat4 MVP;\n");
+        out.append("    ivec3 camSecPos;\n");
+        out.append("    uint packedHizSize;\n");
+        out.append("    vec3 camSubSecPos;\n");
+        out.append("    float minSSS;\n");
+        out.append(level >= 1 ? "    Frustum frustum;\n" : "    vec4 frustumPlanes[6];\n");
+        out.append("    uint renderQueueMaxSize;\n");
+        out.append("    uint frameId;\n");
+        out.append("    uint requestQueueSize;\n");
+        out.append("    uint maxNodeCount;\n");
+        out.append("    float renderDistance;\n");
+        out.append("};\n\n");
+
+        if (level >= 2) out.append(queueImport).append('\n');
+        if (level >= 3) out.append(nodeImport).append('\n');
+        if (level >= 4) out.append(screenspaceImport).append('\n');
+
+        appendTraversalStaticManualBufferDeclarations(out, level);
+        out.append("void main() {\n");
+        out.append("    return;\n");
+        out.append("}\n");
+        return out.toString();
+    }
+
+    private static void appendTraversalStaticManualBufferDeclarations(StringBuilder out, int level) {
+        out.append("layout(binding = REQUEST_QUEUE_BINDING, std430) restrict buffer requestQueueStruct {\n");
+        out.append("    uvec2 requestQueueIndex;\n");
+        out.append("    uvec2[] requestQueue;\n");
+        out.append("};\n\n");
+        out.append("layout(binding = RENDER_QUEUE_BINDING, std430) restrict buffer renderQueueStruct {\n");
+        out.append("    uint renderQueueIndex;\n");
+        out.append("    uint[] renderQueue;\n");
+        out.append("};\n\n");
+        if (level < 3) {
+            out.append("layout(binding = NODE_DATA_BINDING, std430) restrict buffer NodeData {\n");
+            out.append("    uvec4[] nodes;\n");
+            out.append("};\n\n");
+        }
+        if (level < 2) {
+            out.append("layout(binding = NODE_QUEUE_INDEX_BINDING, std430) restrict readonly buffer NodeQueueIndex {\n");
+            out.append("    uint queueIdx;\n");
+            out.append("};\n\n");
+            out.append("layout(binding = NODE_QUEUE_META_BINDING, std430) restrict buffer NodeQueueMeta {\n");
+            out.append("    uvec4 nodeQueueMetadata[MAX_ITERATIONS];\n");
+            out.append("};\n\n");
+            out.append("layout(binding = NODE_QUEUE_SOURCE_BINDING, std430) restrict readonly buffer NodeQueueSource {\n");
+            out.append("    uint[] nodeQueueSource;\n");
+            out.append("};\n\n");
+            out.append("layout(binding = NODE_QUEUE_SINK_BINDING, std430) restrict writeonly buffer NodeQueueSink {\n");
+            out.append("    uint[] nodeQueueSink;\n");
+            out.append("};\n\n");
+        }
+        out.append("layout(binding = RENDER_TRACKER_BINDING, std430) restrict writeonly buffer renderTrackerArray {\n");
+        out.append("    uint[] lastRenderFrame;\n");
+        out.append("};\n\n");
+    }
+
+    private static String extractPreprocessedImport(String source, String importId) {
+        String begin = "// begin import " + importId;
+        String end = "// end import " + importId;
+        int beginIndex = source.indexOf(begin);
+        int endIndex = source.indexOf(end);
+        if (beginIndex < 0 || endIndex < beginIndex) {
+            throw new IllegalStateException("Preprocessed traversal shader is missing import block " + importId);
+        }
+        int lineEnd = source.indexOf('\n', endIndex);
+        return source.substring(beginIndex, lineEnd < 0 ? source.length() : lineEnd + 1);
+    }
+
+    private static String traversalStaticImportLevelMeaning() {
+        return switch (STATIC_IMPORT_LEVEL) {
+            case 0 -> "minimal_layout_no_imports";
+            case 1 -> "frustum_import_types";
+            case 2 -> "frustum_plus_queue";
+            case 3 -> "frustum_plus_queue_plus_node";
+            case 4 -> "frustum_plus_queue_plus_node_plus_screenspace_hiz_disabled";
+            case 5 -> "full_real_traversal";
+            default -> "disabled";
+        };
+    }
+
+    private static String traversalImportedModulesForLevel() {
+        int level = STATIC_IMPORT_LEVEL;
+        if (level < 0) {
+            return "<real-default>";
+        }
+        List<String> modules = new ArrayList<>();
+        if (level >= 1 || level >= 5) modules.add("frustum.glsl");
+        if (level >= 2 || level >= 5) modules.add("queue.glsl");
+        if (level >= 3 || level >= 5) modules.add("node.glsl");
+        if (level >= 4 || level >= 5) modules.add("screenspace.glsl");
+        if (level >= 5) modules.add("full-real-body");
+        return modules.toString();
+    }
+
     private static void forceRealTraversalMainReturn(Path shaderPath) {
         try {
             String source = Files.readString(shaderPath, StandardCharsets.UTF_8);
@@ -397,7 +555,7 @@ public final class VulkanBerylTraversalExecutor {
         return source.contains("#define " + FORCE_REAL_MAIN_RETURN_DEFINE);
     }
 
-    private void logTraversalPreprocessedShaderDiagnostics(String shaderResource, String shaderName, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
+    private void logTraversalPreprocessedShaderDiagnostics(String shaderResource, String shaderName, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader, JsonObject config) {
         if (!TRAVERSAL_SHADER_RESOURCE.equals(shaderResource)) {
             logTraversalSmokeBindingDiagnostics(shaderResource, preprocessedShader);
             return;
@@ -421,8 +579,12 @@ public final class VulkanBerylTraversalExecutor {
                     + " traversalMainSnippetHash=" + sha256Hex(snippet.text())
                     + " traversalMainLineStart=" + snippet.startLine()
                     + " traversalMainSnippet=" + oneLineSnippet(snippet.text())
+                    + " traversalStaticImportLevel=" + STATIC_IMPORT_LEVEL
+                    + " traversalStaticImportLevelMeaning=" + traversalStaticImportLevelMeaning()
+                    + " traversalImportedModules=" + sanitizeDiagnosticValue(traversalImportedModulesForLevel())
                     + traversalDisableHizDiagnostics(source)
                     + " traversalDeclaredBindings=" + realBindings
+                    + traversalDescriptorKindDiagnostics(source, config)
                     + traversalBinding0DescriptorDiagnostics(source)
                     + smokeBindings);
         } catch (IOException e) {
@@ -459,6 +621,137 @@ public final class VulkanBerylTraversalExecutor {
     }
 
 
+
+    private String traversalDescriptorKindDiagnostics(String source, JsonObject config) {
+        java.util.Map<Integer, String> configKinds = configDescriptorKinds(config);
+        StringBuilder details = new StringBuilder();
+        int mismatchCount = 0;
+        String firstMismatch = "none";
+        for (int binding = SCENE_UNIFORM_BINDING; binding <= RENDER_TRACKER_BINDING; binding++) {
+            ShaderBindingDeclaration shaderDeclaration = findShaderBindingDeclaration(source, binding);
+            String shaderKind = shaderDeclaration == null ? "unknown" : shaderDeclaration.expectedDescriptorType();
+            String configKind = configKinds.getOrDefault(binding, "unknown");
+            String javaKind = javaDescriptorKind(binding);
+            boolean mismatch = !shaderKind.equals(configKind) || !shaderKind.equals(javaKind);
+            if (mismatch) {
+                mismatchCount++;
+                if ("none".equals(firstMismatch)) {
+                    firstMismatch = String.valueOf(binding);
+                }
+            }
+            details.append(" traversalBinding=").append(binding)
+                    .append(" shaderDescriptorKind=").append(shaderKind)
+                    .append(" configDescriptorKind=").append(configKind)
+                    .append(" javaDescriptorKind=").append(javaKind)
+                    .append(" descriptorKindMismatch=").append(mismatch);
+        }
+        return " traversalDescriptorKindMismatchCount=" + mismatchCount
+                + " traversalFirstDescriptorKindMismatch=" + firstMismatch
+                + details;
+    }
+
+    private static java.util.Map<Integer, String> configDescriptorKinds(JsonObject config) {
+        java.util.Map<Integer, String> kinds = new java.util.HashMap<>();
+        if (config == null || !config.has("UBOs") || !config.get("UBOs").isJsonArray()) {
+            return kinds;
+        }
+        config.getAsJsonArray("UBOs").forEach(node -> {
+            if (!node.isJsonObject()) return;
+            JsonObject binding = node.getAsJsonObject();
+            if (!binding.has("binding")) return;
+            kinds.put(binding.get("binding").getAsInt(), binding.has("type") ? binding.get("type").getAsString() : "unknown");
+        });
+        return kinds;
+    }
+
+    private String javaDescriptorKind(int binding) {
+        UBO descriptor = null;
+        if (this.traversalPipeline != null) {
+            descriptor = this.traversalPipeline.getUBO(candidate -> candidate.binding == binding);
+        }
+        if (descriptor == null) {
+            int computeStage = ComputePipeline.Builder.getStageFromString("compute");
+            Buffer buffer = bufferForTraversalBinding(binding);
+            if (buffer != null) {
+                descriptor = createManualDescriptor(binding, computeStage, buffer, labelForTraversalBinding(binding));
+            }
+        }
+        if (descriptor == null) {
+            return "unknown";
+        }
+        String reflected = reflectDescriptorKind(descriptor);
+        if (!"unknown".equals(reflected)) {
+            return reflected;
+        }
+        if (descriptor instanceof ManualUBO || descriptor.getClass().getSimpleName().contains("UBO")) {
+            return "uniformBuffer";
+        }
+        return "unknown";
+    }
+
+    private Buffer bufferForTraversalBinding(int binding) {
+        return switch (binding) {
+            case SCENE_UNIFORM_BINDING -> this.traversalResources.getUniformBuffer();
+            case REQUEST_QUEUE_BINDING -> this.traversalResources.getRequestBuffer();
+            case RENDER_QUEUE_BINDING -> this.renderList.getBuffer();
+            case NODE_DATA_BINDING -> this.nodeMetadataStore.getNodeBuffer();
+            case NODE_QUEUE_INDEX_BINDING -> this.traversalResources.getQueueIndexBuffer();
+            case NODE_QUEUE_META_BINDING -> this.traversalResources.getQueueMetaBuffer();
+            case NODE_QUEUE_SOURCE_BINDING -> this.traversalResources.getScratchQueueA();
+            case NODE_QUEUE_SINK_BINDING -> this.traversalResources.getScratchQueueB();
+            case RENDER_TRACKER_BINDING -> this.traversalResources.getRenderTrackerBuffer();
+            default -> null;
+        };
+    }
+
+    private static String labelForTraversalBinding(int binding) {
+        return switch (binding) {
+            case SCENE_UNIFORM_BINDING -> "SceneUniform";
+            case REQUEST_QUEUE_BINDING -> "RequestQueue";
+            case RENDER_QUEUE_BINDING -> "RenderQueue";
+            case NODE_DATA_BINDING -> "NodeData";
+            case NODE_QUEUE_INDEX_BINDING -> "NodeQueueIndex";
+            case NODE_QUEUE_META_BINDING -> "NodeQueueMeta";
+            case NODE_QUEUE_SOURCE_BINDING -> "NodeQueueSource";
+            case NODE_QUEUE_SINK_BINDING -> "NodeQueueSink";
+            case RENDER_TRACKER_BINDING -> "RenderTracker";
+            default -> "Unknown";
+        };
+    }
+
+    private static String reflectDescriptorKind(UBO descriptor) {
+        for (String methodName : List.of("getDescriptorType", "descriptorType", "getType", "type")) {
+            try {
+                Method method = descriptor.getClass().getMethod(methodName);
+                Object value = method.invoke(descriptor);
+                String kind = normalizeDescriptorKind(String.valueOf(value));
+                if (!"unknown".equals(kind)) return kind;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+        }
+        for (String fieldName : List.of("descriptorType", "type")) {
+            try {
+                var field = descriptor.getClass().getDeclaredField(fieldName);
+                field.setAccessible(true);
+                Object value = field.get(descriptor);
+                String kind = normalizeDescriptorKind(String.valueOf(value));
+                if (!"unknown".equals(kind)) return kind;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+        }
+        return "unknown";
+    }
+
+    private static String normalizeDescriptorKind(String value) {
+        if (value == null) return "unknown";
+        String compact = value.replace("_", "").replace("-", "").toLowerCase(java.util.Locale.ROOT);
+        if (compact.contains("uniformbuffer") || compact.equals("ubo")) return "uniformBuffer";
+        if (compact.contains("storagebuffer") || compact.equals("ssbo")) return "storageBuffer";
+        if (compact.contains("combinedimagesampler")) return "combinedImageSampler";
+        if (compact.contains("storageimage")) return "storageImage";
+        return "unknown";
+    }
+
     private static String traversalDisableHizDiagnostics(String source) {
         boolean disableHizMacroPresent = source.contains("#define VOXY_VULKAN_BERYL_DISABLE_HIZ");
         boolean hizSamplerDeclarationPresent = source.contains("layout(binding = HIZ_BINDING) uniform sampler2D hizDepthSampler;")
@@ -477,10 +770,10 @@ public final class VulkanBerylTraversalExecutor {
         String declaration = binding0 == null ? "<none>" : binding0.declaration();
         String expectedDescriptorType = binding0 == null ? "none" : binding0.expectedDescriptorType();
         String javaDescriptorLabel = "ReservedHizDummy";
-        String javaDescriptorKind = "buffer";
+        String javaDescriptorKind = "uniformBuffer";
         Buffer buffer = this.traversalResources.getUniformBuffer();
         long bufferId = buffer == null ? 0L : buffer.getId();
-        boolean mismatch = binding0 != null && !"buffer".equals(expectedDescriptorType);
+        boolean mismatch = binding0 != null && !javaDescriptorKind.equals(expectedDescriptorType);
         return " traversalBinding0Declared=" + (binding0 != null)
                 + " traversalBinding0Declaration=" + sanitizeDiagnosticValue(declaration)
                 + " traversalBinding0ExpectedDescriptorType=" + expectedDescriptorType
@@ -506,8 +799,8 @@ public final class VulkanBerylTraversalExecutor {
     private static String expectedDescriptorTypeForDeclaration(String declaration) {
         if (declaration.contains("sampler") || declaration.contains("texture")) return "combinedImageSampler";
         if (declaration.contains("image")) return "storageImage";
-        if (declaration.contains(" buffer ")) return "buffer";
-        if (declaration.contains(" uniform ")) return "buffer";
+        if (declaration.contains(" buffer ")) return "storageBuffer";
+        if (declaration.contains(" uniform ")) return "uniformBuffer";
         return "unknown";
     }
 
