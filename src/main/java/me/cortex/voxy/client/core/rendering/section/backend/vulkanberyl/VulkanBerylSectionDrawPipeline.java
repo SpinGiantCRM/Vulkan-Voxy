@@ -757,21 +757,26 @@ public final class VulkanBerylSectionDrawPipeline {
             VulkanBerylDebugLog.once("cmdgen-isolation-dispatch", "cmdgen dispatch submitted: stage=" + (isolationStage == null ? "full" : isolationStage.envName()) + ", groupsX=" + groupCountX);
             logCmdgenWaitIdleAfterDispatchState(isolationStage == null ? "full" : isolationStage.envName());
 
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
-                        .sType$Default()
-                        .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
-                        .dstAccessMask(VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
-                VK10.vkCmdPipelineBarrier(
-                        commandBuffer,
-                        VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-                        0,
-                        barrier,
-                        null,
-                        null
-                );
-                logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+            if (disableAnyDrawCountConsumerPathActive()) {
+                VulkanBerylDebugLog.once("cmdgen-drawcount-after-barrier-skipped", "cmdgen drawCount barrier skipped: stage=after_cmdgen_dispatch, reason=drawCount consumer path is disabled, drawCountConsumers=disabled_by_env");
+                logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", false, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+            } else {
+                try (MemoryStack stack = MemoryStack.stackPush()) {
+                    VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
+                            .sType$Default()
+                            .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                            .dstAccessMask(VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+                    VK10.vkCmdPipelineBarrier(
+                            commandBuffer,
+                            VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                            0,
+                            barrier,
+                            null,
+                            null
+                    );
+                    logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+                }
             }
         }
 
