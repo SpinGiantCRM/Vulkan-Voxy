@@ -241,6 +241,10 @@ void traverse(in UnpackedNode node) {
 }
 
 void main() {
+#ifdef VOXY_VULKAN_BERYL_TRAVERSAL_FORCE_REAL_MAIN_RETURN
+    return;
+#endif
+
     uint stageLimit = frameId;
     if (stageLimit <= 1u) {
         return;
