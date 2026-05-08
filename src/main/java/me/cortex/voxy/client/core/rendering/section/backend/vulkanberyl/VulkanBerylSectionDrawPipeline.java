@@ -549,6 +549,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", fullCmdgenDispatchAllowed=" + fullCmdgenDispatchAllowed
                 + ", finalGateReason=" + cmdgenGateReason
                 + ", finalBlockerReason=" + fullCmdgenDispatchBlocker);
+        int javaDrawCountForNoDrawCountCmdgen = visibleCount;
         if (visibleCount <= 0) {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "visible_count_zero_or_negative");
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
@@ -789,7 +790,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
                 }
             }
-            recordJavaControlledDrawCountForNoDrawCountCmdgen(commandBuffer, controlledSmoke, visibleCount, indirectAllowed);
+            javaDrawCountForNoDrawCountCmdgen = recordJavaDrawCountForNoDrawCountCmdgen(commandBuffer, controlledSmoke, visibleCount, indirectAllowed);
         }
 
         if (disableAnyDrawCountConsumerPathActive()) {
@@ -819,50 +820,75 @@ public final class VulkanBerylSectionDrawPipeline {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + indirectGateReason);
         }
+        int submittedDrawCount = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER ? javaDrawCountForNoDrawCountCmdgen : visibleCount;
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(viewport);
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
-        VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, visibleCount, DRAW_COMMAND_STRIDE_BYTES);
+        VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, submittedDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
-        return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, visibleCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
+        return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, submittedDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
     }
 
-    private void recordJavaControlledDrawCountForNoDrawCountCmdgen(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int visibleCount, boolean indirectAllowed) {
-        if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return;
-        int javaDrawCount = controlledSmoke.enabled() && controlledSmoke.safe() && visibleCount == 1 ? 1 : 0;
-        String drawCountSource = javaDrawCount == 1 ? "java_controlled_smoke" : "java_conservative_zero";
+    private int recordJavaDrawCountForNoDrawCountCmdgen(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int visibleCount, boolean indirectAllowed) {
+        if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return visibleCount;
+        int drawCommandCapacity = safeDrawCommandCapacity();
+        boolean safeForJavaDrawCount = visibleCount > 0 && drawCommandCapacity > 0 && this.drawCountBuffer != null && this.drawCountBuffer.getId() != 0L && this.drawCountBuffer.getBufferSize() >= Integer.BYTES;
+        int javaDrawCount;
+        String drawCountSource;
+        if (controlledSmoke.enabled()) {
+            javaDrawCount = controlledSmoke.safe() && visibleCount == 1 && drawCommandCapacity >= 1 ? 1 : 0;
+            drawCountSource = javaDrawCount == 1 ? "java_controlled_smoke" : "java_conservative_zero";
+        } else if (safeForJavaDrawCount) {
+            javaDrawCount = Math.min(visibleCount, drawCommandCapacity);
+            drawCountSource = "java_real_visible_count";
+        } else {
+            javaDrawCount = 0;
+            drawCountSource = "java_conservative_zero";
+        }
         VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, Integer.BYTES, javaDrawCount);
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
-                    .sType$Default()
+            VkBufferMemoryBarrier.Buffer barrier = VkBufferMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
                     .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
-                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT | VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT | VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT)
+                    .srcQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                    .dstQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                    .buffer(this.drawCountBuffer.getId())
+                    .offset(0L)
+                    .size(Integer.BYTES);
             VK10.vkCmdPipelineBarrier(
                     commandBuffer,
                     VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
                     VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
                     0,
-                    barrier,
                     null,
+                    barrier,
                     null
             );
         }
-        VulkanBerylDebugLog.once("cmdgen-no-drawcount-write-java-drawcount", "cmdgen no-drawCount-write diagnostic active: gpuDrawCountStoreDisabled=true"
+        VulkanBerylDebugLog.rateLimited("cmdgen-no-drawcount-write-java-drawcount", "cmdgen no-drawCount-write diagnostic active: gpuDrawCountStoreDisabled=true"
                 + ", drawCountSource=" + drawCountSource
                 + ", javaDrawCount=" + javaDrawCount
+                + ", visibleCount=" + visibleCount
                 + ", commandWritesEnabled=true"
                 + ", shaderDrawCountStores=0"
                 + ", shaderSelectionEnv=" + activeCmdgenShaderSelectionEnvVar()
                 + ", renderListSmokeOneEntry=" + RENDERLIST_SMOKE_ONE_ENTRY
                 + ", controlledSmokeSafe=" + controlledSmoke.safe()
-                + ", visibleCount=" + visibleCount
+                + ", drawCommandCapacity=" + drawCommandCapacity
                 + ", indirectDrawEnabled=" + ENABLE_INDIRECT_DRAW
                 + ", indirectAllowed=" + indirectAllowed
                 + ", drawCountBufferId=" + this.drawCountBuffer.getId()
-                + ", drawCountDescriptorBufferId=" + cmdgenDrawCountDescriptorBuffer().getId());
+                + ", drawCountDescriptorBufferId=" + cmdgenDrawCountDescriptorBuffer().getId(), 60);
+        return javaDrawCount;
     }
 
+    private int safeDrawCommandCapacity() {
+        if (this.drawCommandBuffer == null || this.drawCommandBuffer.getId() == 0L) return 0;
+        long capacity = this.drawCommandBuffer.getBufferSize() / DRAW_COMMAND_STRIDE_BYTES;
+        return capacity > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) Math.max(0L, capacity);
+    }
 
 
     private OpaqueDrawSubmission dispatchMetadataBindingProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, Buffer metadataProbeBuffer, int metadataBinding, String stage) {
