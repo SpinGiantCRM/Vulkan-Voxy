@@ -13,6 +13,8 @@ import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 public final class VulkanBerylViewportRenderList implements ViewportRenderList {
     // Keep in sync with MDIC hierarchical traversal queue capacity.
     public static final int DEFAULT_MAX_ENTRY_COUNT = 200_000;
+    public static final long COUNTER_OFFSET_BYTES = 0L;
+    public static final long COUNTER_SIZE_BYTES = Integer.BYTES;
 
     private final int maxEntryCount;
     private final Buffer buffer;
@@ -28,7 +30,7 @@ public final class VulkanBerylViewportRenderList implements ViewportRenderList {
             throw new IllegalArgumentException("maxEntryCount must be non-negative");
         }
 
-        long sizeBytes = Math.multiplyExact(4L, (long) maxEntryCount + 1L);
+        long sizeBytes = Math.addExact(COUNTER_SIZE_BYTES, Math.multiplyExact(Integer.BYTES, (long) maxEntryCount));
 
         this.maxEntryCount = maxEntryCount;
         this.buffer = new Buffer("voxy_vulkanberyl_render_list", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, MemoryTypes.GPU_MEM);
@@ -69,14 +71,14 @@ public final class VulkanBerylViewportRenderList implements ViewportRenderList {
         }
 
         long sizeBytes = this.buffer.getBufferSize();
-        if (sizeBytes < Integer.BYTES) {
+        if (sizeBytes < COUNTER_SIZE_BYTES) {
             throw new IllegalStateException("Render list buffer is too small to contain a counter: " + sizeBytes);
         }
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
             long zeroAddress = memAddress(stack.callocInt(1));
             VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
-            uploader.upload(this.buffer, 0L, zeroAddress, Integer.BYTES);
+            uploader.upload(this.buffer, COUNTER_OFFSET_BYTES, zeroAddress, COUNTER_SIZE_BYTES);
             uploader.flush();
         }
     }

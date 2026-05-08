@@ -53,6 +53,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final int FULL_TRAVERSAL_STAGE_LIMIT = 6;
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
+    private static final String RENDER_LIST_COUNTER_SOURCE_BUFFER = "voxy_vulkanberyl_render_list";
     private final AsyncNodeManager nodeManager;
     private final RenderGenerationService renderGen;
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
@@ -327,7 +328,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         if (commandBuffer == null) {
             throw new IllegalStateException("Cannot read render-list counter without a valid command buffer");
         }
-        if (renderList.getBuffer().getBufferSize() < Integer.BYTES) {
+        if (renderList.getBuffer().getBufferSize() < VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES) {
             throw new IllegalStateException("Render list buffer is structurally invalid for count readback");
         }
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
@@ -340,7 +341,10 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
                     0, toTransfer, null, null);
 
-            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack).srcOffset(0L).dstOffset(0L).size(Integer.BYTES);
+            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack)
+                    .srcOffset(VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES)
+                    .dstOffset(0L)
+                    .size(VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES);
             VK10.vkCmdCopyBuffer(commandBuffer, renderList.getBuffer().getId(), this.renderListCounterReadbackBuffer.getId(), copyRegion);
 
             VkMemoryBarrier.Buffer toHost = VkMemoryBarrier.calloc(1, stack)
@@ -381,8 +385,13 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         int acceptedCount = rawCount;
         boolean discarded = false;
         if (rawCount < 0 || rawCount > maxEntryCount) {
-            VulkanBerylDebugLog.warnRateLimited("invalid-render-list-counter-readback", "Invalid/corrupt Vulkan/Beryl render-list counter readback, discarding: rawRenderListCount=" + rawCount
-                    + " maxEntryCount=" + maxEntryCount);
+            String readbackReason = "counter_out_of_range";
+            VulkanBerylDebugLog.warnRateLimited("invalid-render-list-counter-readback", "Invalid/corrupt Vulkan/Beryl render-list counter readback, discarding: rawRenderListVisibleCount=" + rawCount
+                    + " maxEntryCount=" + maxEntryCount
+                    + " counterReadbackOffset=" + VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES
+                    + " counterReadbackBytes=" + VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES
+                    + " counterSourceBuffer=" + describeRenderListCounterSource(renderList)
+                    + " readbackReason=" + readbackReason);
             acceptedCount = 0;
             discarded = true;
         }
@@ -397,6 +406,10 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         logRenderListReadbackDiagnostics(renderList, "counter_readback_completed");
         this.renderListCounterReadbackPending = false;
         this.pendingRenderListCounterSource = null;
+    }
+
+    private static String describeRenderListCounterSource(VulkanBerylViewportRenderList renderList) {
+        return RENDER_LIST_COUNTER_SOURCE_BUFFER + "#" + renderList.getBuffer().getId();
     }
 
     private void scheduleRenderListSampleReadback(VkCommandBuffer commandBuffer, VulkanBerylViewportRenderList renderList) {

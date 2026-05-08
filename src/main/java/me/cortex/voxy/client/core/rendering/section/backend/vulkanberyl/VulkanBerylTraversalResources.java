@@ -150,7 +150,7 @@ public final class VulkanBerylTraversalResources {
         if (topLevelNodeStore == null) throw new IllegalArgumentException("topLevelNodeStore must not be null");
         int firstDispatchSize = (topNodeCount + 31) >>> 5;
 
-        VK10.vkCmdFillBuffer(commandBuffer, renderList.getBuffer().getId(), 0L, Integer.BYTES, 0);
+        VK10.vkCmdFillBuffer(commandBuffer, renderList.getBuffer().getId(), VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES, VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES, 0);
         VK10.vkCmdFillBuffer(commandBuffer, this.requestBuffer.getId(), 0L, Integer.BYTES, 0);
         VK10.vkCmdFillBuffer(commandBuffer, this.queueIndexBuffer.getId(), 0L, QUEUE_INDEX_BUFFER_SIZE_BYTES, 0);
         VK10.vkCmdFillBuffer(commandBuffer, this.queueMetaBuffer.getId(), 0L, QUEUE_META_BUFFER_SIZE_BYTES, 0);
