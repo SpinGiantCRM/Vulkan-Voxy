@@ -50,6 +50,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
     private static final boolean ENABLE_CMDGEN_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
+    private static final int FULL_TRAVERSAL_STAGE_LIMIT = 6;
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private final AsyncNodeManager nodeManager;
@@ -149,7 +150,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + " requestCounterCleared=" + frameInit.requestCounterCleared()
                 + " renderListCounterCleared=" + frameInit.renderListCounterCleared()
                 + " transferToComputeBarrier=" + frameInit.transferToComputeBarrier());
-        this.traversalResources.recordTraversalUniformUpload(commandBuffer, vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, TRAVERSAL_STAGE_LIMIT);
+        boolean explicitNoGpuDrawCountCmdgenPath = ENABLE_CMDGEN_DISPATCH && VulkanBerylCmdgenDiagnostics.CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
+        int activeTraversalStageLimit = explicitNoGpuDrawCountCmdgenPath && TRAVERSAL_STAGE_LIMIT == 0 ? FULL_TRAVERSAL_STAGE_LIMIT : TRAVERSAL_STAGE_LIMIT;
+        this.traversalResources.recordTraversalUniformUpload(commandBuffer, vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit);
         if (this.traversalExecutor == null) {
             this.traversalExecutor = new VulkanBerylTraversalExecutor(
                     this.traversalResources,
@@ -162,16 +165,20 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         boolean initialTraversalDispatch = false;
         int remainingTraversalDispatchesRan = 0;
         boolean traversalReadbacksScheduled = false;
+        boolean traversalDispatchAllowed = false;
+        String renderListPopulationBlocker = "not_evaluated";
         this.lastRenderListPopulationThisFrame = false;
         this.lastRenderListReadbackScheduledThisFrame = false;
         if (TRAVERSAL_SMOKE_NOOP) {
+            renderListPopulationBlocker = "traversal_smoke_noop";
             this.scheduleRequestReadback(commandBuffer);
             this.scheduleRenderListCounterReadback(commandBuffer, renderList);
             this.scheduleRenderListSampleReadback(commandBuffer, renderList);
             traversalReadbacksScheduled = true;
             this.lastRenderListPopulationThisFrame = TRAVERSAL_SMOKE_WRITE_KNOWN;
             VulkanBerylDebugLog.once("traversal-smoke-noop-active", "Traversal smoke mode active: noop=true writeKnown=" + TRAVERSAL_SMOKE_WRITE_KNOWN + " traversal shader dispatch skipped");
-        } else if (ENABLE_TRAVERSAL_DISPATCH && (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE || TRAVERSAL_STAGE_LIMIT > 0)) {
+        } else if ((traversalDispatchAllowed = isTraversalDispatchAllowed(explicitNoGpuDrawCountCmdgenPath, activeTraversalStageLimit))) {
+            renderListPopulationBlocker = "ready";
             this.traversalExecutor.prepareTraversal(vulkanViewport);
             this.traversalExecutor.ensureTraversalPipeline(TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE);
             if (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE) { VulkanBerylDebugLog.once("traversal-shader-smoke-active", "Traversal shader smoke dispatch active"); }
@@ -181,6 +188,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 this.traversalExecutor.dispatchFirstTraversalIteration(vulkanWorkContext.frame().renderer());
                 initialTraversalDispatch = this.traversalExecutor.didDispatchIterationZeroRun();
             } else {
+                renderListPopulationBlocker = firstRenderListPopulationBlocker(renderListPopulationBlocker, "initial_traversal_dispatch_disabled");
                 VulkanBerylDebugLog.once("initial-traversal-dispatch-skipped", "Initial traversal dispatch skipped by safety gate");
             }
             if (ENABLE_INDIRECT_TRAVERSAL_DISPATCH && TRAVERSAL_MAX_ITERATIONS > 1) {
@@ -189,26 +197,58 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             } else {
                 VulkanBerylDebugLog.once("traversal-remaining-iterations-skipped", "Traversal remaining iterations skipped by safety gate");
             }
+            if (topNodeCount <= 0) {
+                renderListPopulationBlocker = firstRenderListPopulationBlocker(renderListPopulationBlocker, "no_top_nodes");
+            } else if (frameInit.scratchQueueASeededCount() <= 0) {
+                renderListPopulationBlocker = firstRenderListPopulationBlocker(renderListPopulationBlocker, "scratch_queue_not_seeded");
+            }
             if (initialTraversalDispatch || remainingTraversalDispatchesRan > 0) {
                 this.scheduleRequestReadback(commandBuffer);
                 this.scheduleRenderListCounterReadback(commandBuffer, renderList);
                 this.scheduleRenderListSampleReadback(commandBuffer, renderList);
                 traversalReadbacksScheduled = true;
                 this.lastRenderListPopulationThisFrame = true;
+                renderListPopulationBlocker = "none";
+            } else {
+                renderListPopulationBlocker = firstRenderListPopulationBlocker(renderListPopulationBlocker, "dispatch_not_recorded");
             }
         } else {
-            VulkanBerylDebugLog.traceOnce("traversal-dispatch-disabled", "Traversal dispatch disabled by safety gate/stage limit; skipping real traversal dispatches and traversal readbacks");
+            renderListPopulationBlocker = traversalDispatchBlocker(explicitNoGpuDrawCountCmdgenPath, activeTraversalStageLimit);
+            VulkanBerylDebugLog.traceOnce("traversal-dispatch-disabled", "Traversal dispatch disabled by safety gate/stage limit; skipping real traversal dispatches and traversal readbacks: renderListPopulationBlocker=" + renderListPopulationBlocker);
         }
         this.lastRenderListReadbackScheduledThisFrame = traversalReadbacksScheduled;
-        VulkanBerylDebugLog.trace("traversal-dispatch-status", "Traversal dispatch status: initialTraversalDispatch=" + initialTraversalDispatch
+        VulkanBerylDebugLog.trace("traversal-dispatch-status", "Traversal dispatch status: traversalDispatchAllowed=" + traversalDispatchAllowed
+                + " initialTraversalDispatch=" + initialTraversalDispatch
                 + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
-                + " traversalReadbacksScheduled=" + traversalReadbacksScheduled);
-        logRenderListPopulationDiagnostics(renderList, topNodeCount, frameInit, initialTraversalDispatch, remainingTraversalDispatchesRan, traversalReadbacksScheduled);
+                + " populationThisFrame=" + this.lastRenderListPopulationThisFrame
+                + " readbackScheduledThisFrame=" + traversalReadbacksScheduled
+                + " readbackReason=" + this.lastRenderListReadbackReason
+                + " renderListPopulationBlocker=" + renderListPopulationBlocker);
+        logRenderListPopulationDiagnostics(renderList, topNodeCount, frameInit, traversalDispatchAllowed, initialTraversalDispatch, remainingTraversalDispatchesRan, traversalReadbacksScheduled, renderListPopulationBlocker);
         this.frameSequence++;
         this.frameId++;
         updateFrameSafetyState(renderList.getMaxEntryCount());
         this.publishSmokeStatus();
-        VulkanBerylLodBringupDiagnostics.updateRuntime(TRAVERSAL_SMOKE_NOOP, TRAVERSAL_SHADER_SMOKE, TRAVERSAL_SHADER_UNIFORM_SMOKE, TRAVERSAL_STAGE_LIMIT, RENDERLIST_SMOKE_ONE_ENTRY, ENABLE_CMDGEN_DISPATCH, ENABLE_INDIRECT_DRAW, this.lastVisibleSectionCount, LAST_FRAME_SAFETY_STATE.reason());
+        VulkanBerylLodBringupDiagnostics.updateRuntime(TRAVERSAL_SMOKE_NOOP, TRAVERSAL_SHADER_SMOKE, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit, RENDERLIST_SMOKE_ONE_ENTRY, ENABLE_CMDGEN_DISPATCH, ENABLE_INDIRECT_DRAW, this.lastVisibleSectionCount, LAST_FRAME_SAFETY_STATE.reason());
+    }
+
+    private static boolean isTraversalDispatchAllowed(boolean explicitNoGpuDrawCountCmdgenPath, int activeTraversalStageLimit) {
+        return ENABLE_TRAVERSAL_DISPATCH
+                && (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE || activeTraversalStageLimit > 0 || explicitNoGpuDrawCountCmdgenPath);
+    }
+
+    private static String traversalDispatchBlocker(boolean explicitNoGpuDrawCountCmdgenPath, int activeTraversalStageLimit) {
+        if (!ENABLE_TRAVERSAL_DISPATCH) {
+            return "traversal_dispatch_disabled";
+        }
+        if (!TRAVERSAL_SHADER_SMOKE && !TRAVERSAL_SHADER_UNIFORM_SMOKE && activeTraversalStageLimit <= 0 && !explicitNoGpuDrawCountCmdgenPath) {
+            return "waiting_for_traversal_stage_or_no_gpu_drawcount_cmdgen_path";
+        }
+        return "unknown_traversal_dispatch_blocker";
+    }
+
+    private static String firstRenderListPopulationBlocker(String current, String candidate) {
+        return "ready".equals(current) || "not_evaluated".equals(current) ? candidate : current;
     }
 
     private void scheduleRequestReadback(VkCommandBuffer commandBuffer) {
@@ -517,15 +557,19 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private void logRenderListPopulationDiagnostics(VulkanBerylViewportRenderList renderList,
                                                    int topNodeCount,
                                                    VulkanBerylTraversalResources.FrameInitStats frameInit,
+                                                   boolean traversalDispatchAllowed,
                                                    boolean initialTraversalDispatch,
                                                    int remainingTraversalDispatchesRan,
-                                                   boolean traversalReadbacksScheduled) {
+                                                   boolean traversalReadbacksScheduled,
+                                                   String renderListPopulationBlocker) {
         String message = "Render-list population state: rawRenderListVisibleCount=" + this.lastRawVisibleSectionCount
                 + " renderListLastVisibleCount=" + renderList.getLastVisibleCount()
                 + " maxEntryCount=" + renderList.getMaxEntryCount()
                 + " topNodeCount=" + topNodeCount
                 + " scratchQueueASeededCount=" + frameInit.scratchQueueASeededCount()
                 + " renderListCounterCleared=" + frameInit.renderListCounterCleared()
+                + " renderListPopulationBlocker=" + renderListPopulationBlocker
+                + " traversalDispatchAllowed=" + traversalDispatchAllowed
                 + " initialTraversalDispatch=" + initialTraversalDispatch
                 + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
                 + " populationThisFrame=" + this.lastRenderListPopulationThisFrame
@@ -539,6 +583,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + ";maxEntryCount=" + renderList.getMaxEntryCount()
                 + ";topNodeCount=" + topNodeCount
                 + ";scratchQueueASeededCount=" + frameInit.scratchQueueASeededCount()
+                + ";renderListPopulationBlocker=" + renderListPopulationBlocker
+                + ";traversalDispatchAllowed=" + traversalDispatchAllowed
                 + ";initialTraversalDispatch=" + initialTraversalDispatch
                 + ";remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
                 + ";populationThisFrame=" + this.lastRenderListPopulationThisFrame
