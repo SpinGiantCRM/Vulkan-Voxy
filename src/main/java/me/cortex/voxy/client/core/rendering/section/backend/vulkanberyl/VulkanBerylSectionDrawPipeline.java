@@ -2486,6 +2486,38 @@ public final class VulkanBerylSectionDrawPipeline {
 
 
 
+    private static boolean drawCountStoreSuppressedForDiagnosticSafetyActive() {
+        return CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER
+                && !ENABLE_INDIRECT_DRAW
+                && disableAnyDrawCountConsumerPathActive();
+    }
+
+    private static String safeActiveCmdgenShaderResource() {
+        if (drawCountStoreSuppressedForDiagnosticSafetyActive()) {
+            return CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_RESOURCE;
+        }
+        return activeCmdgenShaderResource();
+    }
+
+    private static String safeActiveCmdgenShaderName() {
+        if (drawCountStoreSuppressedForDiagnosticSafetyActive()) {
+            return CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_NAME;
+        }
+        return activeCmdgenShaderName();
+    }
+
+    private static void logDrawCountStoreSuppressedForDiagnosticSafety(String shaderResource, String shaderName) {
+        if (!drawCountStoreSuppressedForDiagnosticSafetyActive()) return;
+        VulkanBerylDebugLog.once("cmdgen-drawcount-store-suppressed-for-diagnostic-safety", "cmdgen drawCount diagnostic store suppressed: drawCountStoreSuppressedForDiagnosticSafety=true"
+                + ", originalShader=" + CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_NAME
+                + ", replacementShader=cmdgen_standalone_drawcount_declared_no_write"
+                + ", selectedResource=" + shaderResource
+                + ", selectedShaderName=" + shaderName
+                + ", indirectDrawEnabled=" + ENABLE_INDIRECT_DRAW
+                + ", drawCountConsumers=disabled_by_env"
+                + ", reason=drawCount store isolated as device-loss trigger");
+    }
+
     private static void logSelectedCmdgenShaderDiagnostics(String shaderResource, String shaderName) {
         if (!CMDGEN_DUMP_SHADER_DIAGNOSTICS) return;
         VulkanBerylDebugLog.once("cmdgen-selected-shader-diagnostics", "selected cmdgen shader diagnostics: resource=" + shaderResource
@@ -2528,7 +2560,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int drawCountBindingDeclarations = countOccurrences(shaderSource, "layout(binding = " + CMDGEN_DRAW_COUNT_BINDING + ", std430)") + countOccurrences(shaderSource, "layout(binding=" + CMDGEN_DRAW_COUNT_BINDING + ",std430)");
         int drawCountStores = countOccurrences(shaderSource, "drawCount =") + countOccurrences(shaderSource, "drawCount[0] =") + countOccurrences(shaderSource, "atomicAdd(drawCount") + countOccurrences(shaderSource, "atomicExchange(drawCount");
         int commandStores = countOccurrences(shaderSource, "commands[");
-        boolean noConfigZero = CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER;
+        boolean noConfigZero = CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER && !drawCountStoreSuppressedForDiagnosticSafetyActive();
         VulkanBerylDebugLog.once("cmdgen-selected-shader-source-analysis:" + shaderResource, "selected cmdgen shader source analysis: resource=" + shaderResource
                 + ", mode=" + activeCmdgenShaderMode()
                 + ", drawCountGlslBlockBinding=" + CMDGEN_DRAW_COUNT_BINDING
@@ -2569,8 +2601,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.commandGenPipeline != null) return;
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(CMDGEN_SHADER_CONFIG);
         Objects.requireNonNull(configUrl, "Missing section cmdgen shader config: " + CMDGEN_SHADER_CONFIG);
-        String cmdgenShaderResource = activeCmdgenShaderResource();
-        String cmdgenShaderName = activeCmdgenShaderName();
+        String cmdgenShaderResource = safeActiveCmdgenShaderResource();
+        String cmdgenShaderName = safeActiveCmdgenShaderName();
+        logDrawCountStoreSuppressedForDiagnosticSafety(cmdgenShaderResource, cmdgenShaderName);
         if (activeCmdgenShaderSelectionEnvVar() != null) {
             logSelectedCmdgenShaderSourceAnalysis(cmdgenShaderResource, readShaderResourceSource(cmdgenShaderResource));
         }
@@ -2724,7 +2757,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Cmdgen descriptor layout mismatch: jsonBindings=" + jsonBindings + ", expected=" + expectedBindings);
         }
         String shaderSource;
-        String cmdgenShaderResource = activeCmdgenShaderResource();
+        String cmdgenShaderResource = safeActiveCmdgenShaderResource();
         String resourcePath = cmdgenShaderResource.replace("voxy:", "/assets/voxy/");
         try (var stream = VulkanBerylSectionDrawPipeline.class.getResourceAsStream(resourcePath)) {
             if (stream == null) {
