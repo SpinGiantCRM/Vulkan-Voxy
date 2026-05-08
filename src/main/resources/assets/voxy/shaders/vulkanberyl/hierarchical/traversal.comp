@@ -110,29 +110,40 @@ void enqueueChildren(in UnpackedNode node) {
     }
 }
 
+bool reserveRenderQueueSlot(out uint renderIndex) {
+    uint observed = renderQueueIndex;
+    while (observed < renderQueueMaxSize) {
+        uint previous = atomicCompSwap(renderQueueIndex, observed, observed + 1u);
+        if (previous == observed) {
+            renderIndex = observed;
+            return true;
+        }
+        observed = previous;
+    }
+    return false;
+}
+
 void enqueueSelfForRender(in UnpackedNode node) {
     if (frameId < 4u) {
         return;
     }
     //printf("render %d@[%d,%d,%d]", node.lodLevel, node.pos.x, node.pos.y, node.pos.z);
-    if (renderQueueIndex < renderQueueMaxSize) {
-        uint nodeId = getId(node);
-        if (nodeId < maxNodeCount) {
-            lastRenderFrame[nodeId] = frameId;
-        }
-        if (!isEmptyMesh(node)) {
-            uint renderIndex = atomicAdd(renderQueueIndex, 1);
-            if (renderIndex < renderQueueMaxSize) {
-                renderQueue[renderIndex] = getMesh(node);
-
-                #ifdef IS_DEBUG
-                debugRenderNodeQueue[atomicAdd(debugRenderNodeQueueIndex, 1)] = node.nodeId;
-                #endif
-
-                #ifdef HAS_STATISTICS
-                atomicAdd(renderCounts[node.lodLevel], 1);
-                #endif
+    if (!isEmptyMesh(node)) {
+        uint renderIndex;
+        if (reserveRenderQueueSlot(renderIndex)) {
+            uint nodeId = getId(node);
+            if (nodeId < maxNodeCount) {
+                lastRenderFrame[nodeId] = frameId;
             }
+            renderQueue[renderIndex] = getMesh(node);
+
+            #ifdef IS_DEBUG
+            debugRenderNodeQueue[atomicAdd(debugRenderNodeQueueIndex, 1)] = node.nodeId;
+            #endif
+
+            #ifdef HAS_STATISTICS
+            atomicAdd(renderCounts[node.lodLevel], 1);
+            #endif
         }
     }
 }
