@@ -57,6 +57,11 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private static final String RENDER_LIST_COUNTER_SOURCE_BUFFER = "voxy_vulkanberyl_render_list";
     private static final int RENDER_LIST_COUNTER_READBACK_SENTINEL = 0x7F51C0DE;
+    private static final int RENDER_LIST_COUNTER_READBACK_USAGE = VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    private static final int RENDER_LIST_READBACK_DIAGNOSTIC_NONE = 0;
+    private static final int RENDER_LIST_READBACK_DIAGNOSTIC_DESTINATION_FILL = 1;
+    private static final int RENDER_LIST_READBACK_DIAGNOSTIC_SOURCE_COPY = 2;
+    private static final int RENDER_LIST_READBACK_DESTINATION_FILL_EXPECTED = 0x12345678;
     private final AsyncNodeManager nodeManager;
     private final RenderGenerationService renderGen;
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
@@ -95,6 +100,12 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private long requestReadbackFrameId = -1;
     private long renderListReadbackFrameId = -1;
     private int renderListReadbackRendererFrameSlot = -1;
+    private long renderListReadbackRecordedCommandBufferAddress;
+    private int renderListCounterReadbackDiagnosticMode = RENDER_LIST_READBACK_DIAGNOSTIC_NONE;
+    private boolean renderListDestinationFillSmokeSucceeded;
+    private boolean renderListSourceCopySmokeSucceeded;
+    private int lastRenderListDestinationFillObserved = RENDER_LIST_COUNTER_READBACK_SENTINEL;
+    private int lastRenderListSourceCopyObserved = RENDER_LIST_COUNTER_READBACK_SENTINEL;
     private long frameId;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
@@ -106,7 +117,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.traversalResources = new VulkanBerylTraversalResources();
         this.requestReadbackBuffer = new Buffer("voxy_vulkanberyl_traversal_request_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
         this.requestReadbackBuffer.createBuffer(VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES);
-        this.renderListCounterReadbackBuffer = new Buffer("voxy_vulkanberyl_render_list_count_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
+        this.renderListCounterReadbackBuffer = new Buffer("voxy_vulkanberyl_render_list_count_readback", RENDER_LIST_COUNTER_READBACK_USAGE, MemoryTypes.HOST_MEM);
         this.renderListCounterReadbackBuffer.createBuffer(Integer.BYTES);
         this.renderListSampleReadbackBuffer = new Buffer("voxy_vulkanberyl_render_list_sample_readback", VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.HOST_MEM);
         this.renderListSampleReadbackBuffer.createBuffer(Integer.BYTES + (long) RENDER_LIST_SAMPLE_LIMIT * Integer.BYTES);
@@ -362,58 +373,113 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     + " gpuCompletionKnown=false");
             return;
         }
+        long readbackBufferId = this.renderListCounterReadbackBuffer.getId();
+        long readbackBufferSizeBytes = this.renderListCounterReadbackBuffer.getBufferSize();
+        boolean readbackBufferWritable = readbackBufferId != 0L
+                && readbackBufferSizeBytes >= VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES
+                && (RENDER_LIST_COUNTER_READBACK_USAGE & VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0;
+        int diagnosticMode = nextRenderListCounterReadbackDiagnosticMode();
+        boolean readbackDestinationFillRecorded = diagnosticMode == RENDER_LIST_READBACK_DIAGNOSTIC_DESTINATION_FILL;
+        boolean renderListSourceCopyRecorded = diagnosticMode == RENDER_LIST_READBACK_DIAGNOSTIC_SOURCE_COPY;
         long readbackPtr = this.renderListCounterReadbackBuffer.getDataPtr();
         if (readbackPtr != 0L) {
             MemoryUtil.memPutInt(readbackPtr, RENDER_LIST_COUNTER_READBACK_SENTINEL);
         }
+        if (!readbackBufferWritable) {
+            VulkanBerylDebugLog.warnRateLimited("render-list-counter-readback-buffer-invalid", "Render-list counter readback buffer invalid at scheduling: readbackBufferId=" + readbackBufferId
+                    + " readbackBufferSizeBytes=" + readbackBufferSizeBytes
+                    + " readbackBufferUsage=" + bufferUsageString(RENDER_LIST_COUNTER_READBACK_USAGE)
+                    + " readbackDestinationFillRecorded=false"
+                    + " renderListSourceCopyRecorded=false"
+                    + " gpuCompletionKnown=false");
+            return;
+        }
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
-            int readbackSrcAccess = VK10.VK_ACCESS_TRANSFER_WRITE_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT;
-            int readbackDstAccess = VK10.VK_ACCESS_TRANSFER_READ_BIT;
-            int readbackSrcStages = VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-            int readbackDstStages = VK10.VK_PIPELINE_STAGE_TRANSFER_BIT;
-            VkBufferMemoryBarrier.Buffer toTransfer = VkBufferMemoryBarrier.calloc(1, stack)
-                    .sType(VK10.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
-                    .srcAccessMask(readbackSrcAccess)
-                    .dstAccessMask(readbackDstAccess)
-                    .srcQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
-                    .dstQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
-                    .buffer(renderList.getBuffer().getId())
-                    .offset(VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES)
-                    .size(VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES);
-            VK10.vkCmdPipelineBarrier(commandBuffer,
-                    readbackSrcStages,
-                    readbackDstStages,
-                    0, null, toTransfer, null);
-            VulkanBerylDebugLog.once("render-list-counter-readback-barrier", "Render-list counter readback barrier: counterClearToReadbackBarrier=true"
-                    + " readbackBarrierSrcAccess=TRANSFER_WRITE|SHADER_WRITE"
-                    + " readbackBarrierDstAccess=TRANSFER_READ"
-                    + " readbackBarrierSrcStages=TRANSFER|COMPUTE_SHADER"
-                    + " readbackBarrierDstStages=TRANSFER");
+            if (readbackDestinationFillRecorded) {
+                VK10.vkCmdFillBuffer(commandBuffer, readbackBufferId, 0L, VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES, RENDER_LIST_READBACK_DESTINATION_FILL_EXPECTED);
+                recordReadbackToHostBarrier(commandBuffer, stack);
+            } else {
+                int readbackSrcAccess = VK10.VK_ACCESS_TRANSFER_WRITE_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT;
+                int readbackDstAccess = VK10.VK_ACCESS_TRANSFER_READ_BIT;
+                int readbackSrcStages = VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+                int readbackDstStages = VK10.VK_PIPELINE_STAGE_TRANSFER_BIT;
+                if (renderListSourceCopyRecorded) {
+                    VK10.vkCmdFillBuffer(commandBuffer, renderList.getBuffer().getId(), VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES, VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES, 0);
+                    readbackSrcAccess = VK10.VK_ACCESS_TRANSFER_WRITE_BIT;
+                    readbackSrcStages = VK10.VK_PIPELINE_STAGE_TRANSFER_BIT;
+                }
+                VkBufferMemoryBarrier.Buffer toTransfer = VkBufferMemoryBarrier.calloc(1, stack)
+                        .sType(VK10.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
+                        .srcAccessMask(readbackSrcAccess)
+                        .dstAccessMask(readbackDstAccess)
+                        .srcQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                        .dstQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                        .buffer(renderList.getBuffer().getId())
+                        .offset(VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES)
+                        .size(VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES);
+                VK10.vkCmdPipelineBarrier(commandBuffer,
+                        readbackSrcStages,
+                        readbackDstStages,
+                        0, null, toTransfer, null);
+                VulkanBerylDebugLog.once("render-list-counter-readback-barrier", "Render-list counter readback barrier: counterClearToReadbackBarrier=true"
+                        + " readbackBarrierSrcAccess=TRANSFER_WRITE|SHADER_WRITE"
+                        + " readbackBarrierDstAccess=TRANSFER_READ"
+                        + " readbackBarrierSrcStages=TRANSFER|COMPUTE_SHADER"
+                        + " readbackBarrierDstStages=TRANSFER");
 
-            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack)
-                    .srcOffset(VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES)
-                    .dstOffset(0L)
-                    .size(VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES);
-            VK10.vkCmdCopyBuffer(commandBuffer, renderList.getBuffer().getId(), this.renderListCounterReadbackBuffer.getId(), copyRegion);
-
-            VkMemoryBarrier.Buffer toHost = VkMemoryBarrier.calloc(1, stack)
-                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
-                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
-                    .dstAccessMask(VK10.VK_ACCESS_HOST_READ_BIT);
-            VK10.vkCmdPipelineBarrier(commandBuffer,
-                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    VK10.VK_PIPELINE_STAGE_HOST_BIT,
-                    0, toHost, null, null);
+                VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack)
+                        .srcOffset(VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES)
+                        .dstOffset(0L)
+                        .size(VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES);
+                VK10.vkCmdCopyBuffer(commandBuffer, renderList.getBuffer().getId(), readbackBufferId, copyRegion);
+                recordReadbackToHostBarrier(commandBuffer, stack);
+            }
         }
         this.pendingRenderListCounterSource = renderList;
         this.renderListReadbackFrameId = this.frameId;
         this.renderListReadbackRendererFrameSlot = safeRendererFrameSlot();
+        this.renderListReadbackRecordedCommandBufferAddress = commandBuffer.address();
+        this.renderListCounterReadbackDiagnosticMode = diagnosticMode;
         this.renderListCounterReadbackPending = true;
         this.lastRenderListReadbackReason = "pending_gpu_readback";
         VulkanBerylDebugLog.trace("render-list-counter-readback-scheduled", "Render-list counter readback scheduled: readbackFrameId=" + this.renderListReadbackFrameId
                 + " readbackRendererFrameSlot=" + this.renderListReadbackRendererFrameSlot
+                + " readbackCommandBufferAddress=0x" + Long.toHexString(this.renderListReadbackRecordedCommandBufferAddress)
+                + " renderListBufferId=" + renderList.getBuffer().getId()
+                + " copyDestinationBufferId=" + readbackBufferId
+                + " readbackBufferId=" + readbackBufferId
+                + " readbackBufferSizeBytes=" + readbackBufferSizeBytes
+                + " readbackBufferUsage=" + bufferUsageString(RENDER_LIST_COUNTER_READBACK_USAGE)
+                + " readbackDestinationFillRecorded=" + readbackDestinationFillRecorded
+                + " readbackDestinationFillExpected=0x" + Integer.toHexString(RENDER_LIST_READBACK_DESTINATION_FILL_EXPECTED)
+                + " renderListSourceCopyRecorded=" + renderListSourceCopyRecorded
+                + " renderListSourceCopyExpected=0"
                 + " hostMemoryCoherent=" + isHostMemoryCoherent()
                 + " hostMemoryInvalidatedBeforeRead=false");
+    }
+
+    private int nextRenderListCounterReadbackDiagnosticMode() {
+        if (TRAVERSAL_STAGE_LIMIT != 1) {
+            return RENDER_LIST_READBACK_DIAGNOSTIC_NONE;
+        }
+        if (!this.renderListDestinationFillSmokeSucceeded) {
+            return RENDER_LIST_READBACK_DIAGNOSTIC_DESTINATION_FILL;
+        }
+        if (!this.renderListSourceCopySmokeSucceeded) {
+            return RENDER_LIST_READBACK_DIAGNOSTIC_SOURCE_COPY;
+        }
+        return RENDER_LIST_READBACK_DIAGNOSTIC_NONE;
+    }
+
+    private static void recordReadbackToHostBarrier(VkCommandBuffer commandBuffer, org.lwjgl.system.MemoryStack stack) {
+        VkMemoryBarrier.Buffer toHost = VkMemoryBarrier.calloc(1, stack)
+                .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                .dstAccessMask(VK10.VK_ACCESS_HOST_READ_BIT);
+        VK10.vkCmdPipelineBarrier(commandBuffer,
+                VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK10.VK_PIPELINE_STAGE_HOST_BIT,
+                0, toHost, null, null);
     }
 
     private void submitPendingRenderListCounterReadback() {
@@ -453,16 +519,56 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         }
         int rawCount = MemoryUtil.memGetInt(readbackPtr);
         boolean sentinelRemained = rawCount == RENDER_LIST_COUNTER_READBACK_SENTINEL;
+        int completedDiagnosticMode = this.renderListCounterReadbackDiagnosticMode;
+        boolean readbackDestinationFillRecorded = completedDiagnosticMode == RENDER_LIST_READBACK_DIAGNOSTIC_DESTINATION_FILL;
+        boolean renderListSourceCopyRecorded = completedDiagnosticMode == RENDER_LIST_READBACK_DIAGNOSTIC_SOURCE_COPY;
+        if (readbackDestinationFillRecorded) {
+            this.lastRenderListDestinationFillObserved = rawCount;
+            this.renderListDestinationFillSmokeSucceeded = rawCount == RENDER_LIST_READBACK_DESTINATION_FILL_EXPECTED;
+        }
+        if (renderListSourceCopyRecorded) {
+            this.lastRenderListSourceCopyObserved = rawCount;
+            this.renderListSourceCopySmokeSucceeded = rawCount == 0;
+        }
         this.lastRawVisibleSectionCount = rawCount;
         VulkanBerylDebugLog.trace("traversal-render-list-readback", "Traversal readback: readbackFrameId=" + this.renderListReadbackFrameId
                 + " currentFrameId=" + this.frameId
                 + " readbackAgeFrames=" + readbackAgeFrames
                 + " readbackRendererFrameSlot=" + this.renderListReadbackRendererFrameSlot
                 + " currentRendererFrameSlot=" + currentRendererFrameSlot
+                + " readbackCommandBufferAddress=0x" + Long.toHexString(this.renderListReadbackRecordedCommandBufferAddress)
                 + " gpuCompletionKnown=true rawRenderListCount=" + rawCount
+                + " readbackBufferId=" + this.renderListCounterReadbackBuffer.getId()
+                + " readbackBufferSizeBytes=" + this.renderListCounterReadbackBuffer.getBufferSize()
+                + " readbackBufferUsage=" + bufferUsageString(RENDER_LIST_COUNTER_READBACK_USAGE)
+                + " readbackDestinationFillRecorded=" + readbackDestinationFillRecorded
+                + " readbackDestinationFillExpected=0x" + Integer.toHexString(RENDER_LIST_READBACK_DESTINATION_FILL_EXPECTED)
+                + " readbackDestinationFillObserved=" + hexAndInt(this.lastRenderListDestinationFillObserved)
+                + " readbackDestinationFillSucceeded=" + this.renderListDestinationFillSmokeSucceeded
+                + " renderListSourceCopyRecorded=" + renderListSourceCopyRecorded
+                + " renderListSourceCopyExpected=0"
+                + " renderListSourceCopyObserved=" + hexAndInt(this.lastRenderListSourceCopyObserved)
+                + " renderListSourceCopySucceeded=" + this.renderListSourceCopySmokeSucceeded
                 + " hostMemoryCoherent=" + hostMemoryCoherent
                 + " hostMemoryInvalidatedBeforeRead=false"
                 + " readbackSentinelRemained=" + sentinelRemained);
+        if (readbackDestinationFillRecorded || renderListSourceCopyRecorded) {
+            this.lastRenderListCounterDiscarded = true;
+            this.lastRenderListReadbackValid = false;
+            this.lastRenderListReadbackReason = readbackDestinationFillRecorded ? "destination_fill_smoke_completed" : "source_copy_smoke_completed";
+            VulkanBerylDebugLog.trace("render-list-counter-readback-status", "Render-list counter readback smoke completed without accepting a visible count: rawRenderListCount=" + rawCount
+                    + " readbackDestinationFillRecorded=" + readbackDestinationFillRecorded
+                    + " readbackDestinationFillSucceeded=" + this.renderListDestinationFillSmokeSucceeded
+                    + " renderListSourceCopyRecorded=" + renderListSourceCopyRecorded
+                    + " renderListSourceCopySucceeded=" + this.renderListSourceCopySmokeSucceeded);
+            logRenderListReadbackDiagnostics(renderList, "counter_readback_smoke_completed");
+            this.renderListCounterReadbackPending = false;
+            this.pendingRenderListCounterSource = null;
+            this.renderListReadbackRendererFrameSlot = -1;
+            this.renderListReadbackRecordedCommandBufferAddress = 0L;
+            this.renderListCounterReadbackDiagnosticMode = RENDER_LIST_READBACK_DIAGNOSTIC_NONE;
+            return;
+        }
         int maxEntryCount = renderList.getMaxEntryCount();
         int acceptedCount = rawCount;
         boolean discarded = false;
@@ -498,6 +604,21 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.renderListCounterReadbackPending = false;
         this.pendingRenderListCounterSource = null;
         this.renderListReadbackRendererFrameSlot = -1;
+        this.renderListReadbackRecordedCommandBufferAddress = 0L;
+        this.renderListCounterReadbackDiagnosticMode = RENDER_LIST_READBACK_DIAGNOSTIC_NONE;
+    }
+
+    private static String hexAndInt(int value) {
+        return "0x" + Integer.toHexString(value) + "/" + value;
+    }
+
+    private static String bufferUsageString(int usageFlags) {
+        java.util.ArrayList<String> usages = new java.util.ArrayList<>();
+        if ((usageFlags & VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0) usages.add("STORAGE");
+        if ((usageFlags & VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0) usages.add("INDIRECT");
+        if ((usageFlags & VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0) usages.add("TRANSFER_DST");
+        if ((usageFlags & VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0) usages.add("TRANSFER_SRC");
+        return usages.isEmpty() ? "0" : String.join("|", usages);
     }
 
     private static int safeRendererFrameSlot() {
