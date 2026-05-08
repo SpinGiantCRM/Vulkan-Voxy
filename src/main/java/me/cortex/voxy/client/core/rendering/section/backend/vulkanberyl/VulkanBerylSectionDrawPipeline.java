@@ -526,6 +526,8 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety = VulkanBerylRenderBackendRuntime.getLastFrameSafetyState();
         CmdgenIsolationStage isolationStage = selectedCmdgenIsolationStage();
         boolean noDrawCountFullCmdgen = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
+        ControlledRenderListSmoke cpuSelectionSmoke = controlledSmoke.enabled() ? controlledSmoke : findControlledRenderListSmokeSection(geometryData, renderList);
+        logRenderListVisibilityDiagnostics(renderList, geometryData, controlledSmoke, cpuSelectionSmoke, rawVisibleCount, visibleCount, noDrawCountFullCmdgen, "frame_gate");
         boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK && !noDrawCountFullCmdgen;
         boolean fullCmdgenDispatchAllowed = ENABLE_CMDGEN_DISPATCH && (isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED);
         String fullCmdgenDispatchBlocker = fullCmdgenDispatchAllowed ? "ready" : (!ENABLE_CMDGEN_DISPATCH ? "cmdgen_dispatch_disabled" : "select_isolation_stage_or_force_full_cmdgen_dispatch_with_indirect_disabled");
@@ -554,6 +556,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", finalBlockerReason=" + fullCmdgenDispatchBlocker);
         int javaDrawCountForNoDrawCountCmdgen = visibleCount;
         if (visibleCount <= 0) {
+            logVisibleCountZeroReason(renderList, rawVisibleCount, visibleCount, frameSafety, controlledSmoke, cpuSelectionSmoke, noDrawCountFullCmdgen);
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "visible_count_zero_or_negative");
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
         }
@@ -1195,6 +1198,57 @@ public final class VulkanBerylSectionDrawPipeline {
         boolean requiresControlledSection() {
             return this == READ_METADATA_ONLY || this == WRITE_DRAWS_ONLY;
         }
+    }
+
+
+    private void logRenderListVisibilityDiagnostics(VulkanBerylViewportRenderList renderList,
+                                                    VulkanBerylSectionGeometryData geometryData,
+                                                    ControlledRenderListSmoke controlledSmoke,
+                                                    ControlledRenderListSmoke cpuSelectionSmoke,
+                                                    int rawVisibleCount,
+                                                    int visibleCount,
+                                                    boolean noDrawCountFullCmdgen,
+                                                    String stage) {
+        boolean cpuSelectionFound = cpuSelectionSmoke.safe();
+        VulkanBerylDebugLog.rateLimited("render-list-visibility-diagnostics", "Render-list visibility diagnostics: stage=" + stage
+                + " rawRenderListLastVisibleCount=" + renderList.getLastVisibleCount()
+                + " rawVisibleCountUsed=" + rawVisibleCount
+                + " clampedVisibleCount=" + visibleCount
+                + " maxEntryCount=" + renderList.getMaxEntryCount()
+                + " controlledSmokeEnabled=" + controlledSmoke.enabled()
+                + " controlledSmokeSafe=" + controlledSmoke.safe()
+                + " cpuVisibilitySelectionFound=" + cpuSelectionFound
+                + " cpuVisibilitySelectionReason=" + cpuSelectionSmoke.reason()
+                + " cpuSelectionSectionId=" + cpuSelectionSmoke.sectionId()
+                + " sectionCount=" + Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount())
+                + " geometrySyncGeneration=" + geometryData.getGeometrySyncGeneration()
+                + " usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
+                + " noDrawCountFullCmdgen=" + noDrawCountFullCmdgen, 120);
+    }
+
+    private void logVisibleCountZeroReason(VulkanBerylViewportRenderList renderList,
+                                           int rawVisibleCount,
+                                           int visibleCount,
+                                           VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety,
+                                           ControlledRenderListSmoke controlledSmoke,
+                                           ControlledRenderListSmoke cpuSelectionSmoke,
+                                           boolean noDrawCountFullCmdgen) {
+        String reasonDetail = rawVisibleCount < 0
+                ? "render_list_readback_not_valid_yet"
+                : (rawVisibleCount == 0 ? "render_list_readback_valid_but_zero_or_controlled_smoke_missing" : "visible_count_clamped_to_zero");
+        VulkanBerylDebugLog.rateLimited("visible-count-zero-diagnostic", "visible_count_zero_or_negative: rawRenderListLastVisibleCount=" + renderList.getLastVisibleCount()
+                + " rawVisibleCountUsed=" + rawVisibleCount
+                + " clampedVisibleCount=" + visibleCount
+                + " maxEntryCount=" + renderList.getMaxEntryCount()
+                + " frameSafetyAllowCmdGen=" + frameSafety.allowCmdGen()
+                + " frameSafetyAllowIndirectDraw=" + frameSafety.allowIndirectDraw()
+                + " frameSafetyReason=" + frameSafety.reason()
+                + " reasonDetail=" + reasonDetail
+                + " controlledSmokeEnabled=" + controlledSmoke.enabled()
+                + " controlledSmokeSafe=" + controlledSmoke.safe()
+                + " cpuVisibilitySelectionFound=" + cpuSelectionSmoke.safe()
+                + " cpuVisibilitySelectionReason=" + cpuSelectionSmoke.reason()
+                + " noDrawCountFullCmdgen=" + noDrawCountFullCmdgen, 120);
     }
 
     private ControlledRenderListSmoke recordControlledRenderListSmoke(VkCommandBuffer commandBuffer, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {

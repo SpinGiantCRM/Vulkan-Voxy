@@ -68,7 +68,12 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private VulkanBerylViewportRenderList pendingRenderListSampleSource;
     private VulkanBerylSectionGeometryData pendingRenderListSampleGeometry;
     private int lastVisibleSectionCount = -1;
+    private int lastRawVisibleSectionCount = -1;
     private int lastVisibleSectionCapacity = -1;
+    private boolean lastRenderListPopulationThisFrame;
+    private boolean lastRenderListReadbackScheduledThisFrame;
+    private boolean lastRenderListReadbackValid;
+    private String lastRenderListReadbackReason = "not_scheduled";
     private int lastSampledRenderListEntryCount;
     private int lastInvalidSampledRenderListEntryCount;
     private int lastSampledVisibleSectionCount = -1;
@@ -157,11 +162,14 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         boolean initialTraversalDispatch = false;
         int remainingTraversalDispatchesRan = 0;
         boolean traversalReadbacksScheduled = false;
+        this.lastRenderListPopulationThisFrame = false;
+        this.lastRenderListReadbackScheduledThisFrame = false;
         if (TRAVERSAL_SMOKE_NOOP) {
             this.scheduleRequestReadback(commandBuffer);
             this.scheduleRenderListCounterReadback(commandBuffer, renderList);
             this.scheduleRenderListSampleReadback(commandBuffer, renderList);
             traversalReadbacksScheduled = true;
+            this.lastRenderListPopulationThisFrame = TRAVERSAL_SMOKE_WRITE_KNOWN;
             VulkanBerylDebugLog.once("traversal-smoke-noop-active", "Traversal smoke mode active: noop=true writeKnown=" + TRAVERSAL_SMOKE_WRITE_KNOWN + " traversal shader dispatch skipped");
         } else if (ENABLE_TRAVERSAL_DISPATCH && (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE || TRAVERSAL_STAGE_LIMIT > 0)) {
             this.traversalExecutor.prepareTraversal(vulkanViewport);
@@ -186,13 +194,16 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 this.scheduleRenderListCounterReadback(commandBuffer, renderList);
                 this.scheduleRenderListSampleReadback(commandBuffer, renderList);
                 traversalReadbacksScheduled = true;
+                this.lastRenderListPopulationThisFrame = true;
             }
         } else {
             VulkanBerylDebugLog.traceOnce("traversal-dispatch-disabled", "Traversal dispatch disabled by safety gate/stage limit; skipping real traversal dispatches and traversal readbacks");
         }
+        this.lastRenderListReadbackScheduledThisFrame = traversalReadbacksScheduled;
         VulkanBerylDebugLog.trace("traversal-dispatch-status", "Traversal dispatch status: initialTraversalDispatch=" + initialTraversalDispatch
                 + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
                 + " traversalReadbacksScheduled=" + traversalReadbacksScheduled);
+        logRenderListPopulationDiagnostics(renderList, topNodeCount, frameInit, initialTraversalDispatch, remainingTraversalDispatchesRan, traversalReadbacksScheduled);
         this.frameSequence++;
         this.frameId++;
         updateFrameSafetyState(renderList.getMaxEntryCount());
@@ -304,6 +315,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.pendingRenderListCounterSource = renderList;
         this.renderListReadbackFrameId = this.frameId;
         this.renderListCounterReadbackPending = true;
+        this.lastRenderListReadbackReason = "pending_gpu_readback";
     }
 
     private void submitPendingRenderListCounterReadback() {
@@ -323,6 +335,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             return;
         }
         int rawCount = MemoryUtil.memGetInt(readbackPtr);
+        this.lastRawVisibleSectionCount = rawCount;
         VulkanBerylDebugLog.trace("traversal-render-list-readback", "Traversal readback: frameId=" + this.renderListReadbackFrameId + " gpuCompletionConfirmed=true rawRenderListCount=" + rawCount);
         int maxEntryCount = renderList.getMaxEntryCount();
         int acceptedCount = rawCount;
@@ -334,11 +347,14 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             discarded = true;
         }
         this.lastRenderListCounterDiscarded = discarded;
+        this.lastRenderListReadbackValid = !discarded;
+        this.lastRenderListReadbackReason = discarded ? "counter_out_of_range" : "valid_gpu_readback";
         renderList.setLastVisibleCount(acceptedCount);
         this.lastVisibleSectionCount = acceptedCount;
         this.lastVisibleSectionCapacity = maxEntryCount;
         VulkanBerylDebugLog.trace("render-list-counter-readback-status", "Render-list counter readback: rawRenderListCount=" + rawCount
                 + " acceptedRenderListCount=" + acceptedCount + " renderListCounterDiscarded=" + discarded);
+        logRenderListReadbackDiagnostics(renderList, "counter_readback_completed");
         this.renderListCounterReadbackPending = false;
         this.pendingRenderListCounterSource = null;
     }
@@ -445,8 +461,77 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         boolean noCorruption = !this.lastRequestReadbackDiscarded && !this.lastRenderListSampleDiscarded;
         boolean allowCmdgen = this.frameSequence >= 2 && goodCounter && noCorruption;
         boolean allowIndirect = this.frameSequence >= 3 && allowCmdgen && this.lastInvalidSampledRenderListEntryCount == 0;
+        String waitingReason = renderListReadbackWaitingReason(maxEntryCount, goodCounter);
         String reason = allowIndirect ? "ready" : (!goodCounter ? "waiting_for_valid_render_list_readback" : (!noCorruption ? "previous_frame_corruption_detected" : (this.frameSequence < 2 ? "frame_stage_wait_n1" : "frame_stage_wait_n2")));
         LAST_FRAME_SAFETY_STATE = new FrameSafetyState(allowCmdgen, allowIndirect, reason);
+        if (!goodCounter || this.lastVisibleSectionCount <= 0) {
+            VulkanBerylDebugLog.rateLimited("render-list-safety-state", "Render-list safety state: reason=" + reason
+                    + " waitingDetail=" + waitingReason
+                    + " rawRenderListVisibleCount=" + this.lastRawVisibleSectionCount
+                    + " acceptedRenderListVisibleCount=" + this.lastVisibleSectionCount
+                    + " renderListLastVisibleCount=" + this.lastVisibleSectionCount
+                    + " maxEntryCount=" + maxEntryCount
+                    + " populationThisFrame=" + this.lastRenderListPopulationThisFrame
+                    + " readbackScheduledThisFrame=" + this.lastRenderListReadbackScheduledThisFrame
+                    + " readbackPending=" + this.renderListCounterReadbackPending
+                    + " readbackValid=" + this.lastRenderListReadbackValid
+                    + " readbackReason=" + this.lastRenderListReadbackReason
+                    + " frameSequence=" + this.frameSequence, 120);
+        }
+    }
+
+    private String renderListReadbackWaitingReason(int maxEntryCount, boolean goodCounter) {
+        if (goodCounter) {
+            return this.lastVisibleSectionCount <= 0 ? "valid_readback_visible_count_zero" : "valid_readback_nonzero";
+        }
+        if (this.lastRenderListCounterDiscarded) {
+            return "last_counter_readback_discarded:" + this.lastRenderListReadbackReason;
+        }
+        if (this.renderListCounterReadbackPending) {
+            return "counter_readback_pending";
+        }
+        if (!this.lastRenderListReadbackScheduledThisFrame && this.lastVisibleSectionCount < 0) {
+            return "no_render_list_readback_scheduled_yet";
+        }
+        if (this.lastVisibleSectionCount < 0) {
+            return "no_completed_render_list_readback";
+        }
+        if (this.lastVisibleSectionCount > maxEntryCount) {
+            return "accepted_count_exceeds_capacity";
+        }
+        return "unknown_counter_state";
+    }
+
+    private void logRenderListPopulationDiagnostics(VulkanBerylViewportRenderList renderList,
+                                                   int topNodeCount,
+                                                   VulkanBerylTraversalResources.FrameInitStats frameInit,
+                                                   boolean initialTraversalDispatch,
+                                                   int remainingTraversalDispatchesRan,
+                                                   boolean traversalReadbacksScheduled) {
+        VulkanBerylDebugLog.rateLimited("render-list-population-state", "Render-list population state: rawRenderListVisibleCount=" + this.lastRawVisibleSectionCount
+                + " renderListLastVisibleCount=" + renderList.getLastVisibleCount()
+                + " maxEntryCount=" + renderList.getMaxEntryCount()
+                + " topNodeCount=" + topNodeCount
+                + " scratchQueueASeededCount=" + frameInit.scratchQueueASeededCount()
+                + " renderListCounterCleared=" + frameInit.renderListCounterCleared()
+                + " initialTraversalDispatch=" + initialTraversalDispatch
+                + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
+                + " populationThisFrame=" + this.lastRenderListPopulationThisFrame
+                + " readbackScheduledThisFrame=" + traversalReadbacksScheduled
+                + " readbackPending=" + this.renderListCounterReadbackPending
+                + " readbackValid=" + this.lastRenderListReadbackValid
+                + " readbackReason=" + this.lastRenderListReadbackReason, 120);
+    }
+
+    private void logRenderListReadbackDiagnostics(VulkanBerylViewportRenderList renderList, String stage) {
+        VulkanBerylDebugLog.rateLimited("render-list-readback-state", "Render-list readback state: stage=" + stage
+                + " rawRenderListVisibleCount=" + this.lastRawVisibleSectionCount
+                + " acceptedRenderListVisibleCount=" + this.lastVisibleSectionCount
+                + " renderListLastVisibleCount=" + renderList.getLastVisibleCount()
+                + " maxEntryCount=" + renderList.getMaxEntryCount()
+                + " readbackValid=" + this.lastRenderListReadbackValid
+                + " readbackReason=" + this.lastRenderListReadbackReason
+                + " discarded=" + this.lastRenderListCounterDiscarded, 120);
     }
 
     @Override
@@ -454,6 +539,12 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         debug.add("Vulkan/Beryl backend runtime: initialized (primary traversal work; node metadata + TLN stores active)");
         debug.add("Vulkan/Beryl TLN: " + this.topLevelNodeStore.getTopNodeCount() + "/" + this.topLevelNodeStore.getMaxTopLevelNodeCount());
         debug.add("Vulkan/Beryl render list visible sections: " + this.lastVisibleSectionCount + "/" + this.lastVisibleSectionCapacity);
+        debug.add("Vulkan/Beryl render list raw visible sections: " + this.lastRawVisibleSectionCount);
+        debug.add("Vulkan/Beryl render list population this frame: " + this.lastRenderListPopulationThisFrame);
+        debug.add("Vulkan/Beryl render list readback: scheduledThisFrame=" + this.lastRenderListReadbackScheduledThisFrame
+                + " pending=" + this.renderListCounterReadbackPending
+                + " valid=" + this.lastRenderListReadbackValid
+                + " reason=" + this.lastRenderListReadbackReason);
         debug.add("Vulkan/Beryl render-list sample: " + this.lastSampledRenderListEntryCount + "/" + this.lastSampledVisibleSectionCount
                 + " entries, invalid=" + this.lastInvalidSampledRenderListEntryCount + ", first=" + this.lastSampledRenderListFirstEntries);
         VulkanBerylTraversalExecutor traversal = this.traversalExecutor;
