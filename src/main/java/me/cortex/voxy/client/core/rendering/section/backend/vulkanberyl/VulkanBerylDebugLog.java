@@ -19,6 +19,8 @@ final class VulkanBerylDebugLog {
     private static final String PREFIX = "[Voxy][VulkanBeryl] ";
     private static final int DEFAULT_WARN_INTERVAL_FRAMES = 300;
     private static final long DEFAULT_WARN_INTERVAL_NANOS = 10_000_000_000L;
+    private static final int DEFAULT_STATE_INTERVAL_FRAMES = 18_000;
+    private static final long DEFAULT_STATE_INTERVAL_NANOS = 600_000_000_000L;
     private static final Set<String> ONCE_KEYS = ConcurrentHashMap.newKeySet();
     private static final ConcurrentMap<String, RateState> RATE_STATES = new ConcurrentHashMap<>();
 
@@ -67,6 +69,12 @@ final class VulkanBerylDebugLog {
         }
     }
 
+    static void stateLimited(String key, String message, String stateSnapshot) {
+        if (containsSeriousDiagnostic(message) || shouldPrintState(key, stateSnapshot, DEFAULT_STATE_INTERVAL_FRAMES, DEFAULT_STATE_INTERVAL_NANOS)) {
+            info(withSuppressedCount(key, message));
+        }
+    }
+
     static void error(String message) {
         Logger.error(prefixed(message));
     }
@@ -93,24 +101,54 @@ final class VulkanBerylDebugLog {
         synchronized (state) {
             state.callsSincePrint++;
             if (!state.printed) {
-                state.printed = true;
-                state.callsSincePrint = 0;
-                state.lastPrintNanos = now;
-                state.suppressedSincePrint = 0;
+                markPrinted(state, now);
                 return true;
             }
             boolean frameReady = state.callsSincePrint >= intervalFrames;
             boolean timeReady = now - state.lastPrintNanos >= intervalNanos;
             if (frameReady || timeReady) {
-                state.lastSuppressedForPrint = state.suppressedSincePrint;
-                state.callsSincePrint = 0;
-                state.lastPrintNanos = now;
-                state.suppressedSincePrint = 0;
+                markPrinted(state, now);
                 return true;
             }
             state.suppressedSincePrint++;
             return false;
         }
+    }
+
+    private static boolean shouldPrintState(String key, String stateSnapshot, int intervalFrames, long intervalNanos) {
+        RateState state = RATE_STATES.computeIfAbsent(key, ignored -> new RateState());
+        long now = System.nanoTime();
+        synchronized (state) {
+            state.callsSincePrint++;
+            if (!state.printed || !stateSnapshot.equals(state.lastStateSnapshot)) {
+                state.lastStateSnapshot = stateSnapshot;
+                markPrinted(state, now);
+                return true;
+            }
+            boolean frameReady = state.callsSincePrint >= intervalFrames;
+            boolean timeReady = now - state.lastPrintNanos >= intervalNanos;
+            if (frameReady || timeReady) {
+                markPrinted(state, now);
+                return true;
+            }
+            state.suppressedSincePrint++;
+            return false;
+        }
+    }
+
+    private static void markPrinted(RateState state, long now) {
+        state.printed = true;
+        state.lastSuppressedForPrint = state.suppressedSincePrint;
+        state.callsSincePrint = 0;
+        state.lastPrintNanos = now;
+        state.suppressedSincePrint = 0;
+    }
+
+    private static boolean containsSeriousDiagnostic(String message) {
+        return message.contains("VK_ERROR")
+                || message.contains("DEVICE_LOST")
+                || message.contains("Exception")
+                || message.contains("ERROR");
     }
 
     private static String withSuppressedCount(String key, String message) {
@@ -128,5 +166,6 @@ final class VulkanBerylDebugLog {
         private long lastPrintNanos;
         private long suppressedSincePrint;
         private long lastSuppressedForPrint;
+        private String lastStateSnapshot = "";
     }
 }

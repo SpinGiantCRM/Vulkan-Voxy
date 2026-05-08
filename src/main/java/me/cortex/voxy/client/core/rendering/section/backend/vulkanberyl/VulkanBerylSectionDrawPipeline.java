@@ -1210,7 +1210,7 @@ public final class VulkanBerylSectionDrawPipeline {
                                                     boolean noDrawCountFullCmdgen,
                                                     String stage) {
         boolean cpuSelectionFound = cpuSelectionSmoke.safe();
-        VulkanBerylDebugLog.rateLimited("render-list-visibility-diagnostics", "Render-list visibility diagnostics: stage=" + stage
+        String message = "Render-list visibility diagnostics: stage=" + stage
                 + " rawRenderListLastVisibleCount=" + renderList.getLastVisibleCount()
                 + " rawVisibleCountUsed=" + rawVisibleCount
                 + " clampedVisibleCount=" + visibleCount
@@ -1223,7 +1223,13 @@ public final class VulkanBerylSectionDrawPipeline {
                 + " sectionCount=" + Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount())
                 + " geometrySyncGeneration=" + geometryData.getGeometrySyncGeneration()
                 + " usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
-                + " noDrawCountFullCmdgen=" + noDrawCountFullCmdgen, 120);
+                + " noDrawCountFullCmdgen=" + noDrawCountFullCmdgen;
+        String stateSnapshot = "rawRenderListVisibleCount=" + rawVisibleCount
+                + ";renderListLastVisibleCount=" + renderList.getLastVisibleCount()
+                + ";clampedVisibleCount=" + visibleCount
+                + ";maxEntryCount=" + renderList.getMaxEntryCount()
+                + ";noDrawCountFullCmdgen=" + noDrawCountFullCmdgen;
+        VulkanBerylDebugLog.stateLimited("render-list-visibility-diagnostics", message, stateSnapshot);
     }
 
     private void logVisibleCountZeroReason(VulkanBerylViewportRenderList renderList,
@@ -1236,7 +1242,7 @@ public final class VulkanBerylSectionDrawPipeline {
         String reasonDetail = rawVisibleCount < 0
                 ? "render_list_readback_not_valid_yet"
                 : (rawVisibleCount == 0 ? "render_list_readback_valid_but_zero_or_controlled_smoke_missing" : "visible_count_clamped_to_zero");
-        VulkanBerylDebugLog.rateLimited("visible-count-zero-diagnostic", "visible_count_zero_or_negative: rawRenderListLastVisibleCount=" + renderList.getLastVisibleCount()
+        String message = "visible_count_zero_or_negative: rawRenderListLastVisibleCount=" + renderList.getLastVisibleCount()
                 + " rawVisibleCountUsed=" + rawVisibleCount
                 + " clampedVisibleCount=" + visibleCount
                 + " maxEntryCount=" + renderList.getMaxEntryCount()
@@ -1248,7 +1254,15 @@ public final class VulkanBerylSectionDrawPipeline {
                 + " controlledSmokeSafe=" + controlledSmoke.safe()
                 + " cpuVisibilitySelectionFound=" + cpuSelectionSmoke.safe()
                 + " cpuVisibilitySelectionReason=" + cpuSelectionSmoke.reason()
-                + " noDrawCountFullCmdgen=" + noDrawCountFullCmdgen, 120);
+                + " noDrawCountFullCmdgen=" + noDrawCountFullCmdgen;
+        String stateSnapshot = "rawRenderListVisibleCount=" + rawVisibleCount
+                + ";renderListLastVisibleCount=" + renderList.getLastVisibleCount()
+                + ";clampedVisibleCount=" + visibleCount
+                + ";maxEntryCount=" + renderList.getMaxEntryCount()
+                + ";frameSafetyReason=" + frameSafety.reason()
+                + ";reasonDetail=" + reasonDetail
+                + ";noDrawCountFullCmdgen=" + noDrawCountFullCmdgen;
+        VulkanBerylDebugLog.stateLimited("visible-count-zero-diagnostic", message, stateSnapshot);
     }
 
     private ControlledRenderListSmoke recordControlledRenderListSmoke(VkCommandBuffer commandBuffer, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
