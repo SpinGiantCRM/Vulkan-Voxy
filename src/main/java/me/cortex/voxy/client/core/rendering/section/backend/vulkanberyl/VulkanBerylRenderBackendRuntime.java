@@ -13,6 +13,7 @@ import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkBufferCopy;
+import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkMemoryBarrier;
 
@@ -350,14 +351,28 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
             throw new IllegalStateException("Render list buffer is structurally invalid for count readback");
         }
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
-            VkMemoryBarrier.Buffer toTransfer = VkMemoryBarrier.calloc(1, stack)
-                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
-                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
-                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT);
+            int readbackSrcAccess = VK10.VK_ACCESS_TRANSFER_WRITE_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT;
+            int readbackDstAccess = VK10.VK_ACCESS_TRANSFER_READ_BIT;
+            int readbackSrcStages = VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            int readbackDstStages = VK10.VK_PIPELINE_STAGE_TRANSFER_BIT;
+            VkBufferMemoryBarrier.Buffer toTransfer = VkBufferMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
+                    .srcAccessMask(readbackSrcAccess)
+                    .dstAccessMask(readbackDstAccess)
+                    .srcQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                    .dstQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                    .buffer(renderList.getBuffer().getId())
+                    .offset(VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES)
+                    .size(VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES);
             VK10.vkCmdPipelineBarrier(commandBuffer,
-                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    0, toTransfer, null, null);
+                    readbackSrcStages,
+                    readbackDstStages,
+                    0, null, toTransfer, null);
+            VulkanBerylDebugLog.once("render-list-counter-readback-barrier", "Render-list counter readback barrier: counterClearToReadbackBarrier=true"
+                    + " readbackBarrierSrcAccess=TRANSFER_WRITE|SHADER_WRITE"
+                    + " readbackBarrierDstAccess=TRANSFER_READ"
+                    + " readbackBarrierSrcStages=TRANSFER|COMPUTE_SHADER"
+                    + " readbackBarrierDstStages=TRANSFER");
 
             VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack)
                     .srcOffset(VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES)
