@@ -38,6 +38,8 @@ public final class VulkanBerylTraversalExecutor {
     private static final String TRAVERSAL_SHADER_NAME = "vulkanberyl/hierarchical/traversal";
     private static final String TRAVERSAL_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.json";
     private static final Pattern SHADER_LINE_PATTERN = Pattern.compile(":(\\d+):\\s+error:");
+    private static final String FORCE_REAL_MAIN_RETURN_DEFINE = "VOXY_VULKAN_BERYL_TRAVERSAL_FORCE_REAL_MAIN_RETURN";
+    private static final boolean FORCE_REAL_MAIN_RETURN = Boolean.parseBoolean(System.getenv().getOrDefault(FORCE_REAL_MAIN_RETURN_DEFINE, "false"));
 
     public static final int HIZ_BINDING = 0;
     public static final int SCENE_UNIFORM_BINDING = 1;
@@ -155,6 +157,9 @@ public final class VulkanBerylTraversalExecutor {
             var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(shaderResource);
             if (!Files.isRegularFile(preprocessedShader.shaderPath())) {
                 throw new IllegalStateException("Preprocessed traversal shader file missing before compile: " + preprocessedShader.shaderPath());
+            }
+            if (FORCE_REAL_MAIN_RETURN && TRAVERSAL_SHADER_RESOURCE.equals(shaderResource)) {
+                forceRealTraversalMainReturn(preprocessedShader.shaderPath());
             }
             VulkanBerylDebugLog.verboseOnce("traversal-compile-input-verified", "compileShader input verified: shader=" + preprocessedShader.shaderName()
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
@@ -367,6 +372,31 @@ public final class VulkanBerylTraversalExecutor {
                         + " renderListBufferSizeBytes=" + renderListBuffer.getBufferSize());
     }
 
+
+    private static void forceRealTraversalMainReturn(Path shaderPath) {
+        try {
+            String source = Files.readString(shaderPath, StandardCharsets.UTF_8);
+            if (isForceRealMainReturnDefined(source)) {
+                return;
+            }
+            int versionEnd = source.indexOf('\n');
+            if (versionEnd < 0 || !source.trim().startsWith("#version")) {
+                Files.writeString(shaderPath, "#define " + FORCE_REAL_MAIN_RETURN_DEFINE + " 1\n" + source, StandardCharsets.UTF_8);
+                return;
+            }
+            String forcedSource = source.substring(0, versionEnd + 1)
+                    + "#define " + FORCE_REAL_MAIN_RETURN_DEFINE + " 1\n"
+                    + source.substring(versionEnd + 1);
+            Files.writeString(shaderPath, forcedSource, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to force real traversal main return in preprocessed shader: " + shaderPath, e);
+        }
+    }
+
+    private static boolean isForceRealMainReturnDefined(String source) {
+        return source.contains("#define " + FORCE_REAL_MAIN_RETURN_DEFINE);
+    }
+
     private void logTraversalPreprocessedShaderDiagnostics(String shaderResource, String shaderName, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
         if (!TRAVERSAL_SHADER_RESOURCE.equals(shaderResource)) {
             logTraversalSmokeBindingDiagnostics(shaderResource, preprocessedShader);
@@ -376,13 +406,17 @@ public final class VulkanBerylTraversalExecutor {
         try {
             String source = Files.readString(preprocessedShader.shaderPath(), StandardCharsets.UTF_8);
             MainSnippet snippet = extractMainSnippet(source);
-            boolean verified = verifyTraversalMainEarlyReturn(snippet.body());
+            boolean forcedReturn = isForceRealMainReturnDefined(source);
+            String mainReturnMode = forcedReturn ? "forced_unconditional_return" : "stage_limit_return";
+            boolean verified = verifyTraversalMainEarlyReturn(snippet.body(), forcedReturn);
             Set<Integer> realBindings = declaredShaderBindings(source);
-            String smokeBindings = describeSmokeBindingsForComparison();
+            String smokeBindings = forcedReturn ? "" : describeSmokeBindingsForComparison();
             VulkanBerylDebugLog.once("traversal-preprocessed-main-diagnostics", "Traversal preprocessed shader diagnostics:"
                     + " traversalShaderResource=" + shaderResource
                     + " traversalShaderName=" + shaderName
                     + " traversalPreprocessedPath=" + preprocessedShader.shaderPath()
+                    + " traversalForceRealMainReturn=" + forcedReturn
+                    + " traversalMainReturnMode=" + mainReturnMode
                     + " traversalMainEarlyReturnVerified=" + verified
                     + " traversalMainSnippetHash=" + sha256Hex(snippet.text())
                     + " traversalMainLineStart=" + snippet.startLine()
@@ -404,7 +438,7 @@ public final class VulkanBerylTraversalExecutor {
                     + " traversalPreprocessedPath=" + preprocessedShader.shaderPath()
                     + " traversalSmokeDeclaredBindings=" + declaredShaderBindings(source)
                     + traversalBinding0DescriptorDiagnostics(source)
-                    + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(source).body()));
+                    + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(source).body(), false));
         } catch (IOException e) {
             VulkanBerylDebugLog.error("Failed to inspect preprocessed traversal smoke shader at " + preprocessedShader.shaderPath() + ": " + e);
         }
@@ -418,7 +452,7 @@ public final class VulkanBerylTraversalExecutor {
                     + " traversalSmokePreprocessedPath=" + smokeShader.shaderPath()
                     + " traversalSmokeDeclaredBindings=" + declaredShaderBindings(smokeSource)
                     + traversalBinding0DescriptorDiagnostics(smokeSource)
-                    + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(smokeSource).body());
+                    + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(smokeSource).body(), false);
         } catch (RuntimeException | IOException e) {
             return " traversalSmokeCompareError=" + e.getClass().getSimpleName() + ":" + String.valueOf(e.getMessage()).replace(' ', '_');
         }
@@ -511,9 +545,8 @@ public final class VulkanBerylTraversalExecutor {
         return new MainSnippet(source.substring(mainIndex, snippetEnd), body, lineNumber(source, mainIndex));
     }
 
-    private static boolean verifyTraversalMainEarlyReturn(String mainBody) {
+    private static boolean verifyTraversalMainEarlyReturn(String mainBody, boolean forcedReturn) {
         int stageLimit = mainBody.indexOf("uint stageLimit = frameId;");
-        int earlyReturn = mainBody.indexOf("if (stageLimit <= 1u)");
         int firstBlockedCall = firstNonNegative(
                 mainBody.indexOf("getCurrentNode("),
                 mainBody.indexOf("unpackNode("),
@@ -522,6 +555,13 @@ public final class VulkanBerylTraversalExecutor {
                 mainBody.indexOf("renderQueue["),
                 mainBody.indexOf("nodeQueueSink[")
         );
+        if (forcedReturn) {
+            int forcedReturnStatement = mainBody.indexOf("return;");
+            return forcedReturnStatement >= 0
+                    && (stageLimit < 0 || forcedReturnStatement < stageLimit)
+                    && (firstBlockedCall < 0 || forcedReturnStatement < firstBlockedCall);
+        }
+        int earlyReturn = mainBody.indexOf("if (stageLimit <= 1u)");
         return stageLimit >= 0 && earlyReturn > stageLimit && (firstBlockedCall < 0 || earlyReturn < firstBlockedCall);
     }
 

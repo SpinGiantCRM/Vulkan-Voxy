@@ -50,6 +50,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final boolean TRAVERSAL_SMOKE_WRITE_KNOWN = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SMOKE_WRITE_KNOWN", "false"));
     private static final boolean TRAVERSAL_SHADER_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_SMOKE", "false"));
     private static final boolean TRAVERSAL_SHADER_UNIFORM_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_UNIFORM_SMOKE", "false"));
+    private static final boolean TRAVERSAL_FORCE_REAL_MAIN_RETURN = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_FORCE_REAL_MAIN_RETURN", "false"));
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", "false"));
     private static final boolean ENABLE_CMDGEN_DISPATCH = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", "false"));
     private static final boolean ENABLE_INDIRECT_DRAW = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", "false"));
@@ -289,14 +290,14 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     private static boolean isTraversalDispatchAllowed(boolean explicitNoGpuDrawCountCmdgenPath, int activeTraversalStageLimit) {
         return ENABLE_TRAVERSAL_DISPATCH
-                && (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE || activeTraversalStageLimit > 0 || explicitNoGpuDrawCountCmdgenPath);
+                && (TRAVERSAL_SHADER_SMOKE || TRAVERSAL_SHADER_UNIFORM_SMOKE || TRAVERSAL_FORCE_REAL_MAIN_RETURN || activeTraversalStageLimit > 0 || explicitNoGpuDrawCountCmdgenPath);
     }
 
     private static String traversalDispatchBlocker(boolean explicitNoGpuDrawCountCmdgenPath, int activeTraversalStageLimit) {
         if (!ENABLE_TRAVERSAL_DISPATCH) {
             return "traversal_dispatch_disabled";
         }
-        if (!TRAVERSAL_SHADER_SMOKE && !TRAVERSAL_SHADER_UNIFORM_SMOKE && activeTraversalStageLimit <= 0 && !explicitNoGpuDrawCountCmdgenPath) {
+        if (!TRAVERSAL_SHADER_SMOKE && !TRAVERSAL_SHADER_UNIFORM_SMOKE && !TRAVERSAL_FORCE_REAL_MAIN_RETURN && activeTraversalStageLimit <= 0 && !explicitNoGpuDrawCountCmdgenPath) {
             return "waiting_for_traversal_stage_or_no_gpu_drawcount_cmdgen_path";
         }
         return "unknown_traversal_dispatch_blocker";
