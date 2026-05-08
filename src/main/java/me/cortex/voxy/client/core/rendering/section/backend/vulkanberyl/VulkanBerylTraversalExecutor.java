@@ -342,6 +342,7 @@ public final class VulkanBerylTraversalExecutor {
         }
         this.descriptorDispatchDiagnosticsLogged = true;
         Buffer renderListBuffer = this.renderList.getBuffer();
+        logTraversalDescriptorBinding(HIZ_BINDING, "ReservedHizDummy", this.traversalResources.getUniformBuffer(), renderListBuffer);
         logTraversalDescriptorBinding(SCENE_UNIFORM_BINDING, "traversalResources.uniformBuffer", this.traversalResources.getUniformBuffer(), renderListBuffer);
         logTraversalDescriptorBinding(REQUEST_QUEUE_BINDING, "traversalResources.requestBuffer", this.traversalResources.getRequestBuffer(), renderListBuffer);
         logTraversalDescriptorBinding(RENDER_QUEUE_BINDING, "renderList.buffer", renderListBuffer, renderListBuffer);
@@ -366,7 +367,7 @@ public final class VulkanBerylTraversalExecutor {
                         + " renderListBufferSizeBytes=" + renderListBuffer.getBufferSize());
     }
 
-    private static void logTraversalPreprocessedShaderDiagnostics(String shaderResource, String shaderName, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
+    private void logTraversalPreprocessedShaderDiagnostics(String shaderResource, String shaderName, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
         if (!TRAVERSAL_SHADER_RESOURCE.equals(shaderResource)) {
             logTraversalSmokeBindingDiagnostics(shaderResource, preprocessedShader);
             return;
@@ -387,37 +388,86 @@ public final class VulkanBerylTraversalExecutor {
                     + " traversalMainLineStart=" + snippet.startLine()
                     + " traversalMainSnippet=" + oneLineSnippet(snippet.text())
                     + " traversalDeclaredBindings=" + realBindings
+                    + traversalBinding0DescriptorDiagnostics(source)
                     + smokeBindings);
         } catch (IOException e) {
             VulkanBerylDebugLog.error("Failed to inspect preprocessed traversal shader at " + preprocessedShader.shaderPath() + ": " + e);
         }
     }
 
-    private static void logTraversalSmokeBindingDiagnostics(String shaderResource, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
+    private void logTraversalSmokeBindingDiagnostics(String shaderResource, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
         try {
             String source = Files.readString(preprocessedShader.shaderPath(), StandardCharsets.UTF_8);
             VulkanBerylDebugLog.once("traversal-smoke-layout-diagnostics", "Traversal smoke shader layout diagnostics:"
                     + " traversalShaderResource=" + shaderResource
                     + " traversalPreprocessedPath=" + preprocessedShader.shaderPath()
                     + " traversalSmokeDeclaredBindings=" + declaredShaderBindings(source)
+                    + traversalBinding0DescriptorDiagnostics(source)
                     + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(source).body()));
         } catch (IOException e) {
             VulkanBerylDebugLog.error("Failed to inspect preprocessed traversal smoke shader at " + preprocessedShader.shaderPath() + ": " + e);
         }
     }
 
-    private static String describeSmokeBindingsForComparison() {
+    private String describeSmokeBindingsForComparison() {
         try {
             VulkanBerylShaderImportPreprocessor.PreparedShader smokeShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SMOKE_SHADER_RESOURCE);
             String smokeSource = Files.readString(smokeShader.shaderPath(), StandardCharsets.UTF_8);
             return " traversalSmokeShaderResource=" + TRAVERSAL_SMOKE_SHADER_RESOURCE
                     + " traversalSmokePreprocessedPath=" + smokeShader.shaderPath()
                     + " traversalSmokeDeclaredBindings=" + declaredShaderBindings(smokeSource)
+                    + traversalBinding0DescriptorDiagnostics(smokeSource)
                     + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(smokeSource).body());
         } catch (RuntimeException | IOException e) {
             return " traversalSmokeCompareError=" + e.getClass().getSimpleName() + ":" + String.valueOf(e.getMessage()).replace(' ', '_');
         }
     }
+
+
+    private String traversalBinding0DescriptorDiagnostics(String source) {
+        ShaderBindingDeclaration binding0 = findShaderBindingDeclaration(source, HIZ_BINDING);
+        String declaration = binding0 == null ? "<none>" : binding0.declaration();
+        String expectedDescriptorType = binding0 == null ? "none" : binding0.expectedDescriptorType();
+        String javaDescriptorLabel = "ReservedHizDummy";
+        String javaDescriptorKind = "buffer";
+        Buffer buffer = this.traversalResources.getUniformBuffer();
+        long bufferId = buffer == null ? 0L : buffer.getId();
+        boolean mismatch = binding0 != null && !"buffer".equals(expectedDescriptorType);
+        return " traversalBinding0Declared=" + (binding0 != null)
+                + " traversalBinding0Declaration=" + sanitizeDiagnosticValue(declaration)
+                + " traversalBinding0ExpectedDescriptorType=" + expectedDescriptorType
+                + " traversalBinding0JavaDescriptorLabel=" + javaDescriptorLabel
+                + " traversalBinding0JavaDescriptorKind=" + javaDescriptorKind
+                + " traversalBinding0JavaBufferId=" + bufferId
+                + " traversalBinding0Mismatch=" + mismatch;
+    }
+
+    private static ShaderBindingDeclaration findShaderBindingDeclaration(String source, int targetBinding) {
+        Pattern pattern = Pattern.compile("layout\\s*\\(([^)]*binding\\s*=\\s*([A-Za-z0-9_]+)[^)]*)\\)\\s*([^;]+;)", Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(source);
+        while (matcher.find()) {
+            Integer binding = resolveBindingToken(matcher.group(2));
+            if (binding != null && binding == targetBinding) {
+                String declaration = ("layout(" + matcher.group(1).trim() + ") " + matcher.group(3).trim()).replaceAll("\\s+", " ");
+                return new ShaderBindingDeclaration(declaration, expectedDescriptorTypeForDeclaration(declaration));
+            }
+        }
+        return null;
+    }
+
+    private static String expectedDescriptorTypeForDeclaration(String declaration) {
+        if (declaration.contains("sampler") || declaration.contains("texture")) return "combinedImageSampler";
+        if (declaration.contains("image")) return "storageImage";
+        if (declaration.contains(" buffer ")) return "buffer";
+        if (declaration.contains(" uniform ")) return "buffer";
+        return "unknown";
+    }
+
+    private static String sanitizeDiagnosticValue(String value) {
+        return value.replace(' ', '_').replace('\n', '_').replace('\r', '_');
+    }
+
+    private record ShaderBindingDeclaration(String declaration, String expectedDescriptorType) {}
 
     private static MainSnippet extractMainSnippet(String source) {
         int mainIndex = source.indexOf("void main()");
