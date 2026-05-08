@@ -523,10 +523,11 @@ public final class VulkanBerylSectionDrawPipeline {
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
         VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety = VulkanBerylRenderBackendRuntime.getLastFrameSafetyState();
         CmdgenIsolationStage isolationStage = selectedCmdgenIsolationStage();
-        boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK;
-        boolean fullCmdgenDispatchAllowed = ENABLE_CMDGEN_DISPATCH && (isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED);
+        boolean noDrawCountFullCmdgen = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
+        boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK && !noDrawCountFullCmdgen;
+        boolean fullCmdgenDispatchAllowed = ENABLE_CMDGEN_DISPATCH && (isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED);
         String fullCmdgenDispatchBlocker = fullCmdgenDispatchAllowed ? "ready" : (!ENABLE_CMDGEN_DISPATCH ? "cmdgen_dispatch_disabled" : "select_isolation_stage_or_force_full_cmdgen_dispatch_with_indirect_disabled");
-        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (noOpCmdgenSmoke || isolationStage != null || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED || frameSafety.allowCmdGen() || controlledSmoke.safe());
+        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (noOpCmdgenSmoke || isolationStage != null || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED || frameSafety.allowCmdGen() || controlledSmoke.safe());
         boolean cmdgenSampleValid = this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0;
         boolean indirectSafetyAllowed = frameSafety.allowIndirectDraw() || controlledSmoke.safe();
         boolean indirectAllowed = ENABLE_INDIRECT_DRAW && cmdgenSampleValid && indirectSafetyAllowed;
@@ -544,6 +545,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", enableIndirectDraw=" + ENABLE_INDIRECT_DRAW
                 + ", debugReadback=" + CMDGEN_DEBUG_READBACK
                 + ", forceFullCmdgenDispatchWithIndirectDisabled=" + FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED
+                + ", noDrawCountFullCmdgen=" + noDrawCountFullCmdgen
                 + ", fullCmdgenDispatchAllowed=" + fullCmdgenDispatchAllowed
                 + ", finalGateReason=" + cmdgenGateReason
                 + ", finalBlockerReason=" + fullCmdgenDispatchBlocker);
@@ -787,6 +789,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
                 }
             }
+            recordJavaControlledDrawCountForNoDrawCountCmdgen(commandBuffer, controlledSmoke, visibleCount, indirectAllowed);
         }
 
         if (disableAnyDrawCountConsumerPathActive()) {
@@ -824,6 +827,42 @@ public final class VulkanBerylSectionDrawPipeline {
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
         return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, visibleCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
     }
+
+    private void recordJavaControlledDrawCountForNoDrawCountCmdgen(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int visibleCount, boolean indirectAllowed) {
+        if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return;
+        int javaDrawCount = controlledSmoke.enabled() && controlledSmoke.safe() && visibleCount == 1 ? 1 : 0;
+        String drawCountSource = javaDrawCount == 1 ? "java_controlled_smoke" : "java_conservative_zero";
+        VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, Integer.BYTES, javaDrawCount);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
+                    .sType$Default()
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT | VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(
+                    commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                    0,
+                    barrier,
+                    null,
+                    null
+            );
+        }
+        VulkanBerylDebugLog.once("cmdgen-no-drawcount-write-java-drawcount", "cmdgen no-drawCount-write diagnostic active: gpuDrawCountStoreDisabled=true"
+                + ", drawCountSource=" + drawCountSource
+                + ", javaDrawCount=" + javaDrawCount
+                + ", commandWritesEnabled=true"
+                + ", shaderDrawCountStores=0"
+                + ", shaderSelectionEnv=" + activeCmdgenShaderSelectionEnvVar()
+                + ", renderListSmokeOneEntry=" + RENDERLIST_SMOKE_ONE_ENTRY
+                + ", controlledSmokeSafe=" + controlledSmoke.safe()
+                + ", visibleCount=" + visibleCount
+                + ", indirectDrawEnabled=" + ENABLE_INDIRECT_DRAW
+                + ", indirectAllowed=" + indirectAllowed
+                + ", drawCountBufferId=" + this.drawCountBuffer.getId()
+                + ", drawCountDescriptorBufferId=" + cmdgenDrawCountDescriptorBuffer().getId());
+    }
+
 
 
     private OpaqueDrawSubmission dispatchMetadataBindingProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, Buffer metadataProbeBuffer, int metadataBinding, String stage) {

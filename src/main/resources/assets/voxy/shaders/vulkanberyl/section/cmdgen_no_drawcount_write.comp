@@ -1,0 +1,235 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+#import <voxy:lod/section.glsl>
+
+struct DrawCommand {
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+};
+
+layout(binding = 0, std430) readonly volatile buffer RenderListBuffer {
+    uint visibleCount;
+    uint indirectLookup[];
+};
+layout(binding = 1, std430) readonly buffer MetadataBuffer {
+    SectionMeta sectionData[];
+};
+// Unused binding2 padding keeps Beryl's dense ManualUBO descriptor layout at bindings 0..5.
+layout(binding = 2, std430) readonly buffer CmdGenUnusedBinding2 {
+    uint unusedBinding2Word;
+};
+layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
+    DrawCommand commands[];
+};
+layout(binding = 4, std430) buffer DrawCountBuffer {
+    uint drawCount;
+};
+layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
+    uint metadataSectionCapacity;
+    uint renderListCapacity;
+    uint geometryCapacityQuads;
+    uint drawCommandCapacity;
+    uint drawCountCapacityWords;
+    uint flags;
+};
+
+const uint CMDGEN_FLAG_NOOP_SMOKE = 1u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ONLY = 1u << 1u;
+const uint CMDGEN_FLAG_READ_METADATA_ONLY = 1u << 2u;
+const uint CMDGEN_FLAG_WRITE_DRAWS_ONLY = 1u << 3u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY = 1u << 4u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_COUNT_ONLY = 1u << 5u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY = 1u << 6u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY = 1u << 7u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1u << 8u;
+const uint CMDGEN_FLAG_READ_BINDING0_ONLY = 1u << 9u;
+const uint CMDGEN_FLAG_READ_BINDING1_ONLY = 1u << 10u;
+const uint CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1u << 11u;
+
+
+uint extractTranslucentQuadCount(SectionMeta meta) {
+    return meta.b.x & 0xFFFFu;
+}
+
+uint extractOpaqueQuadCount(SectionMeta meta) {
+    uvec4 counts = meta.b;
+    return ((counts.x >> 16u) & 0xFFFFu)
+        + (counts.y & 0xFFFFu)
+        + ((counts.y >> 16u) & 0xFFFFu)
+        + (counts.z & 0xFFFFu)
+        + ((counts.z >> 16u) & 0xFFFFu)
+        + (counts.w & 0xFFFFu)
+        + ((counts.w >> 16u) & 0xFFFFu);
+}
+
+void main() {
+    uint drawIndex = gl_GlobalInvocationID.x;
+    if ((flags & CMDGEN_FLAG_NOOP_SMOKE) != 0u) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint binding0Smoke = visibleCount;
+        if (binding0Smoke == 0xffffffffu) {
+            uint ignored = binding0Smoke;
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_BINDING0_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint binding0Smoke = visibleCount;
+        if (binding0Smoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_BINDING1_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint binding1Smoke = sectionData[0].a.x;
+        if (binding1Smoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint headerSmoke = visibleCount;
+        if (headerSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_COUNT_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint countSmoke = visibleCount;
+        if (countSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint sectionIdSmoke = indirectLookup[0];
+        if (sectionIdSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint quadStartSmoke = indirectLookup[1];
+        if (quadStartSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint quadCountSmoke = indirectLookup[2];
+        if (quadCountSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    uint safeVisibleCount = min(visibleCount, renderListCapacity);
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ONLY) != 0u) {
+        if (drawIndex == 0u && safeVisibleCount > 0u) {
+            uint sectionIdSmoke = indirectLookup[0];
+            if (drawCountCapacityWords > 0u) {
+                // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+            }
+        }
+        return;
+    }
+
+    if (drawIndex >= safeVisibleCount) {
+        return;
+    }
+
+    uint sectionId = indirectLookup[drawIndex];
+    if (sectionId >= metadataSectionCapacity) {
+        if (drawIndex == 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+    if (drawIndex >= drawCommandCapacity) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    SectionMeta meta = sectionData[sectionId];
+    if ((flags & CMDGEN_FLAG_READ_METADATA_ONLY) != 0u) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+    if ((flags & CMDGEN_FLAG_WRITE_DRAWS_ONLY) != 0u) {
+        if (drawIndex == 0u) {
+            DrawCommand dummy;
+            dummy.vertexCount = 0u;
+            dummy.instanceCount = 0u;
+            dummy.firstVertex = 0u;
+            dummy.firstInstance = 0u;
+            commands[0] = dummy;
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+    uint translucentQuadCount = extractTranslucentQuadCount(meta);
+    uint opaqueQuadCount = extractOpaqueQuadCount(meta);
+    uint opaqueQuadStart = extractQuadStart(meta) + translucentQuadCount;
+    if (opaqueQuadCount == 0u || opaqueQuadStart > geometryCapacityQuads || opaqueQuadCount > geometryCapacityQuads - opaqueQuadStart) {
+        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+
+    DrawCommand cmd;
+    cmd.vertexCount = opaqueQuadCount * 4u;
+    cmd.instanceCount = 1u;
+    cmd.firstVertex = opaqueQuadStart * 4u;
+    cmd.firstInstance = drawIndex;
+    commands[drawIndex] = cmd;
+
+    if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+        // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+    }
+}
