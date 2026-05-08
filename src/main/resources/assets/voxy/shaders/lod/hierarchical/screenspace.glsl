@@ -14,7 +14,9 @@
 
 #import <voxy:util/depthutils.glsl>
 
+#ifndef VOXY_VULKAN_BERYL_DISABLE_HIZ
 layout(binding = HIZ_BINDING) uniform sampler2D hizDepthSampler;
+#endif
 
 //TODO: maybe do spher bounds aswell? cause they have different accuracies but are both over estimates (liberals (non conservative xD))
 // so can do &&
@@ -150,6 +152,11 @@ bool outsideFrustum() {
 }
 
 bool isCulledByHiz() {
+#ifdef VOXY_VULKAN_BERYL_DISABLE_HIZ
+    // Vulkan/Beryl does not have a real Hi-Z image/sampler wired yet. Do not
+    // declare or touch the sampler2D binding until that descriptor exists.
+    return false;
+#else
     //if (node22.lodLevel!=0) return false;
 
     //Things start breaking down if the area is the entire scree, no idea why, just abort if we hit this case
@@ -187,6 +194,7 @@ bool isCulledByHiz() {
     depthTestAgainst = _minBB.z;
     #endif
     return DEPTH_SCALAR_COMPARE_EQUAL(pointSample,depthTestAgainst);
+#endif
 }
 
 

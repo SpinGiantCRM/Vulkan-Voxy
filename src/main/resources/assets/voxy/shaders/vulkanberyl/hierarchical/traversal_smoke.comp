@@ -1,5 +1,6 @@
 #version 460 core
 
+#define HIZ_BINDING 0
 #define SCENE_UNIFORM_BINDING 1
 #define REQUEST_QUEUE_BINDING 2
 #define RENDER_QUEUE_BINDING 3
@@ -12,6 +13,10 @@
 #define MAX_ITERATIONS 17
 
 layout(local_size_x=32) in;
+
+// Mirrors the original real traversal Hi-Z declaration so VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_SMOKE=true
+// can isolate sampler2D binding 0 versus Java's temporary buffer-backed ReservedHizDummy descriptor.
+layout(binding = HIZ_BINDING) uniform sampler2D hizDepthSampler;
 
 layout(binding = SCENE_UNIFORM_BINDING, std140) uniform SceneUniform {
     mat4 MVP;
@@ -68,6 +73,11 @@ void main() {
 
     uint stageLimit = frameId;
     if (stageLimit <= 1u) {
+        return;
+    }
+
+    if (frameId == 0x48495A30u) { // "HIZ0": keep binding 0 active for descriptor-layout isolation.
+        renderQueueIndex = uint(textureQueryLevels(hizDepthSampler));
         return;
     }
 
