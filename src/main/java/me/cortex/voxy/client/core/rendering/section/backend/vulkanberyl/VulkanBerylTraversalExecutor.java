@@ -387,6 +387,7 @@ public final class VulkanBerylTraversalExecutor {
                     + " traversalMainSnippetHash=" + sha256Hex(snippet.text())
                     + " traversalMainLineStart=" + snippet.startLine()
                     + " traversalMainSnippet=" + oneLineSnippet(snippet.text())
+                    + traversalDisableHizDiagnostics(source)
                     + " traversalDeclaredBindings=" + realBindings
                     + traversalBinding0DescriptorDiagnostics(source)
                     + smokeBindings);
@@ -421,6 +422,19 @@ public final class VulkanBerylTraversalExecutor {
         } catch (RuntimeException | IOException e) {
             return " traversalSmokeCompareError=" + e.getClass().getSimpleName() + ":" + String.valueOf(e.getMessage()).replace(' ', '_');
         }
+    }
+
+
+    private static String traversalDisableHizDiagnostics(String source) {
+        boolean disableHizMacroPresent = source.contains("#define VOXY_VULKAN_BERYL_DISABLE_HIZ");
+        boolean hizSamplerDeclarationPresent = source.contains("layout(binding = HIZ_BINDING) uniform sampler2D hizDepthSampler;")
+                || source.contains("layout(binding=HIZ_BINDING) uniform sampler2D hizDepthSampler;");
+        boolean hizGuardPresent = source.contains("#ifndef VOXY_VULKAN_BERYL_DISABLE_HIZ");
+        boolean binding0DeclaredAfterDisableHiz = disableHizMacroPresent && findShaderBindingDeclaration(source, HIZ_BINDING) != null;
+        return " traversalDisableHizMacroPresent=" + disableHizMacroPresent
+                + " traversalHizSamplerDeclarationPresent=" + hizSamplerDeclarationPresent
+                + " traversalHizGuardPresent=" + hizGuardPresent
+                + " traversalBinding0DeclaredAfterDisableHiz=" + binding0DeclaredAfterDisableHiz;
     }
 
 
