@@ -74,8 +74,9 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Gradle build
-        run: ./gradlew -I init.gradle -PmodVersion="${{ steps.mod_version.outputs.version }}" build
+      # Release publishing only needs the final remapped installable jar; PR CI remains the full build gate.
+      - name: Gradle remap jar
+        run: ./gradlew -I init.gradle -PmodVersion="${{ steps.mod_version.outputs.version }}" remapJar
 
       - name: Select installable mod jar
         id: select_jar
