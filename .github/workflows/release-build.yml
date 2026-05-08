@@ -1,8 +1,11 @@
 name: release-build
 
 on:
+  push:
+    tags:
+      - "v*"
   release:
-    types: [published]
+    types: [published, edited]
   workflow_dispatch:
     inputs:
       tag:
@@ -31,8 +34,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout sources
+      - name: Checkout release ref
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -54,8 +59,10 @@ jobs:
 
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Derive mod version from tag
@@ -108,8 +115,8 @@ jobs:
           echo "jar=${jars[0]}" >> "$GITHUB_OUTPUT"
 
 
-      - name: Ensure release exists for workflow dispatch
-        if: github.event_name == 'workflow_dispatch'
+      - name: Ensure release exists for tag or workflow dispatch
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -123,11 +130,11 @@ jobs:
           else
             flags=(--title "$tag")
 
-            if [ "${{ inputs.draft }}" = "true" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.draft }}" = "true" ]; then
               flags+=(--draft)
             fi
 
-            if [ "${{ inputs.prerelease }}" = "true" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.prerelease }}" = "true" ]; then
               flags+=(--prerelease)
             fi
 
