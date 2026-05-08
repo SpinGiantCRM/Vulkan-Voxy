@@ -1459,7 +1459,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private static boolean usePassingScratchBindingAsRealDrawCountDescriptorActive() {
-        return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR;
+        return isExplicitCmdgenShaderSelectionDiagnosticActive();
     }
 
     private static boolean skipDrawCountClearBeforeDispatchActive() {
