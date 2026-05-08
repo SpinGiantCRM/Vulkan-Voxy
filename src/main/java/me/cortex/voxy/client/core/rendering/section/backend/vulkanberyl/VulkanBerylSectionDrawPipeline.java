@@ -17,6 +17,7 @@ import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkBufferCopy;
+import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkMemoryBarrier;
 
 import java.io.InputStream;
@@ -731,8 +732,16 @@ public final class VulkanBerylSectionDrawPipeline {
             if (CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE) {
                 return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline, "no_import_single_invocation_real_command_no_atomic_probe");
             }
-            barrierTransferToCompute(commandBuffer);
-            logDrawCountBarrierDiagnostic("before_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_TRANSFER_BIT, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_ACCESS_TRANSFER_WRITE_BIT, VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT);
+            if (skipDrawCountClearBeforeDispatchActive() && !this.drawCountClearCommandRecordedThisFrame) {
+                barrierTransferToComputeForCmdgenNonDrawCountTransfers(commandBuffer, useAltRenderListBuffer ? this.cmdGenRenderListAltProbeBuffer : null);
+                VulkanBerylDebugLog.once("cmdgen-drawcount-before-barrier-skipped", "cmdgen drawCount barrier skipped: stage=before_cmdgen_dispatch, reason=drawCount clear/initialise was skipped"
+                        + ", clearCommandRecorded=" + this.drawCountClearCommandRecordedThisFrame
+                        + ", skippedByEnv=" + skipDrawCountClearBeforeDispatchActive());
+                logDrawCountBarrierDiagnostic("before_cmdgen_dispatch", false, VK10.VK_PIPELINE_STAGE_TRANSFER_BIT, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_ACCESS_TRANSFER_WRITE_BIT, VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT);
+            } else {
+                barrierTransferToCompute(commandBuffer);
+                logDrawCountBarrierDiagnostic("before_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_TRANSFER_BIT, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_ACCESS_TRANSFER_WRITE_BIT, VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT);
+            }
             if (CMDGEN_CLEAR_OUTPUTS_ONLY) {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_clear_outputs_only");
             }
@@ -1612,6 +1621,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.once("cmdgen-drawcount-barrier-diagnostics:" + stage, "cmdgen drawCount barrier diagnostics: stage=" + stage
                 + ", barrierRecorded=" + recorded
                 + ", clearCommandRecorded=" + this.drawCountClearCommandRecordedThisFrame
+                + ", skippedByEnv=" + skipDrawCountClearBeforeDispatchActive()
                 + ", drawCountClearedInitialisedThisFrame=" + this.drawCountClearedThisFrame
                 + ", descriptorBinding4BufferId=" + (descriptorBuffer == null ? 0L : descriptorBuffer.getId())
                 + ", currentDrawCountBufferId=" + (this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId())
@@ -1930,6 +1940,39 @@ public final class VulkanBerylSectionDrawPipeline {
                     VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                     0, transferToCompute, null, null);
         }
+    }
+
+    private void barrierTransferToComputeForCmdgenNonDrawCountTransfers(VkCommandBuffer commandBuffer, Buffer additionalBuffer) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            int barrierCount = 0;
+            if (this.cmdGenConfigBuffer != null) barrierCount++;
+            if (this.drawCommandBuffer != null) barrierCount++;
+            if (additionalBuffer != null) barrierCount++;
+            if (barrierCount == 0) return;
+            VkBufferMemoryBarrier.Buffer transferToCompute = VkBufferMemoryBarrier.calloc(barrierCount, stack);
+            int barrierIndex = 0;
+            barrierIndex = appendTransferToComputeBufferBarrier(transferToCompute, barrierIndex, this.cmdGenConfigBuffer);
+            barrierIndex = appendTransferToComputeBufferBarrier(transferToCompute, barrierIndex, this.drawCommandBuffer);
+            appendTransferToComputeBufferBarrier(transferToCompute, barrierIndex, additionalBuffer);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    0, null, transferToCompute, null);
+        }
+    }
+
+    private int appendTransferToComputeBufferBarrier(VkBufferMemoryBarrier.Buffer barriers, int index, Buffer buffer) {
+        if (buffer == null) return index;
+        barriers.get(index)
+                .sType(VK10.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
+                .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                .srcQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                .dstQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
+                .buffer(buffer.getId())
+                .offset(0L)
+                .size(buffer.getBufferSize());
+        return index + 1;
     }
 
     private void logCmdgenProbeTransferBarrierAfterUploads(String stage, boolean readsTinyMetadataProbe, boolean readsBinding2Probe, boolean readsConfig) {
