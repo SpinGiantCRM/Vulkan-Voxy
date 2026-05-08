@@ -18,6 +18,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import org.lwjgl.system.MemoryStack;
 
 import java.lang.reflect.Method;
@@ -25,6 +27,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -156,6 +160,7 @@ public final class VulkanBerylTraversalExecutor {
                     + ", tempShaderRelativePath=" + preprocessedShader.tempShaderRelativePath()
                     + ", file=" + preprocessedShader.shaderPath()
                     + ", bytes=" + preprocessedShader.outputBytes());
+            logTraversalPreprocessedShaderDiagnostics(shaderResource, shaderName, preprocessedShader);
             builder.compileShader(preprocessedShader.rootUrl(), shaderName);
         } catch (RuntimeException e) {
             logTraversalShaderCompileFailureDiagnostics(shaderResource, e);
@@ -360,6 +365,176 @@ public final class VulkanBerylTraversalExecutor {
                         + " renderListBufferId=" + renderListBuffer.getId()
                         + " renderListBufferSizeBytes=" + renderListBuffer.getBufferSize());
     }
+
+    private static void logTraversalPreprocessedShaderDiagnostics(String shaderResource, String shaderName, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
+        if (!TRAVERSAL_SHADER_RESOURCE.equals(shaderResource)) {
+            logTraversalSmokeBindingDiagnostics(shaderResource, preprocessedShader);
+            return;
+        }
+
+        try {
+            String source = Files.readString(preprocessedShader.shaderPath(), StandardCharsets.UTF_8);
+            MainSnippet snippet = extractMainSnippet(source);
+            boolean verified = verifyTraversalMainEarlyReturn(snippet.body());
+            Set<Integer> realBindings = declaredShaderBindings(source);
+            String smokeBindings = describeSmokeBindingsForComparison();
+            VulkanBerylDebugLog.once("traversal-preprocessed-main-diagnostics", "Traversal preprocessed shader diagnostics:"
+                    + " traversalShaderResource=" + shaderResource
+                    + " traversalShaderName=" + shaderName
+                    + " traversalPreprocessedPath=" + preprocessedShader.shaderPath()
+                    + " traversalMainEarlyReturnVerified=" + verified
+                    + " traversalMainSnippetHash=" + sha256Hex(snippet.text())
+                    + " traversalMainLineStart=" + snippet.startLine()
+                    + " traversalMainSnippet=" + oneLineSnippet(snippet.text())
+                    + " traversalDeclaredBindings=" + realBindings
+                    + smokeBindings);
+        } catch (IOException e) {
+            VulkanBerylDebugLog.error("Failed to inspect preprocessed traversal shader at " + preprocessedShader.shaderPath() + ": " + e);
+        }
+    }
+
+    private static void logTraversalSmokeBindingDiagnostics(String shaderResource, VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
+        try {
+            String source = Files.readString(preprocessedShader.shaderPath(), StandardCharsets.UTF_8);
+            VulkanBerylDebugLog.once("traversal-smoke-layout-diagnostics", "Traversal smoke shader layout diagnostics:"
+                    + " traversalShaderResource=" + shaderResource
+                    + " traversalPreprocessedPath=" + preprocessedShader.shaderPath()
+                    + " traversalSmokeDeclaredBindings=" + declaredShaderBindings(source)
+                    + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(source).body()));
+        } catch (IOException e) {
+            VulkanBerylDebugLog.error("Failed to inspect preprocessed traversal smoke shader at " + preprocessedShader.shaderPath() + ": " + e);
+        }
+    }
+
+    private static String describeSmokeBindingsForComparison() {
+        try {
+            VulkanBerylShaderImportPreprocessor.PreparedShader smokeShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(TRAVERSAL_SMOKE_SHADER_RESOURCE);
+            String smokeSource = Files.readString(smokeShader.shaderPath(), StandardCharsets.UTF_8);
+            return " traversalSmokeShaderResource=" + TRAVERSAL_SMOKE_SHADER_RESOURCE
+                    + " traversalSmokePreprocessedPath=" + smokeShader.shaderPath()
+                    + " traversalSmokeDeclaredBindings=" + declaredShaderBindings(smokeSource)
+                    + " traversalSmokeRealLayoutImmediateReturn=" + verifyTraversalMainEarlyReturn(extractMainSnippet(smokeSource).body());
+        } catch (RuntimeException | IOException e) {
+            return " traversalSmokeCompareError=" + e.getClass().getSimpleName() + ":" + String.valueOf(e.getMessage()).replace(' ', '_');
+        }
+    }
+
+    private static MainSnippet extractMainSnippet(String source) {
+        int mainIndex = source.indexOf("void main()");
+        if (mainIndex < 0) {
+            return new MainSnippet("<missing void main()>", "", -1);
+        }
+        int openBrace = source.indexOf('{', mainIndex);
+        if (openBrace < 0) {
+            String text = source.substring(mainIndex, Math.min(source.length(), mainIndex + 240));
+            return new MainSnippet(text, text, lineNumber(source, mainIndex));
+        }
+        int depth = 0;
+        int end = source.length();
+        for (int i = openBrace; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '{') depth++;
+            if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    end = i + 1;
+                    break;
+                }
+            }
+        }
+        String body = source.substring(openBrace + 1, Math.min(end, source.length()));
+        int snippetEnd = Math.min(source.length(), mainIndex + 520);
+        return new MainSnippet(source.substring(mainIndex, snippetEnd), body, lineNumber(source, mainIndex));
+    }
+
+    private static boolean verifyTraversalMainEarlyReturn(String mainBody) {
+        int stageLimit = mainBody.indexOf("uint stageLimit = frameId;");
+        int earlyReturn = mainBody.indexOf("if (stageLimit <= 1u)");
+        int firstBlockedCall = firstNonNegative(
+                mainBody.indexOf("getCurrentNode("),
+                mainBody.indexOf("unpackNode("),
+                mainBody.indexOf("setupScreenspace("),
+                mainBody.indexOf("requestQueue["),
+                mainBody.indexOf("renderQueue["),
+                mainBody.indexOf("nodeQueueSink[")
+        );
+        return stageLimit >= 0 && earlyReturn > stageLimit && (firstBlockedCall < 0 || earlyReturn < firstBlockedCall);
+    }
+
+    private static int firstNonNegative(int... values) {
+        int best = -1;
+        for (int value : values) {
+            if (value >= 0 && (best < 0 || value < best)) {
+                best = value;
+            }
+        }
+        return best;
+    }
+
+    private static Set<Integer> declaredShaderBindings(String source) {
+        Pattern pattern = Pattern.compile("layout\\s*\\([^)]*binding\\s*=\\s*([A-Za-z0-9_]+)", Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(source);
+        Set<Integer> bindings = new TreeSet<>();
+        while (matcher.find()) {
+            Integer binding = resolveBindingToken(matcher.group(1));
+            if (binding != null) {
+                bindings.add(binding);
+            }
+        }
+        return bindings;
+    }
+
+    private static Integer resolveBindingToken(String token) {
+        return switch (token) {
+            case "HIZ_BINDING" -> HIZ_BINDING;
+            case "SCENE_UNIFORM_BINDING" -> SCENE_UNIFORM_BINDING;
+            case "REQUEST_QUEUE_BINDING" -> REQUEST_QUEUE_BINDING;
+            case "RENDER_QUEUE_BINDING" -> RENDER_QUEUE_BINDING;
+            case "NODE_DATA_BINDING" -> NODE_DATA_BINDING;
+            case "NODE_QUEUE_INDEX_BINDING" -> NODE_QUEUE_INDEX_BINDING;
+            case "NODE_QUEUE_META_BINDING" -> NODE_QUEUE_META_BINDING;
+            case "NODE_QUEUE_SOURCE_BINDING" -> NODE_QUEUE_SOURCE_BINDING;
+            case "NODE_QUEUE_SINK_BINDING" -> NODE_QUEUE_SINK_BINDING;
+            case "RENDER_TRACKER_BINDING" -> RENDER_TRACKER_BINDING;
+            default -> {
+                try {
+                    yield Integer.parseInt(token);
+                } catch (NumberFormatException ignored) {
+                    yield null;
+                }
+            }
+        };
+    }
+
+    private static String sha256Hex(String text) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                out.append(String.format("%02x", b));
+            }
+            return out.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest unavailable", e);
+        }
+    }
+
+    private static String oneLineSnippet(String text) {
+        String compact = text.replace('\r', ' ').replace('\n', ' ').replaceAll("\\s+", " ").trim();
+        return compact.length() <= 360 ? compact : compact.substring(0, 360) + "...";
+    }
+
+    private static int lineNumber(String source, int index) {
+        int line = 1;
+        for (int i = 0; i < index && i < source.length(); i++) {
+            if (source.charAt(i) == '\n') {
+                line++;
+            }
+        }
+        return line;
+    }
+
+    private record MainSnippet(String text, String body, int startLine) {}
 
     private static void validateTraversalBindings(JsonObject config) {
         java.util.Map<Integer, String> expectedTypesByBinding = java.util.Map.of(

@@ -3,6 +3,13 @@
 #define SCENE_UNIFORM_BINDING 1
 #define REQUEST_QUEUE_BINDING 2
 #define RENDER_QUEUE_BINDING 3
+#define NODE_DATA_BINDING 4
+#define NODE_QUEUE_INDEX_BINDING 5
+#define NODE_QUEUE_META_BINDING 6
+#define NODE_QUEUE_SOURCE_BINDING 7
+#define NODE_QUEUE_SINK_BINDING 8
+#define RENDER_TRACKER_BINDING 9
+#define MAX_ITERATIONS 17
 
 layout(local_size_x=32) in;
 
@@ -30,8 +37,37 @@ layout(binding = RENDER_QUEUE_BINDING, std430) restrict buffer renderQueueStruct
     uint[] renderQueue;
 };
 
+layout(binding = NODE_DATA_BINDING, std430) restrict buffer NodeData {
+    uvec4[] nodes;
+};
+
+layout(binding = NODE_QUEUE_INDEX_BINDING, std430) restrict readonly buffer NodeQueueIndex {
+    uint queueIdx;
+};
+
+layout(binding = NODE_QUEUE_META_BINDING, std430) restrict buffer NodeQueueMeta {
+    uvec4 nodeQueueMetadata[MAX_ITERATIONS];
+};
+
+layout(binding = NODE_QUEUE_SOURCE_BINDING, std430) restrict readonly buffer NodeQueueSource {
+    uint[] nodeQueueSource;
+};
+
+layout(binding = NODE_QUEUE_SINK_BINDING, std430) restrict writeonly buffer NodeQueueSink {
+    uint[] nodeQueueSink;
+};
+
+layout(binding = RENDER_TRACKER_BINDING, std430) restrict writeonly buffer renderTrackerArray {
+    uint[] lastRenderFrame;
+};
+
 void main() {
     if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    uint stageLimit = frameId;
+    if (stageLimit <= 1u) {
         return;
     }
 

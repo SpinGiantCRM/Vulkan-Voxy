@@ -1,5 +1,6 @@
 package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 
+import me.cortex.voxy.client.config.VoxyConfig;
 import me.cortex.voxy.client.core.AbstractRenderPipeline;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
@@ -168,6 +169,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + " transferToComputeBarrier=" + frameInit.transferToComputeBarrier());
         boolean explicitNoGpuDrawCountCmdgenPath = ENABLE_CMDGEN_DISPATCH && VulkanBerylCmdgenDiagnostics.CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
         int activeTraversalStageLimit = explicitNoGpuDrawCountCmdgenPath && TRAVERSAL_STAGE_LIMIT == 0 ? FULL_TRAVERSAL_STAGE_LIMIT : TRAVERSAL_STAGE_LIMIT;
+        logTraversalUniformUploadDiagnostics(vulkanViewport, renderList, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit);
         this.traversalResources.recordTraversalUniformUpload(commandBuffer, vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit);
         if (this.traversalExecutor != null && this.traversalExecutor.getRenderList() != renderList) {
             this.traversalExecutor.free();
@@ -251,6 +253,38 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         updateFrameSafetyState(renderList.getMaxEntryCount());
         this.publishSmokeStatus();
         VulkanBerylLodBringupDiagnostics.updateRuntime(TRAVERSAL_SMOKE_NOOP, TRAVERSAL_SHADER_SMOKE, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit, RENDERLIST_SMOKE_ONE_ENTRY, ENABLE_CMDGEN_DISPATCH, ENABLE_INDIRECT_DRAW, this.lastVisibleSectionCount, LAST_FRAME_SAFETY_STATE.reason());
+    }
+
+
+    private static void logTraversalUniformUploadDiagnostics(Viewport<?> viewport, VulkanBerylViewportRenderList renderList, RenderGenerationService renderGen, int maxNodeCount, boolean uniformSmokeMode, int traversalStageLimit) {
+        final int renderQueueMaxSizeOffset = 192;
+        final int frameIdOffset = 196;
+        final int requestQueueSizeOffset = 200;
+        final int maxNodeCountOffset = 204;
+        final int renderDistanceOffset = 208;
+        final int renderQueueMaxSize = renderList.getMaxEntryCount();
+        final int frameIdValue = uniformSmokeMode ? 0x53554D4B : Math.max(0, traversalStageLimit);
+        final double targetCount = 4000.0;
+        double fillness = Math.max(0.0, (targetCount - renderGen.getTaskCount()) / targetCount);
+        fillness *= fillness;
+        final int requestQueueSize = Math.max(0, Math.min(VulkanBerylTraversalResources.MAX_REQUEST_QUEUE_SIZE, (int) Math.ceil(fillness * VulkanBerylTraversalResources.MAX_REQUEST_QUEUE_SIZE)));
+        final float sectionRenderDistance = VoxyConfig.CONFIG.sectionRenderDistance;
+        final float renderDistance = (float) Math.pow(sectionRenderDistance * 16 * 32, 2);
+
+        VulkanBerylDebugLog.once("traversal-uniform-upload-layout", "Traversal uniform upload layout:"
+                + " traversalUniformStd140=true"
+                + " viewport=" + viewport.width + "x" + viewport.height
+                + " renderQueueMaxSizeOffset=" + renderQueueMaxSizeOffset
+                + " renderQueueMaxSizeValue=" + renderQueueMaxSize
+                + " frameIdOffset=" + frameIdOffset
+                + " frameIdValue=" + frameIdValue
+                + " requestQueueSizeOffset=" + requestQueueSizeOffset
+                + " requestQueueSizeValue=" + requestQueueSize
+                + " maxNodeCountOffset=" + maxNodeCountOffset
+                + " maxNodeCountValue=" + Math.max(0, maxNodeCount)
+                + " renderDistanceOffset=" + renderDistanceOffset
+                + " renderDistanceValue=" + renderDistance
+                + " traversalUniformStageLimitWritten=" + frameIdValue);
     }
 
     private static boolean isTraversalDispatchAllowed(boolean explicitNoGpuDrawCountCmdgenPath, int activeTraversalStageLimit) {
