@@ -673,7 +673,7 @@ public final class VulkanBerylTraversalExecutor {
             int computeStage = ComputePipeline.Builder.getStageFromString("compute");
             Buffer buffer = bufferForTraversalBinding(binding);
             if (buffer != null) {
-                descriptor = createManualDescriptor(binding, computeStage, buffer, labelForTraversalBinding(binding));
+                descriptor = createManualDescriptor(binding, computeStage, buffer, labelForTraversalBinding(binding), expectedJavaDescriptorKind(binding));
             }
         }
         if (descriptor == null) {
@@ -745,8 +745,18 @@ public final class VulkanBerylTraversalExecutor {
     private static String normalizeDescriptorKind(String value) {
         if (value == null) return "unknown";
         String compact = value.replace("_", "").replace("-", "").toLowerCase(java.util.Locale.ROOT);
-        if (compact.contains("uniformbuffer") || compact.equals("ubo")) return "uniformBuffer";
-        if (compact.contains("storagebuffer") || compact.equals("ssbo")) return "storageBuffer";
+        if (compact.equals(String.valueOf(VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER))
+                || compact.equals(String.valueOf(VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC))
+                || compact.contains("uniformbuffer")
+                || compact.equals("ubo")) {
+            return "uniformBuffer";
+        }
+        if (compact.equals(String.valueOf(VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER))
+                || compact.equals(String.valueOf(VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC))
+                || compact.contains("storagebuffer")
+                || compact.equals("ssbo")) {
+            return "storageBuffer";
+        }
         if (compact.contains("combinedimagesampler")) return "combinedImageSampler";
         if (compact.contains("storageimage")) return "storageImage";
         return "unknown";
@@ -1033,16 +1043,16 @@ public final class VulkanBerylTraversalExecutor {
 
     private List<UBO> createTraversalManualDescriptors(int computeStage) {
         return List.of(
-                createManualDescriptor(HIZ_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "ReservedHizDummy"),
-                createManualDescriptor(SCENE_UNIFORM_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SceneUniform"),
-                createManualDescriptor(REQUEST_QUEUE_BINDING, computeStage, this.traversalResources.getRequestBuffer(), "RequestQueue"),
-                createManualDescriptor(RENDER_QUEUE_BINDING, computeStage, this.renderList.getBuffer(), "RenderQueue"),
-                createManualDescriptor(NODE_DATA_BINDING, computeStage, this.nodeMetadataStore.getNodeBuffer(), "NodeData"),
-                createManualDescriptor(NODE_QUEUE_INDEX_BINDING, computeStage, this.traversalResources.getQueueIndexBuffer(), "NodeQueueIndex"),
-                createManualDescriptor(NODE_QUEUE_META_BINDING, computeStage, this.traversalResources.getQueueMetaBuffer(), "NodeQueueMeta"),
-                createManualDescriptor(NODE_QUEUE_SOURCE_BINDING, computeStage, this.traversalResources.getScratchQueueA(), "NodeQueueSource"),
-                createManualDescriptor(NODE_QUEUE_SINK_BINDING, computeStage, this.traversalResources.getScratchQueueB(), "NodeQueueSink"),
-                createManualDescriptor(RENDER_TRACKER_BINDING, computeStage, this.traversalResources.getRenderTrackerBuffer(), "RenderTracker")
+                createManualUniformDescriptor(HIZ_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "ReservedHizDummy"),
+                createManualUniformDescriptor(SCENE_UNIFORM_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SceneUniform"),
+                createManualStorageDescriptor(REQUEST_QUEUE_BINDING, computeStage, this.traversalResources.getRequestBuffer(), "RequestQueue"),
+                createManualStorageDescriptor(RENDER_QUEUE_BINDING, computeStage, this.renderList.getBuffer(), "RenderQueue"),
+                createManualStorageDescriptor(NODE_DATA_BINDING, computeStage, this.nodeMetadataStore.getNodeBuffer(), "NodeData"),
+                createManualStorageDescriptor(NODE_QUEUE_INDEX_BINDING, computeStage, this.traversalResources.getQueueIndexBuffer(), "NodeQueueIndex"),
+                createManualStorageDescriptor(NODE_QUEUE_META_BINDING, computeStage, this.traversalResources.getQueueMetaBuffer(), "NodeQueueMeta"),
+                createManualStorageDescriptor(NODE_QUEUE_SOURCE_BINDING, computeStage, this.traversalResources.getScratchQueueA(), "NodeQueueSource"),
+                createManualStorageDescriptor(NODE_QUEUE_SINK_BINDING, computeStage, this.traversalResources.getScratchQueueB(), "NodeQueueSink"),
+                createManualStorageDescriptor(RENDER_TRACKER_BINDING, computeStage, this.traversalResources.getRenderTrackerBuffer(), "RenderTracker")
         );
     }
 
@@ -1079,11 +1089,28 @@ public final class VulkanBerylTraversalExecutor {
                 + ", denseFromZero=" + denseFromZero;
     }
 
-    private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
+    private static UBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label, String descriptorKind) {
+        return "storageBuffer".equals(descriptorKind)
+                ? createManualStorageDescriptor(binding, computeStage, buffer, label)
+                : createManualUniformDescriptor(binding, computeStage, buffer, label);
+    }
+
+    private static ManualUBO createManualUniformDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
         int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
-        VulkanBerylDebugLog.verboseOnce("traversal-manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
+        VulkanBerylDebugLog.verboseOnce("traversal-manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorKind=uniformBuffer, descriptorType=" + VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
         return new ManualUBO(binding, computeStage, structSizeInts);
+    }
+
+    private static ManualUBO createManualStorageDescriptor(int binding, int computeStage, Buffer buffer, String label) {
+        int requestedSize = descriptorSizeBytes(binding, label, buffer);
+        int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
+        VulkanBerylDebugLog.verboseOnce("traversal-manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorKind=storageBuffer, descriptorType=" + VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC + ", descriptorClass=ManualStorageBuffer, manualStructInts=" + structSizeInts);
+        return new ManualStorageBuffer(binding, computeStage, structSizeInts);
+    }
+
+    private static String expectedJavaDescriptorKind(int binding) {
+        return binding == SCENE_UNIFORM_BINDING || binding == HIZ_BINDING ? "uniformBuffer" : "storageBuffer";
     }
 
     private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
@@ -1105,6 +1132,17 @@ public final class VulkanBerylTraversalExecutor {
         if (buffer == null) throw new IllegalStateException(name + " must not be null");
         if (buffer.getBufferSize() <= 0L) throw new IllegalStateException(name + " must have positive size");
         if (buffer.getId() == 0L) throw new IllegalStateException(name + " must have a valid Vulkan buffer id");
+    }
+
+    private static final class ManualStorageBuffer extends ManualUBO {
+        private ManualStorageBuffer(int binding, int stages, int size) {
+            super(binding, stages, size);
+        }
+
+        @Override
+        public int getType() {
+            return VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        }
     }
 
     private static void requireMethod(Class<?> owner, String methodName, List<String> missing, Class<?>... args) {
