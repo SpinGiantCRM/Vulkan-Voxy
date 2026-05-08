@@ -77,7 +77,14 @@ layout(binding = STATISTICS_BUFFER_BINDING, std430) restrict buffer statisticsBu
 };
 #endif
 
+bool isFullTraversalStage() {
+    return frameId >= 7u;
+}
+
 void addRequest(inout UnpackedNode node) {
+    if (!isFullTraversalStage()) {
+        return;
+    }
     if (frameId < 4u) {
         return;
     }
@@ -95,6 +102,9 @@ void addRequest(inout UnpackedNode node) {
 }
 
 void enqueueChildren(in UnpackedNode node) {
+    if (!isFullTraversalStage()) {
+        return;
+    }
     if (frameId < 5u) {
         return;
     }
@@ -124,13 +134,16 @@ bool reserveRenderQueueSlot(out uint renderIndex) {
 }
 
 void enqueueSelfForRender(in UnpackedNode node) {
-    if (frameId < 4u) {
+    if (frameId < 6u) {
         return;
     }
     //printf("render %d@[%d,%d,%d]", node.lodLevel, node.pos.x, node.pos.y, node.pos.z);
     if (!isEmptyMesh(node)) {
         uint renderIndex;
         if (reserveRenderQueueSlot(renderIndex)) {
+            if (!isFullTraversalStage()) {
+                return;
+            }
             uint nodeId = getId(node);
             if (nodeId < maxNodeCount) {
                 lastRenderFrame[nodeId] = frameId;
@@ -171,7 +184,9 @@ bool isWithinRenderDistance(in UnpackedNode node) {
 
 void traverse(in UnpackedNode node) {
     #ifdef HAS_STATISTICS
-    atomicAdd(traversalCounts[node.lodLevel], 1);
+    if (isFullTraversalStage()) {
+        atomicAdd(traversalCounts[node.lodLevel], 1);
+    }
     #endif
 
     //Compute screenspace
@@ -235,18 +250,21 @@ void main() {
         return;
     }
 
-    if (nodeId != SENTINAL_OUT_OF_BOUNDS && nodeId < maxNodeCount) {
-        //Fetch + decode node
-        UnpackedNode node;
-        unpackNode(node, nodeId);
-        if (stageLimit == 3u) {
-            return;
-        }
+    bool validNodeId = nodeId != SENTINAL_OUT_OF_BOUNDS && nodeId < maxNodeCount;
+    if (stageLimit == 3u || !validNodeId) {
+        return;
+    }
 
-        //Check if were inside the render distastance before traversince
-        if (isWithinRenderDistance(node)) {
-            traverse(node);
-        }
+    //Fetch + decode node
+    UnpackedNode node;
+    unpackNode(node, nodeId);
+    if (stageLimit == 4u) {
+        return;
+    }
+
+    //Check if were inside the render distastance before traversince
+    if (isWithinRenderDistance(node)) {
+        traverse(node);
 
         /*
         printf("GID:%d, NODE %d, %d, AA, %d, %d, %d, %d", gl_GlobalInvocationID.x, node, queueIdx, nodeQueueMetadata[queueIdx].x, nodeQueueMetadata[queueIdx].y, nodeQueueMetadata[queueIdx].z, nodeQueueMetadata[queueIdx].w);
