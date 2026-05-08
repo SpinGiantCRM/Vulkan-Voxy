@@ -1541,11 +1541,33 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private Buffer cmdgenDrawCountDescriptorBuffer() {
+        if (usePassingScratchBindingAsRealDrawCountDescriptorActive()) {
+            ensurePassingScratchDrawCountIsCurrent();
+            return this.drawCountBuffer;
+        }
         if (bindDrawCountToScratchActive()) {
             ensureCmdgenDrawCountScratchBuffer();
             return this.cmdgenDrawCountScratchBuffer;
         }
         return this.drawCountBuffer;
+    }
+
+    private void ensurePassingScratchDrawCountIsCurrent() {
+        ensureCmdgenDrawCountScratchBuffer();
+        if (this.drawCountBuffer == this.cmdgenDrawCountScratchBuffer) {
+            return;
+        }
+        Buffer oldDrawCountBuffer = this.drawCountBuffer;
+        long oldDrawCountBufferId = oldDrawCountBuffer == null ? 0L : oldDrawCountBuffer.getId();
+        if (oldDrawCountBuffer != null) {
+            oldDrawCountBuffer.scheduleFree();
+        }
+        this.drawCountBuffer = this.cmdgenDrawCountScratchBuffer;
+        this.drawCountBufferUsageFlags = this.cmdgenDrawCountScratchBufferUsageFlags;
+        this.drawCountAllocationGeneration++;
+        this.lastDrawCountAllocationUsedScratchPath = true;
+        this.lastOldRealDrawCountBufferStillExists = oldDrawCountBufferId != 0L;
+        logPassingScratchAsRealAllocation(oldDrawCountBufferId);
     }
 
     private String drawCountDescriptorLabel() {
