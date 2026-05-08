@@ -8,6 +8,7 @@ import me.cortex.voxy.client.core.rendering.section.backend.PrimaryRenderWorkCon
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.util.MemoryBuffer;
+import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
 import org.lwjgl.system.MemoryUtil;
@@ -55,6 +56,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
     private static final String RENDER_LIST_COUNTER_SOURCE_BUFFER = "voxy_vulkanberyl_render_list";
+    private static final int RENDER_LIST_COUNTER_READBACK_SENTINEL = 0x7F51C0DE;
     private final AsyncNodeManager nodeManager;
     private final RenderGenerationService renderGen;
     private final VulkanBerylNodeMetadataStore nodeMetadataStore;
@@ -92,6 +94,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private int frameSequence;
     private long requestReadbackFrameId = -1;
     private long renderListReadbackFrameId = -1;
+    private int renderListReadbackRendererFrameSlot = -1;
     private long frameId;
 
     public VulkanBerylRenderBackendRuntime(AsyncNodeManager nodeManager, RenderGenerationService renderGen) {
@@ -350,6 +353,19 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         if (renderList.getBuffer().getBufferSize() < VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES) {
             throw new IllegalStateException("Render list buffer is structurally invalid for count readback");
         }
+        if (this.renderListCounterReadbackPending) {
+            VulkanBerylDebugLog.trace("render-list-counter-readback-pending", "Render-list counter readback still pending; skipping overwrite: readbackFrameId=" + this.renderListReadbackFrameId
+                    + " currentFrameId=" + this.frameId
+                    + " readbackAgeFrames=" + Math.max(0L, this.frameId - this.renderListReadbackFrameId)
+                    + " readbackRendererFrameSlot=" + this.renderListReadbackRendererFrameSlot
+                    + " currentRendererFrameSlot=" + safeRendererFrameSlot()
+                    + " gpuCompletionKnown=false");
+            return;
+        }
+        long readbackPtr = this.renderListCounterReadbackBuffer.getDataPtr();
+        if (readbackPtr != 0L) {
+            MemoryUtil.memPutInt(readbackPtr, RENDER_LIST_COUNTER_READBACK_SENTINEL);
+        }
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
             int readbackSrcAccess = VK10.VK_ACCESS_TRANSFER_WRITE_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT;
             int readbackDstAccess = VK10.VK_ACCESS_TRANSFER_READ_BIT;
@@ -391,8 +407,13 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         }
         this.pendingRenderListCounterSource = renderList;
         this.renderListReadbackFrameId = this.frameId;
+        this.renderListReadbackRendererFrameSlot = safeRendererFrameSlot();
         this.renderListCounterReadbackPending = true;
         this.lastRenderListReadbackReason = "pending_gpu_readback";
+        VulkanBerylDebugLog.trace("render-list-counter-readback-scheduled", "Render-list counter readback scheduled: readbackFrameId=" + this.renderListReadbackFrameId
+                + " readbackRendererFrameSlot=" + this.renderListReadbackRendererFrameSlot
+                + " hostMemoryCoherent=" + isHostMemoryCoherent()
+                + " hostMemoryInvalidatedBeforeRead=false");
     }
 
     private void submitPendingRenderListCounterReadback() {
@@ -409,11 +430,39 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         VulkanBerylViewportRenderList renderList = this.pendingRenderListCounterSource;
         if (renderList == null) {
             this.renderListCounterReadbackPending = false;
+            this.renderListReadbackRendererFrameSlot = -1;
+            return;
+        }
+        long readbackAgeFrames = Math.max(0L, this.frameId - this.renderListReadbackFrameId);
+        int currentRendererFrameSlot = safeRendererFrameSlot();
+        boolean gpuCompletionKnown = this.renderListReadbackRendererFrameSlot >= 0
+                && currentRendererFrameSlot == this.renderListReadbackRendererFrameSlot
+                && readbackAgeFrames > 0L;
+        boolean hostMemoryCoherent = isHostMemoryCoherent();
+        if (!gpuCompletionKnown) {
+            this.lastRenderListReadbackReason = "pending_gpu_completion";
+            VulkanBerylDebugLog.trace("traversal-render-list-readback", "Traversal readback pending: readbackFrameId=" + this.renderListReadbackFrameId
+                    + " currentFrameId=" + this.frameId
+                    + " readbackAgeFrames=" + readbackAgeFrames
+                    + " readbackRendererFrameSlot=" + this.renderListReadbackRendererFrameSlot
+                    + " currentRendererFrameSlot=" + currentRendererFrameSlot
+                    + " gpuCompletionKnown=false"
+                    + " hostMemoryCoherent=" + hostMemoryCoherent
+                    + " hostMemoryInvalidatedBeforeRead=false");
             return;
         }
         int rawCount = MemoryUtil.memGetInt(readbackPtr);
+        boolean sentinelRemained = rawCount == RENDER_LIST_COUNTER_READBACK_SENTINEL;
         this.lastRawVisibleSectionCount = rawCount;
-        VulkanBerylDebugLog.trace("traversal-render-list-readback", "Traversal readback: frameId=" + this.renderListReadbackFrameId + " gpuCompletionConfirmed=true rawRenderListCount=" + rawCount);
+        VulkanBerylDebugLog.trace("traversal-render-list-readback", "Traversal readback: readbackFrameId=" + this.renderListReadbackFrameId
+                + " currentFrameId=" + this.frameId
+                + " readbackAgeFrames=" + readbackAgeFrames
+                + " readbackRendererFrameSlot=" + this.renderListReadbackRendererFrameSlot
+                + " currentRendererFrameSlot=" + currentRendererFrameSlot
+                + " gpuCompletionKnown=true rawRenderListCount=" + rawCount
+                + " hostMemoryCoherent=" + hostMemoryCoherent
+                + " hostMemoryInvalidatedBeforeRead=false"
+                + " readbackSentinelRemained=" + sentinelRemained);
         int maxEntryCount = renderList.getMaxEntryCount();
         int acceptedCount = rawCount;
         boolean discarded = false;
@@ -426,6 +475,13 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     + " renderListBufferId=" + renderList.getBuffer().getId()
                     + " renderListBufferSizeBytes=" + renderList.getBuffer().getBufferSize()
                     + " counterSourceBuffer=" + describeRenderListCounterSource(renderList)
+                    + " gpuCompletionKnown=true"
+                    + " hostMemoryCoherent=" + hostMemoryCoherent
+                    + " hostMemoryInvalidatedBeforeRead=false"
+                    + " readbackFrameId=" + this.renderListReadbackFrameId
+                    + " currentFrameId=" + this.frameId
+                    + " readbackAgeFrames=" + readbackAgeFrames
+                    + " readbackSentinelRemained=" + sentinelRemained
                     + " readbackReason=" + readbackReason);
             acceptedCount = 0;
             discarded = true;
@@ -441,6 +497,21 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         logRenderListReadbackDiagnostics(renderList, "counter_readback_completed");
         this.renderListCounterReadbackPending = false;
         this.pendingRenderListCounterSource = null;
+        this.renderListReadbackRendererFrameSlot = -1;
+    }
+
+    private static int safeRendererFrameSlot() {
+        try {
+            return Renderer.getCurrentFrame();
+        } catch (RuntimeException | Error ignored) {
+            return -1;
+        }
+    }
+
+    private static boolean isHostMemoryCoherent() {
+        return MemoryTypes.HOST_MEM != null
+                && MemoryTypes.HOST_MEM.vkMemoryType != null
+                && (MemoryTypes.HOST_MEM.vkMemoryType.propertyFlags() & VK10.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
     }
 
     private static String describeRenderListCounterSource(VulkanBerylViewportRenderList renderList) {
