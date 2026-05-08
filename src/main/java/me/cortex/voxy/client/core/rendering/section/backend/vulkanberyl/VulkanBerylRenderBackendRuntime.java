@@ -154,6 +154,11 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         boolean explicitNoGpuDrawCountCmdgenPath = ENABLE_CMDGEN_DISPATCH && VulkanBerylCmdgenDiagnostics.CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
         int activeTraversalStageLimit = explicitNoGpuDrawCountCmdgenPath && TRAVERSAL_STAGE_LIMIT == 0 ? FULL_TRAVERSAL_STAGE_LIMIT : TRAVERSAL_STAGE_LIMIT;
         this.traversalResources.recordTraversalUniformUpload(commandBuffer, vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit);
+        if (this.traversalExecutor != null && this.traversalExecutor.getRenderList() != renderList) {
+            this.traversalExecutor.free();
+            this.traversalExecutor = null;
+            VulkanBerylDebugLog.once("traversal-render-list-descriptor-recreated", "Recreated traversal executor after render-list buffer changed: renderListBufferId=" + renderList.getBuffer().getId() + " renderListBufferSizeBytes=" + renderList.getBuffer().getBufferSize());
+        }
         if (this.traversalExecutor == null) {
             this.traversalExecutor = new VulkanBerylTraversalExecutor(
                     this.traversalResources,
@@ -390,6 +395,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     + " maxEntryCount=" + maxEntryCount
                     + " counterReadbackOffset=" + VulkanBerylViewportRenderList.COUNTER_OFFSET_BYTES
                     + " counterReadbackBytes=" + VulkanBerylViewportRenderList.COUNTER_SIZE_BYTES
+                    + " renderListBufferId=" + renderList.getBuffer().getId()
+                    + " renderListBufferSizeBytes=" + renderList.getBuffer().getBufferSize()
                     + " counterSourceBuffer=" + describeRenderListCounterSource(renderList)
                     + " readbackReason=" + readbackReason);
             acceptedCount = 0;

@@ -57,6 +57,7 @@ public final class VulkanBerylTraversalExecutor {
     private boolean dispatchIterationZeroRan;
     private boolean dispatchIterationZeroSkipped;
     private int indirectDispatchIterationCount;
+    private boolean descriptorDispatchDiagnosticsLogged;
     private boolean freed;
 
     public VulkanBerylTraversalExecutor(VulkanBerylTraversalResources traversalResources,
@@ -220,6 +221,7 @@ public final class VulkanBerylTraversalExecutor {
         }
 
         VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, this.traversalPipeline.getId());
+        logTraversalDescriptorBindingsBeforeDispatch();
         try {
             this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
         } catch (RuntimeException e) {
@@ -261,6 +263,7 @@ public final class VulkanBerylTraversalExecutor {
             bindStorageBinding(NODE_QUEUE_SINK_BINDING, sink, "traversalResources.scratchQueueSink");
 
             VK10.vkCmdBindPipeline(commandBuffer, VK10.VK_PIPELINE_BIND_POINT_COMPUTE, this.traversalPipeline.getId());
+            logTraversalDescriptorBindingsBeforeDispatch();
             try {
                 this.traversalPipeline.bindDescriptorSets(commandBuffer, 0);
             } catch (RuntimeException e) {
@@ -300,6 +303,7 @@ public final class VulkanBerylTraversalExecutor {
     public int getIndirectDispatchIterationCount() { return this.indirectDispatchIterationCount; }
     public String getDescriptorCreationMode() { return this.descriptorCreationMode; }
     public String getLastDescriptorFailure() { return this.lastDescriptorFailure; }
+    public VulkanBerylViewportRenderList getRenderList() { return this.renderList; }
 
     public void free() {
         if (this.freed) return;
@@ -325,6 +329,37 @@ public final class VulkanBerylTraversalExecutor {
     }
 
 
+
+
+    private void logTraversalDescriptorBindingsBeforeDispatch() {
+        if (this.descriptorDispatchDiagnosticsLogged) {
+            return;
+        }
+        this.descriptorDispatchDiagnosticsLogged = true;
+        Buffer renderListBuffer = this.renderList.getBuffer();
+        logTraversalDescriptorBinding(SCENE_UNIFORM_BINDING, "traversalResources.uniformBuffer", this.traversalResources.getUniformBuffer(), renderListBuffer);
+        logTraversalDescriptorBinding(REQUEST_QUEUE_BINDING, "traversalResources.requestBuffer", this.traversalResources.getRequestBuffer(), renderListBuffer);
+        logTraversalDescriptorBinding(RENDER_QUEUE_BINDING, "renderList.buffer", renderListBuffer, renderListBuffer);
+        logTraversalDescriptorBinding(NODE_DATA_BINDING, "nodeMetadataStore.nodeBuffer", this.nodeMetadataStore.getNodeBuffer(), renderListBuffer);
+        logTraversalDescriptorBinding(NODE_QUEUE_INDEX_BINDING, "traversalResources.queueIndexBuffer", this.traversalResources.getQueueIndexBuffer(), renderListBuffer);
+        logTraversalDescriptorBinding(NODE_QUEUE_META_BINDING, "traversalResources.queueMetaBuffer", this.traversalResources.getQueueMetaBuffer(), renderListBuffer);
+        logTraversalDescriptorBinding(NODE_QUEUE_SOURCE_BINDING, "traversalResources.scratchQueueSource", this.traversalResources.getScratchQueueA(), renderListBuffer);
+        logTraversalDescriptorBinding(NODE_QUEUE_SINK_BINDING, "traversalResources.scratchQueueSink", this.traversalResources.getScratchQueueB(), renderListBuffer);
+        logTraversalDescriptorBinding(RENDER_TRACKER_BINDING, "traversalResources.renderTrackerBuffer", this.traversalResources.getRenderTrackerBuffer(), renderListBuffer);
+    }
+
+    private static void logTraversalDescriptorBinding(int binding, String label, Buffer buffer, Buffer renderListBuffer) {
+        requireBuffer(label, buffer);
+        requireBuffer("renderList.buffer", renderListBuffer);
+        VulkanBerylDebugLog.once("traversal-descriptor-dispatch-binding:" + binding + ":" + renderListBuffer.getId(),
+                "Traversal descriptor before dispatch: traversalDescriptorBinding=" + binding
+                        + " descriptorLabel=" + label
+                        + " descriptorBufferId=" + buffer.getId()
+                        + " descriptorSizeBytes=" + buffer.getBufferSize()
+                        + " descriptorOffsetBytes=0"
+                        + " renderListBufferId=" + renderListBuffer.getId()
+                        + " renderListBufferSizeBytes=" + renderListBuffer.getBufferSize());
+    }
 
     private static void validateTraversalBindings(JsonObject config) {
         java.util.Map<Integer, String> expectedTypesByBinding = java.util.Map.of(
