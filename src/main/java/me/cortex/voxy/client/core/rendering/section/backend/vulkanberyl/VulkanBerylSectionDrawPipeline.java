@@ -887,6 +887,13 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         int submittedDrawCount = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER ? javaDrawCountForNoDrawCountCmdgen.drawCount() : visibleCount;
         logSmokeDrawOutputDiagnostics(geometryData, controlledSmoke, visibleCount, submittedDrawCount);
+        if (controlledSmokeCommandReadback && !hasCompletedControlledSmokeCommandReadback()) {
+            String waitingReason = "diagnostic_waiting_for_command_readback";
+            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, waitingReason);
+            logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, false, 0, waitingReason, noDrawCountFullCmdgen);
+            logScreenspaceSmokeSubmitDiagnostics(false, waitingReason);
+            return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, waitingReason);
+        }
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(commandBuffer, viewport);
         logSectionDrawBindingState(DRAW_SCREENSPACE_SMOKE ? "screenspace_smoke_direct_draw" : "submitted");
@@ -903,6 +910,10 @@ public final class VulkanBerylSectionDrawPipeline {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
         return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, submittedDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
+    }
+
+    private boolean hasCompletedControlledSmokeCommandReadback() {
+        return this.lastCompletedDebugSample.sampledCommandCount() > 0;
     }
 
     private void logScreenspaceSmokeSubmitDiagnostics(boolean submitted, String reason) {
@@ -930,6 +941,7 @@ public final class VulkanBerylSectionDrawPipeline {
         long smokeSelectedSectionId = smokeRenderListEntry0;
         long smokeSectionFirstQuad = controlledSmoke.safe() ? Integer.toUnsignedLong(controlledSmoke.quadStart()) : -1L;
         long smokeSectionQuadCount = controlledSmoke.safe() ? controlledSmoke.quadCount() : -1L;
+        long smokeExpectedVertexCount = controlledSmoke.safe() ? smokeSectionQuadCount * 4L : -1L;
         long smokeExpectedFirstVertex = controlledSmoke.safe() ? smokeSectionFirstQuad * 4L : -1L;
         long smokeGeometryBytesUsed = controlledSmoke.safe() ? smokeSectionQuadCount * 8L : -1L;
         long geometryByteStart = controlledSmoke.safe() ? smokeSectionFirstQuad * 8L : -1L;
@@ -943,6 +955,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 && sample.firstVertexCount() > 0
                 && (sample.firstVertexCount() & 3) == 0
                 && sample.firstInstanceCount() == 1
+                && Integer.toUnsignedLong(sample.firstVertexCount()) == smokeExpectedVertexCount
                 && Integer.toUnsignedLong(sample.firstFirstVertex()) == smokeExpectedFirstVertex
                 && Integer.toUnsignedLong(sample.firstFirstInstance()) == 0L
                 && controlledSmoke.safe()
@@ -956,6 +969,8 @@ public final class VulkanBerylSectionDrawPipeline {
             invisibleReason = "generated_indirect_command_zero_draw";
         } else if (!controlledSmoke.safe()) {
             invisibleReason = controlledSmoke.reason();
+        } else if (Integer.toUnsignedLong(sample.firstVertexCount()) != smokeExpectedVertexCount) {
+            invisibleReason = "vertexCount_mismatch_expected_section_quad_count";
         } else if (Integer.toUnsignedLong(sample.firstFirstVertex()) != smokeExpectedFirstVertex) {
             invisibleReason = "firstVertex_mismatch_expected_section_quad_offset";
         } else if (Integer.toUnsignedLong(sample.firstFirstInstance()) != 0L) {
@@ -979,12 +994,14 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", smokeSectionRawPosition=" + rawPosition
                 + ", smokeSectionQuadCount=" + smokeSectionQuadCount
                 + ", smokeSectionFirstQuad=" + smokeSectionFirstQuad
+                + ", smokeExpectedVertexCount=" + smokeExpectedVertexCount
                 + ", smokeExpectedFirstVertex=" + smokeExpectedFirstVertex
                 + ", smokeGeometryBytesUsed=" + smokeGeometryBytesUsed
                 + ", smokeGeometryByteRange=" + geometryByteStart + ".." + geometryByteEnd
                 + ", smokeDrawCommandLooksDrawable=" + commandLooksDrawable
                 + ", smokeDrawInvisibleReason=" + invisibleReason
                 + ", drawShaderIndexing=drawIndex_gl_InstanceIndex_firstInstance_selects_indirectLookup_firstVertex_selects_quadData_gl_VertexIndex"
+                + ", drawShaderVertexIndexSemantics=Vulkan_VertexIndex_includes_firstVertex_for_non_indexed_indirect_draws"
                 + ", screenspaceSmokeEnabled=" + DRAW_SCREENSPACE_SMOKE;
         if (diagnostic.equals(this.lastSmokeDrawOutputDiagnostic)) return;
         this.lastSmokeDrawOutputDiagnostic = diagnostic;
