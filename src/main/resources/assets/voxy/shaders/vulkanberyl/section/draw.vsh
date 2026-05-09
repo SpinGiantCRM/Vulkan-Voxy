@@ -48,6 +48,18 @@ void main() {
     return;
 #endif
 
+#ifdef VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT
+    uint smokeVertex = uint(gl_VertexIndex) % 3u;
+    vec3 worldSmokePoint = innerTranslation + (smokeVertex == 0u
+            ? vec3(-0.75, -0.50, -3.0)
+            : (smokeVertex == 1u ? vec3(0.75, -0.50, -3.0) : vec3(0.0, 0.75, -3.0)));
+    gl_Position = MVP * vec4(worldSmokePoint, 1.0);
+    uv = worldSmokePoint.xy * 0.5 + vec2(0.5);
+    interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
+    debugIds = uvec2(uint(gl_InstanceIndex), uint(gl_VertexIndex));
+    return;
+#endif
+
     uint drawIndex = gl_InstanceIndex;
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
