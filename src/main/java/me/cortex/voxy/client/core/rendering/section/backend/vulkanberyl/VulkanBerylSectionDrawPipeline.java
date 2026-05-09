@@ -927,6 +927,15 @@ public final class VulkanBerylSectionDrawPipeline {
             if (CMDGEN_CLEAR_OUTPUTS_ONLY) {
                 return stopCmdgenIsolation(visibleCount, "cmdgen_clear_outputs_only");
             }
+            // Diagnostic isolation mode routing: use dedicated shaders to avoid binding5+binding0 dual-access crash
+            if (isolationStage == CmdgenIsolationStage.READ_BINDING0_ONLY_NO_OUTPUT_WRITE) {
+                this.ensureCommandGenFullLayoutHardcodedBinding0ReadProbePipeline();
+                return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenFullLayoutHardcodedBinding0ReadProbePipeline, "read_binding0_only_no_output_write");
+            }
+            if (isolationStage == CmdgenIsolationStage.READ_CONFIG_ONLY) {
+                this.ensureCommandGenMinimalConfigReadProbePipeline();
+                return dispatchMinimalSsboReadProbe(commandBuffer, visibleCount, this.commandGenMinimalConfigReadProbePipeline, this.cmdGenConfigBuffer, CMDGEN_CONFIG_BINDING, CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME, "read_config_only", false);
+            }
             if (activeCmdgenShaderSelectionEnvVar() != null) {
                 VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-dispatch-path", "selected normal-cmdgen shader uses same dispatch path as normal cmdgen");
             }
