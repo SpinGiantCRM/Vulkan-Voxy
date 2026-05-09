@@ -1,0 +1,69 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+struct SectionMeta {
+    uvec4 a;
+    uvec4 b;
+};
+
+struct DrawCommand {
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+};
+
+// Binding 0 declared but not read in this shader
+layout(binding = 0, std430) readonly buffer RenderListBuffer {
+    uint visibleCount;
+    uint indirectLookup[];
+};
+
+layout(binding = 1, std430) readonly buffer MetadataBuffer {
+    SectionMeta sectionData[];
+};
+
+// Binding 2-5 present to match dense descriptor layout but not read in this shader
+layout(binding = 2, std430) readonly buffer CmdGenUnusedBinding2 {
+    uint unusedBinding2Word;
+};
+layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
+    DrawCommand commands[];
+};
+layout(binding = 4, std430) buffer DrawCountBuffer {
+    uint drawCount;
+};
+layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
+    uint metadataSectionCapacity;
+    uint renderListCapacity;
+    uint geometryCapacityQuads;
+    uint drawCommandCapacity;
+    uint drawCountCapacityWords;
+    uint flags;
+};
+
+void main() {
+    // One invocation only - diagnostic probe
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    // Do NOT read binding0 renderList
+
+    // Read binding1 sectionData[0] directly (no indirection through renderList)
+    SectionMeta meta = sectionData[0];
+
+    // Compute/use a harmless local smoke value from metadata so the read is retained
+    uint smokeValue = meta.a.x ^ meta.a.y ^ meta.b.x ^ meta.b.y;
+
+    // Write literal safe command to commands[0]
+    DrawCommand cmd;
+    cmd.vertexCount = 6u;
+    cmd.instanceCount = 1u;
+    cmd.firstVertex = 0u;
+    cmd.firstInstance = smokeValue & 0xFFFFu; // Use smoke value to prevent optimization
+    commands[0] = cmd;
+
+    // Do NOT write drawCount
+}
