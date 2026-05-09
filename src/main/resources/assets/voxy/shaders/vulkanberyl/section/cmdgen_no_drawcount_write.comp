@@ -49,7 +49,12 @@ const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1u << 8u;
 const uint CMDGEN_FLAG_READ_BINDING0_ONLY = 1u << 9u;
 const uint CMDGEN_FLAG_READ_BINDING1_ONLY = 1u << 10u;
 const uint CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1u << 11u;
+const uint CMDGEN_FLAG_READ_CONFIG_ONLY = 1u << 12u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE = 1u << 13u;
 
+uint extractQuadStart(SectionMeta meta) {
+    return meta.a.w;
+}
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
     return meta.b.x & 0xFFFFu;
@@ -108,6 +113,16 @@ void main() {
         return;
     }
 
+    if ((flags & CMDGEN_FLAG_READ_CONFIG_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        uint configSmoke = metadataSectionCapacity ^ renderListCapacity ^ geometryCapacityQuads;
+        if (configSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+            // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
 
     if ((flags & CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY) != 0u) {
         if (drawIndex != 0u) {
@@ -197,6 +212,23 @@ void main() {
     if ((flags & CMDGEN_FLAG_READ_METADATA_ONLY) != 0u) {
         if (drawIndex == 0u && drawCountCapacityWords > 0u) {
             // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+        }
+        return;
+    }
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE) != 0u) {
+        if (drawIndex == 0u && safeVisibleCount > 0u) {
+            uint rlSectionId = indirectLookup[0];
+            if (rlSectionId < metadataSectionCapacity) {
+                SectionMeta rlMeta = sectionData[rlSectionId];
+                uint rlTranslucentQuadCount = extractTranslucentQuadCount(rlMeta);
+                uint rlOpaqueQuadCount = extractOpaqueQuadCount(rlMeta);
+                uint rlOpaqueQuadStart = extractQuadStart(rlMeta) + rlTranslucentQuadCount;
+                // Compute but do not write - smoke check to prevent optimization
+                uint rlSmoke = rlOpaqueQuadStart ^ rlOpaqueQuadCount;
+                if (rlSmoke == 0xffffffffu && drawCountCapacityWords > 0u) {
+                    // drawCount store intentionally disabled for CPU/Java-controlled diagnostic bring-up.
+                }
+            }
         }
         return;
     }

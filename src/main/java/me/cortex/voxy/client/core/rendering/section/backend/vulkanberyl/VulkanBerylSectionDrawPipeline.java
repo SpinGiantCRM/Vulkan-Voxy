@@ -2425,6 +2425,7 @@ public final class VulkanBerylSectionDrawPipeline {
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE, CmdgenIsolationStage.READ_BINDING0_ONLY_NO_OUTPUT_WRITE);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING0_ONLY, CmdgenIsolationStage.READ_BINDING0_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING1_ONLY, CmdgenIsolationStage.READ_BINDING1_ONLY);
+        selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_CONFIG_ONLY, CmdgenIsolationStage.READ_CONFIG_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY, CmdgenIsolationStage.READ_RENDERLIST_HEADER_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY, CmdgenIsolationStage.READ_RENDERLIST_COUNT_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY, CmdgenIsolationStage.READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY);
@@ -2432,6 +2433,7 @@ public final class VulkanBerylSectionDrawPipeline {
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY, CmdgenIsolationStage.READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_ONLY, CmdgenIsolationStage.READ_RENDERLIST_ONLY);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_METADATA_ONLY, CmdgenIsolationStage.READ_METADATA_ONLY);
+        selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_RENDERLIST_METADATA_NO_WRITE, CmdgenIsolationStage.READ_RENDERLIST_METADATA_NO_WRITE);
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_WRITE_DRAWS_ONLY, CmdgenIsolationStage.WRITE_DRAWS_ONLY);
         return selected;
     }
@@ -2449,6 +2451,7 @@ public final class VulkanBerylSectionDrawPipeline {
         READ_BINDING0_ONLY_NO_OUTPUT_WRITE("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE", CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE, Integer.BYTES),
         READ_BINDING0_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY", CMDGEN_FLAG_READ_BINDING0_ONLY, Integer.BYTES),
         READ_BINDING1_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING1_ONLY", CMDGEN_FLAG_READ_BINDING1_ONLY, 0),
+        READ_CONFIG_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_CONFIG_ONLY", CMDGEN_FLAG_READ_CONFIG_ONLY, 0),
         READ_RENDERLIST_HEADER_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY", CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY, Integer.BYTES),
         READ_RENDERLIST_COUNT_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY", CMDGEN_FLAG_READ_RENDERLIST_COUNT_ONLY, Integer.BYTES),
         READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY", CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY, 2 * Integer.BYTES),
@@ -2456,6 +2459,7 @@ public final class VulkanBerylSectionDrawPipeline {
         READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY", CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY, 4 * Integer.BYTES),
         READ_RENDERLIST_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ONLY", CMDGEN_FLAG_READ_RENDERLIST_ONLY, 2 * Integer.BYTES),
         READ_METADATA_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_METADATA_ONLY", CMDGEN_FLAG_READ_METADATA_ONLY, 0),
+        READ_RENDERLIST_METADATA_NO_WRITE("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_METADATA_NO_WRITE", CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE, 2 * Integer.BYTES),
         WRITE_DRAWS_ONLY("VOXY_VULKAN_BERYL_CMDGEN_SHADER_WRITE_DRAWS_ONLY", CMDGEN_FLAG_WRITE_DRAWS_ONLY, 0);
 
         private final String envName;
@@ -2472,7 +2476,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int shaderFlag() { return this.shaderFlag; }
         int minimumRenderListBytes() { return this.minimumRenderListBytes; }
         boolean requiresControlledSection() {
-            return this == READ_METADATA_ONLY || this == WRITE_DRAWS_ONLY;
+            return this == READ_METADATA_ONLY || this == WRITE_DRAWS_ONLY || this == READ_RENDERLIST_METADATA_NO_WRITE;
         }
     }
 
@@ -4239,17 +4243,21 @@ public final class VulkanBerylSectionDrawPipeline {
     private void logCmdgenDispatchPathDiagnostic(ComputePipeline pipeline, String shaderName, String shaderResource, String stage, boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenPostDispatchBarrierRecorded, int cmdgenDispatchGroupCount, boolean cmdgenSameLayoutNoopActive, String validation, String reason) {
         boolean cmdgenDispatchRecorded = cmdgenPipelineBound && cmdgenDescriptorsBound && cmdgenDispatchCallRecorded;
         String dispatchRisk = cmdgenDispatchRiskFromState(cmdgenPipelineBound, cmdgenDescriptorsBound, cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded, cmdgenSameLayoutNoopActive, validation);
+        int cmdgenDispatchInvocationLimit = cmdgenDispatchGroupCount * 128;
+        String cmdgenIsolationMode = cmdgenSameLayoutNoopActive ? "noop_same_layout" : (stage.equals("full") ? "full_no_drawcount_write" : stage);
+        long controlledSmokeSectionId = this.controlledSmokeCommandExpectedSectionId >= 0 ? Integer.toUnsignedLong(this.controlledSmokeCommandExpectedSectionId) : -1L;
+        long controlledSmokeSectionQuadCount = this.controlledSmokeCommandExpectedVertexCount >= 0 ? this.controlledSmokeCommandExpectedVertexCount / 4L : -1L;
         VulkanBerylDebugLog.once("cmdgen-dispatch-path-diagnostic:" + stage + ":" + reason, "cmdgen dispatch path diagnostic: stage=" + stage
                 + ", reason=" + reason
                 + ", cmdgenSelectedShader=" + shaderName
-                + ", cmdgenSelectedShaderResource=" + shaderResource
-                + ", cmdgenSameLayoutNoopActive=" + cmdgenSameLayoutNoopActive
+                + ", cmdgenIsolationMode=" + cmdgenIsolationMode
                 + ", cmdgenPipelineBound=" + cmdgenPipelineBound
                 + ", cmdgenDescriptorsBound=" + cmdgenDescriptorsBound
                 + ", cmdgenDispatchCallRecorded=" + cmdgenDispatchCallRecorded
                 + ", cmdgenPostDispatchBarrierRecorded=" + cmdgenPostDispatchBarrierRecorded
                 + ", cmdgenDispatchRecorded=" + cmdgenDispatchRecorded
                 + ", cmdgenDispatchGroupCount=" + cmdgenDispatchGroupCount
+                + ", cmdgenDispatchInvocationLimit=" + cmdgenDispatchInvocationLimit
                 + ", cmdgenDescriptorBinding0BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_RENDER_LIST_BINDING)
                 + ", cmdgenDescriptorBinding1BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_METADATA_BINDING)
                 + ", cmdgenDescriptorBinding2BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_UNUSED_BINDING2_BINDING)
@@ -4262,6 +4270,10 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", cmdgenDescriptorBinding3RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COMMAND_BINDING)
                 + ", cmdgenDescriptorBinding4RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COUNT_BINDING)
                 + ", cmdgenDescriptorBinding5RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_CONFIG_BINDING)
+                + ", cmdgenControlledSmokeSectionId=" + controlledSmokeSectionId
+                + ", cmdgenControlledSmokeSectionQuadCount=" + controlledSmokeSectionQuadCount
+                + ", cmdgenControlledSmokeExpectedVertexCount=" + this.controlledSmokeCommandExpectedVertexCount
+                + ", cmdgenControlledSmokeExpectedFirstVertex=" + this.controlledSmokeCommandExpectedFirstVertex
                 + ", cmdgenConfigRenderListCapacity=" + this.lastCmdGenConfigRenderListCapacity
                 + ", cmdgenConfigMetadataSectionCapacity=" + this.lastCmdGenConfigMetadataSectionCapacity
                 + ", cmdgenConfigGeometryCapacityQuads=" + this.lastCmdGenConfigGeometryCapacityQuads
