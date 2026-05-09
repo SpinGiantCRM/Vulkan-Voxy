@@ -120,6 +120,9 @@ public final class VulkanBerylSectionDrawPipeline {
     private DrawCommandDebugSample lastCompletedDebugSample = DrawCommandDebugSample.empty();
     private boolean controlledSmokeCommandReadbackScheduled;
     private String controlledSmokeCommandReadbackScheduleReason = "not_requested";
+    private boolean controlledSmokeCommandReadbackAlreadyPending;
+    private boolean controlledSmokeCommandReadbackScheduleSkipped;
+    private String controlledSmokeCommandReadbackSkipReason = "none";
     private int controlledSmokeCommandReadbackFrameId = -1;
     private int controlledSmokeCommandReadbackCompletedFrameId = -1;
     private boolean controlledSmokeCommandReadbackCompleted;
@@ -870,12 +873,20 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, null);
         boolean controlledSmokeCommandReadback = controlledSmoke.safe() && CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && ENABLE_INDIRECT_DRAW && cmdgenDispatchSubmitted;
-        int sampledCommandCount = ((!CMDGEN_DEBUG_READBACK && !controlledSmokeCommandReadback) || CMDGEN_DISPATCH_NOOP || noOpCmdgenSmoke) ? 0 : Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount);
-        boolean debugReadbackRequested = (CMDGEN_DEBUG_READBACK || controlledSmokeCommandReadback) && sampledCommandCount > 0;
+        ControlledSmokeCommandValidation preScheduleControlledSmokeCommandValidation = controlledSmokeCommandReadback ? validateControlledSmokeCommandReadback(controlledSmoke) : null;
+        boolean controlledSmokeCommandAlreadyObserved = preScheduleControlledSmokeCommandValidation != null
+                && this.controlledSmokeCommandReadbackCompleted
+                && (preScheduleControlledSmokeCommandValidation.valid() || "completed_but_invalid".equals(preScheduleControlledSmokeCommandValidation.waitReason()));
+        int sampledCommandCount = ((!CMDGEN_DEBUG_READBACK && !controlledSmokeCommandReadback) || CMDGEN_DISPATCH_NOOP || noOpCmdgenSmoke) ? 0 : (controlledSmokeCommandReadback ? Math.min(1, visibleCount) : Math.min(DRAW_COMMAND_DEBUG_SAMPLE_LIMIT, visibleCount));
+        boolean debugReadbackRequested = (CMDGEN_DEBUG_READBACK || controlledSmokeCommandReadback) && sampledCommandCount > 0 && !(controlledSmokeCommandReadback && (this.debugSamplePending || controlledSmokeCommandAlreadyObserved));
         VulkanBerylDebugLog.once("cmdgen-debug-readback-state", "cmdgen debug readback " + (debugReadbackRequested ? "requested" : "skipped")
                 + ", controlledSmokeCommandReadback=" + controlledSmokeCommandReadback);
         ScheduledDebugReadback scheduledDebugReadback;
-        if (CMDGEN_DEBUG_READBACK_LOG_ONLY && !controlledSmokeCommandReadback) {
+        if (controlledSmokeCommandReadback && this.debugSamplePending) {
+            scheduledDebugReadback = new ScheduledDebugReadback(false, "pending_readback_in_flight", DRAW_COMMAND_STRIDE_BYTES, 0L, true, true, "pending_readback_in_flight");
+        } else if (controlledSmokeCommandAlreadyObserved) {
+            scheduledDebugReadback = new ScheduledDebugReadback(false, preScheduleControlledSmokeCommandValidation.valid() ? "completed_valid" : "completed_invalid", DRAW_COMMAND_STRIDE_BYTES, 0L);
+        } else if (CMDGEN_DEBUG_READBACK_LOG_ONLY && !controlledSmokeCommandReadback) {
             logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
             scheduledDebugReadback = new ScheduledDebugReadback(false, "log_only", 0L, 0L);
         } else {
@@ -897,7 +908,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + indirectGateReason);
         }
         int submittedDrawCount = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER ? javaDrawCountForNoDrawCountCmdgen.drawCount() : visibleCount;
-        ControlledSmokeCommandValidation controlledSmokeCommandValidation = validateControlledSmokeCommandReadback(controlledSmoke);
+        ControlledSmokeCommandValidation controlledSmokeCommandValidation = controlledSmokeCommandAlreadyObserved ? preScheduleControlledSmokeCommandValidation : validateControlledSmokeCommandReadback(controlledSmoke);
         logSmokeDrawOutputDiagnostics(geometryData, controlledSmoke, visibleCount, submittedDrawCount, controlledSmokeCommandValidation);
         if (controlledSmokeCommandReadback) {
             logControlledSmokeCommandReadbackLifecycle(viewport.frameId, controlledSmokeCommandValidation);
@@ -927,7 +938,11 @@ public final class VulkanBerylSectionDrawPipeline {
         return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, submittedDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
     }
 
-    private record ScheduledDebugReadback(boolean scheduled, String reason, long commandCopyBytes, long countCopyBytes) {}
+    private record ScheduledDebugReadback(boolean scheduled, String reason, long commandCopyBytes, long countCopyBytes, boolean alreadyPending, boolean scheduleSkipped, String skipReason) {
+        private ScheduledDebugReadback(boolean scheduled, String reason, long commandCopyBytes, long countCopyBytes) {
+            this(scheduled, reason, commandCopyBytes, countCopyBytes, false, false, "none");
+        }
+    }
 
     private record ControlledSmokeCommandValidation(boolean valid, String waitReason, String mismatch) {}
 
@@ -944,20 +959,30 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private void recordControlledSmokeCommandReadbackSchedule(ScheduledDebugReadback scheduledDebugReadback, int frameId) {
-        this.controlledSmokeCommandReadbackScheduled = scheduledDebugReadback.scheduled();
-        this.controlledSmokeCommandReadbackScheduleReason = scheduledDebugReadback.reason();
+        this.controlledSmokeCommandReadbackAlreadyPending = scheduledDebugReadback.alreadyPending();
+        this.controlledSmokeCommandReadbackScheduleSkipped = scheduledDebugReadback.scheduleSkipped();
+        this.controlledSmokeCommandReadbackSkipReason = scheduledDebugReadback.skipReason();
+        if (!scheduledDebugReadback.scheduleSkipped()) {
+            this.controlledSmokeCommandReadbackScheduled = scheduledDebugReadback.scheduled() || this.controlledSmokeCommandReadbackScheduled;
+            this.controlledSmokeCommandReadbackScheduleReason = scheduledDebugReadback.reason();
+        }
         if (scheduledDebugReadback.scheduled()) {
             this.controlledSmokeCommandReadbackFrameId = frameId;
             this.controlledSmokeCommandReadbackGpuCompletionKnown = false;
+            this.controlledSmokeCommandReadbackCompleted = false;
         }
         VulkanBerylDebugLog.rateLimited("controlled-smoke-command-readback-schedule", "controlled smoke command readback schedule: controlledSmokeCommandReadbackScheduled=" + scheduledDebugReadback.scheduled()
+                + ", controlledSmokeCommandReadbackAlreadyPending=" + scheduledDebugReadback.alreadyPending()
+                + ", controlledSmokeCommandReadbackScheduleSkipped=" + scheduledDebugReadback.scheduleSkipped()
+                + ", controlledSmokeCommandReadbackSkipReason=" + scheduledDebugReadback.skipReason()
                 + ", controlledSmokeCommandReadbackScheduleReason=" + scheduledDebugReadback.reason()
                 + ", controlledSmokeCommandReadbackSourceBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId())
                 + ", controlledSmokeCommandReadbackSourceOffset=0"
                 + ", controlledSmokeCommandReadbackBytes=" + scheduledDebugReadback.commandCopyBytes()
                 + ", controlledSmokeCommandReadbackBufferId=" + (this.drawCommandDebugReadbackBuffer == null ? 0L : this.drawCommandDebugReadbackBuffer.getId())
                 + ", controlledSmokeCommandReadbackBufferSizeBytes=" + (this.drawCommandDebugReadbackBuffer == null ? 0L : this.drawCommandDebugReadbackBuffer.getBufferSize())
-                + ", controlledSmokeCommandReadbackBufferHostVisible=" + hostVisibleString(this.drawCommandDebugReadbackBuffer), 30);
+                + ", controlledSmokeCommandReadbackBufferHostVisible=" + hostVisibleString(this.drawCommandDebugReadbackBuffer)
+                + ", controlledSmokeCommandReadbackVkDrawIndirectCommandBytes=" + DRAW_COMMAND_STRIDE_BYTES, 30);
     }
 
     private void logControlledSmokeCommandReadbackLifecycle(int currentFrameId, ControlledSmokeCommandValidation validation) {
@@ -965,6 +990,9 @@ public final class VulkanBerylSectionDrawPipeline {
         int ageFrames = readbackFrameId < 0 ? -1 : Math.max(0, currentFrameId - readbackFrameId);
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         String diagnostic = "controlledSmokeCommandReadbackPending=" + this.debugSamplePending
+                + ", controlledSmokeCommandReadbackAlreadyPending=" + this.controlledSmokeCommandReadbackAlreadyPending
+                + ", controlledSmokeCommandReadbackScheduleSkipped=" + this.controlledSmokeCommandReadbackScheduleSkipped
+                + ", controlledSmokeCommandReadbackSkipReason=" + this.controlledSmokeCommandReadbackSkipReason
                 + ", controlledSmokeCommandReadbackCompleted=" + this.controlledSmokeCommandReadbackCompleted
                 + ", controlledSmokeCommandReadbackFrameId=" + readbackFrameId
                 + ", currentFrameId=" + currentFrameId
@@ -978,6 +1006,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", controlledSmokeCommandReadbackObservedFirstInstance=" + (sample.sampledCommandCount() > 0 ? Integer.toUnsignedLong(sample.firstFirstInstance()) : -1L)
                 + ", smokeDrawCommandLooksDrawable=" + validation.valid()
                 + ", diagnosticWaitReason=" + validation.waitReason()
+                + ", smokeDrawInvisibleReason=" + (validation.valid() ? "none" : validation.mismatch())
                 + ", controlledSmokeCommandReadbackMismatch=" + validation.mismatch();
         VulkanBerylDebugLog.stateLimited("controlled-smoke-command-readback-lifecycle", "controlled smoke command readback lifecycle: " + diagnostic, diagnostic);
     }
@@ -996,7 +1025,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (Integer.toUnsignedLong(sample.firstVertexCount()) != expectedVertexCount) return "vertexCount_mismatch_expected_section_quad_count";
         if (Integer.toUnsignedLong(sample.firstFirstVertex()) != expectedFirstVertex) return "firstVertex_mismatch_expected_section_first_quad";
         if (sample.firstFirstInstance() != 0) return "firstInstance_unexpected";
-        if (sample.firstInstanceCount() != 1) return "firstInstance_unexpected";
+        if (sample.firstInstanceCount() != 1) return "instanceCount_unexpected";
         return null;
     }
 
