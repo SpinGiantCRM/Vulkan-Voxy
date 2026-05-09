@@ -98,6 +98,8 @@ final class VulkanBerylCmdgenDiagnostics {
     static final String CMDGEN_RAW_METADATA_UVEC4_BINDING0_SHADER_NAME = "vulkanberyl/section/cmdgen_raw_metadata_uvec4_binding0";
     static final String CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_compute_quad_counts_only_no_write.comp";
     static final String CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_compute_quad_counts_only_no_write";
+    static final String CMDGEN_READ_RENDERLIST_METADATA_NO_WRITE_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_read_renderlist_metadata_no_write.comp";
+    static final String CMDGEN_READ_RENDERLIST_METADATA_NO_WRITE_SHADER_NAME = "vulkanberyl/section/cmdgen_read_renderlist_metadata_no_write";
     static final String CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_write_command0_only_no_atomic.comp";
     static final String CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_write_command0_only_no_atomic";
     static final String CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_atomic_drawcount_only.comp";

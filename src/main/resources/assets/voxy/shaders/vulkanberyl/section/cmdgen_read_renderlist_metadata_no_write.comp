@@ -1,0 +1,97 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+struct SectionMeta {
+    uvec4 a;
+    uvec4 b;
+};
+
+struct DrawCommand {
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+};
+
+layout(binding = 0, std430) readonly buffer RenderListBuffer {
+    uint visibleCount;
+    uint indirectLookup[];
+};
+layout(binding = 1, std430) readonly buffer MetadataBuffer {
+    SectionMeta sectionData[];
+};
+// Binding 2-5 present to match dense descriptor layout but not read in this shader
+layout(binding = 2, std430) readonly buffer Binding2ProbeBuffer {
+    uint binding2ProbeWord;
+};
+layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
+    DrawCommand commands[];
+};
+layout(binding = 4, std430) buffer DrawCountBuffer {
+    uint drawCount;
+};
+layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
+    uint metadataSectionCapacity;
+    uint renderListCapacity;
+    uint geometryCapacityQuads;
+    uint drawCommandCapacity;
+    uint drawCountCapacityWords;
+    uint flags;
+};
+
+uint extractQuadStart(SectionMeta meta) {
+    return meta.a.w;
+}
+
+uint extractTranslucentQuadCount(SectionMeta meta) {
+    return meta.b.x & 0xFFFFu;
+}
+
+uint extractOpaqueQuadCount(SectionMeta meta) {
+    uvec4 counts = meta.b;
+    return ((counts.x >> 16u) & 0xFFFFu)
+        + (counts.y & 0xFFFFu)
+        + ((counts.y >> 16u) & 0xFFFFu)
+        + (counts.z & 0xFFFFu)
+        + ((counts.z >> 16u) & 0xFFFFu)
+        + (counts.w & 0xFFFFu)
+        + ((counts.w >> 16u) & 0xFFFFu);
+}
+
+void main() {
+    // Only one invocation runs
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    // Read binding 0: check if there's any visible entry
+    if (visibleCount == 0u) {
+        return;
+    }
+
+    // Read renderList entry 0 to get section id
+    uint sectionId = indirectLookup[0];
+
+    // Hardcoded large capacity limit to avoid reading binding 5 config
+    // This is a dedicated isolation shader - we use a constant upper bound
+    const uint HARD_CODED_METADATA_CAPACITY = 0xFFFFFFFFu;
+    if (sectionId >= HARD_CODED_METADATA_CAPACITY) {
+        return;
+    }
+
+    // Read binding 1 metadata for the section
+    SectionMeta meta = sectionData[sectionId];
+
+    // Compute quadStart, translucent quad count, and opaque quad count locally
+    uint quadStart = extractQuadStart(meta);
+    uint translucentCount = extractTranslucentQuadCount(meta);
+    uint opaqueQuadStart = quadStart + translucentCount;
+    uint opaqueQuadCount = extractOpaqueQuadCount(meta);
+
+    // Use the computed values to prevent optimization
+    // Do NOT write drawCommands or drawCount
+    if ((quadStart | opaqueQuadStart | opaqueQuadCount | translucentCount) == 0xFFFFFFFFu) {
+        uint ignored = quadStart ^ opaqueQuadStart;
+    }
+}

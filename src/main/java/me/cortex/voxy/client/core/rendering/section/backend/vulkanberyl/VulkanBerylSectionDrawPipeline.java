@@ -83,6 +83,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private ComputePipeline commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline;
     private ComputePipeline commandGenNoImportAtomicDrawcountOnlyProbePipeline;
     private ComputePipeline commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline;
+    private ComputePipeline commandGenReadRenderlistMetadataNoWritePipeline;
     private Buffer drawCommandBuffer;
     private Buffer controlledSmokeKnownCommandBuffer;
     private int controlledSmokeKnownCommandBufferUsageFlags;
@@ -935,6 +936,10 @@ public final class VulkanBerylSectionDrawPipeline {
             if (isolationStage == CmdgenIsolationStage.READ_CONFIG_ONLY) {
                 this.ensureCommandGenMinimalConfigReadProbePipeline();
                 return dispatchMinimalSsboReadProbe(commandBuffer, visibleCount, this.commandGenMinimalConfigReadProbePipeline, this.cmdGenConfigBuffer, CMDGEN_CONFIG_BINDING, CMDGEN_MINIMAL_CONFIG_READ_SHADER_NAME, "read_config_only", false);
+            }
+            if (isolationStage == CmdgenIsolationStage.READ_RENDERLIST_METADATA_NO_WRITE) {
+                this.ensureCommandGenReadRenderlistMetadataNoWritePipeline();
+                return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenReadRenderlistMetadataNoWritePipeline, "read_renderlist_metadata_no_write");
             }
             if (activeCmdgenShaderSelectionEnvVar() != null) {
                 VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-dispatch-path", "selected normal-cmdgen shader uses same dispatch path as normal cmdgen");
@@ -2847,6 +2852,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline.cleanUp();
             this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline = null;
         }
+        if (this.commandGenReadRenderlistMetadataNoWritePipeline != null) {
+            this.commandGenReadRenderlistMetadataNoWritePipeline.cleanUp();
+            this.commandGenReadRenderlistMetadataNoWritePipeline = null;
+        }
         if (this.drawCommandBuffer != null) {
             this.drawCommandBuffer.scheduleFree();
             this.drawCommandBuffer = null;
@@ -4026,6 +4035,11 @@ public final class VulkanBerylSectionDrawPipeline {
     private void ensureCommandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline() {
         if (this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline != null) return;
         this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_RESOURCE, CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_NAME, "CmdGenNoImportSingleInvocationRealCommandNoAtomicProbe");
+    }
+
+    private void ensureCommandGenReadRenderlistMetadataNoWritePipeline() {
+        if (this.commandGenReadRenderlistMetadataNoWritePipeline != null) return;
+        this.commandGenReadRenderlistMetadataNoWritePipeline = createFullLayoutProbePipeline(CMDGEN_READ_RENDERLIST_METADATA_NO_WRITE_SHADER_RESOURCE, CMDGEN_READ_RENDERLIST_METADATA_NO_WRITE_SHADER_NAME, "CmdGenReadRenderlistMetadataNoWrite");
     }
 
     private ComputePipeline createDenseConfigReadProbePipeline() {
