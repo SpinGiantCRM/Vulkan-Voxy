@@ -854,6 +854,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
                 }
             }
+            recordJavaKnownControlledSmokeCommand(commandBuffer, controlledSmoke);
             javaDrawCountForNoDrawCountCmdgen = recordJavaDrawCountForNoDrawCountCmdgen(commandBuffer, controlledSmoke, visibleCount);
         }
 
@@ -1090,6 +1091,17 @@ public final class VulkanBerylSectionDrawPipeline {
                 && smokeSectionQuadCount > 0L
                 && geometryByteStart >= 0L
                 && geometryByteEnd <= geometryData.getUsedGeometryBytes();
+        boolean javaKnownControlledCommandActive = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && RENDERLIST_SMOKE_ONE_ENTRY && controlledSmoke.safe();
+        String cmdgenCommandWriteSkippedReason;
+        if (javaKnownControlledCommandActive) {
+            cmdgenCommandWriteSkippedReason = "java_known_controlled_smoke_command_after_shader";
+        } else if (sample.sampledCommandCount() <= 0) {
+            cmdgenCommandWriteSkippedReason = this.debugSamplePending ? "waiting_for_command_readback" : "command_not_sampled";
+        } else if (commandValidation.valid()) {
+            cmdgenCommandWriteSkippedReason = "not_skipped";
+        } else {
+            cmdgenCommandWriteSkippedReason = commandValidation.mismatch();
+        }
         String invisibleReason;
         if (sample.sampledCommandCount() <= 0) {
             invisibleReason = this.debugSamplePending ? "waiting_for_indirect_command_readback" : "indirect_command_not_sampled";
@@ -1136,10 +1148,83 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", smokeDrawInvisibleReason=" + invisibleReason
                 + ", drawShaderIndexing=drawIndex_gl_InstanceIndex_firstInstance_selects_indirectLookup_firstVertex_selects_quadData_gl_VertexIndex"
                 + ", drawShaderVertexIndexSemantics=Vulkan_VertexIndex_includes_firstVertex_for_non_indexed_indirect_draws"
-                + ", screenspaceSmokeEnabled=" + DRAW_SCREENSPACE_SMOKE;
+                + ", screenspaceSmokeEnabled=" + DRAW_SCREENSPACE_SMOKE
+                + ", cmdgenSelectedShader=" + activeCmdgenShaderName()
+                + ", cmdgenCommandWritePathEnabled=" + (CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER || !CMDGEN_DISPATCH_NOOP)
+                + ", cmdgenCommandWriteBinding=" + CMDGEN_DRAW_COMMAND_BINDING
+                + ", cmdgenCommandWriteOffsetBytes=0"
+                + ", cmdgenCommand0BeforeDispatchVertexCount=0"
+                + ", cmdgenCommand0AfterDispatchVertexCount=" + smokeDrawCommandVertexCount
+                + ", cmdgenCommand0AfterDispatchInstanceCount=" + smokeDrawCommandInstanceCount
+                + ", cmdgenCommand0AfterDispatchFirstVertex=" + smokeDrawCommandFirstVertex
+                + ", cmdgenCommand0AfterDispatchFirstInstance=" + smokeDrawCommandFirstInstance
+                + ", cmdgenControlledSmokeSectionId=" + smokeSelectedSectionId
+                + ", cmdgenControlledSmokeSectionQuadCount=" + smokeSectionQuadCount
+                + ", cmdgenControlledSmokeExpectedVertexCount=" + smokeExpectedVertexCount
+                + ", cmdgenControlledSmokeExpectedFirstVertex=" + smokeExpectedFirstVertex
+                + ", cmdgenCommandWriteSkippedReason=" + cmdgenCommandWriteSkippedReason;
         if (diagnostic.equals(this.lastSmokeDrawOutputDiagnostic)) return;
         this.lastSmokeDrawOutputDiagnostic = diagnostic;
         VulkanBerylDebugLog.always("Controlled smoke draw-output diagnostics: " + diagnostic);
+    }
+
+    private void recordJavaKnownControlledSmokeCommand(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke) {
+        if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER || !RENDERLIST_SMOKE_ONE_ENTRY || !controlledSmoke.safe()) return;
+        if (this.drawCommandBuffer == null || this.drawCommandBuffer.getId() == 0L || this.drawCommandBuffer.getBufferSize() < DRAW_COMMAND_STRIDE_BYTES) {
+            VulkanBerylDebugLog.rateLimited("cmdgen-controlled-smoke-java-command-skipped", "cmdgen controlled-smoke Java-known command skipped: cmdgenCommandWriteSkippedReason=draw_command_buffer_not_ready"
+                    + ", cmdgenSelectedShader=" + activeCmdgenShaderName()
+                    + ", cmdgenCommandWritePathEnabled=false"
+                    + ", cmdgenCommandWriteBinding=" + CMDGEN_DRAW_COMMAND_BINDING
+                    + ", cmdgenCommandWriteOffsetBytes=0", 60);
+            return;
+        }
+        long expectedVertexCount = controlledSmoke.quadCount() * 4L;
+        long expectedFirstVertex = Integer.toUnsignedLong(controlledSmoke.quadStart()) * 4L;
+        if (expectedVertexCount <= 0L || expectedVertexCount > 0xffffffffL || expectedFirstVertex > 0xffffffffL) {
+            VulkanBerylDebugLog.rateLimited("cmdgen-controlled-smoke-java-command-skipped", "cmdgen controlled-smoke Java-known command skipped: cmdgenCommandWriteSkippedReason=expected_command_out_of_uint_range"
+                    + ", cmdgenSelectedShader=" + activeCmdgenShaderName()
+                    + ", cmdgenControlledSmokeSectionId=" + controlledSmoke.sectionId()
+                    + ", cmdgenControlledSmokeSectionQuadCount=" + controlledSmoke.quadCount()
+                    + ", cmdgenControlledSmokeExpectedVertexCount=" + expectedVertexCount
+                    + ", cmdgenControlledSmokeExpectedFirstVertex=" + expectedFirstVertex, 60);
+            return;
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkMemoryBarrier.Buffer computeToTransfer = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0, computeToTransfer, null, null);
+
+            var command = stack.ints((int) expectedVertexCount, 1, (int) expectedFirstVertex, 0);
+            VK10.vkCmdUpdateBuffer(commandBuffer, this.drawCommandBuffer.getId(), 0L, command);
+
+            VkMemoryBarrier.Buffer transferToConsumers = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT | VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                    0, transferToConsumers, null, null);
+        }
+        VulkanBerylDebugLog.rateLimited("cmdgen-controlled-smoke-java-known-command", "cmdgen controlled-smoke Java-known indirect command recorded: cmdgenSelectedShader=" + activeCmdgenShaderName()
+                + ", cmdgenCommandWritePathEnabled=true"
+                + ", cmdgenCommandWriteBinding=" + CMDGEN_DRAW_COMMAND_BINDING
+                + ", cmdgenCommandWriteOffsetBytes=0"
+                + ", cmdgenCommand0BeforeDispatchVertexCount=0"
+                + ", cmdgenCommand0AfterDispatchVertexCount=" + expectedVertexCount
+                + ", cmdgenCommand0AfterDispatchInstanceCount=1"
+                + ", cmdgenCommand0AfterDispatchFirstVertex=" + expectedFirstVertex
+                + ", cmdgenCommand0AfterDispatchFirstInstance=0"
+                + ", cmdgenControlledSmokeSectionId=" + controlledSmoke.sectionId()
+                + ", cmdgenControlledSmokeSectionQuadCount=" + controlledSmoke.quadCount()
+                + ", cmdgenControlledSmokeExpectedVertexCount=" + expectedVertexCount
+                + ", cmdgenControlledSmokeExpectedFirstVertex=" + expectedFirstVertex
+                + ", cmdgenCommandWriteSkippedReason=java_known_controlled_smoke_command_after_shader", 60);
     }
 
     private JavaDrawCountDiagnostic recordJavaDrawCountForNoDrawCountCmdgen(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int visibleCount) {
