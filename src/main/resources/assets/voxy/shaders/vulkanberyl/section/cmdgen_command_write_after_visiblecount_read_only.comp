@@ -1,0 +1,66 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+struct DrawCommand {
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+};
+
+layout(binding = 0, std430) readonly buffer RenderListBuffer {
+    uint visibleCount;
+    uint indirectLookup[];
+};
+
+// Binding 1 declared but not read in this shader
+layout(binding = 1, std430) readonly buffer MetadataBuffer {
+    uint sectionData[];
+};
+
+// Binding 2-5 present to match dense descriptor layout but not read in this shader
+layout(binding = 2, std430) readonly buffer CmdGenUnusedBinding2 {
+    uint unusedBinding2Word;
+};
+layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
+    DrawCommand commands[];
+};
+layout(binding = 4, std430) buffer DrawCountBuffer {
+    uint drawCount;
+};
+layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
+    uint metadataSectionCapacity;
+    uint renderListCapacity;
+    uint geometryCapacityQuads;
+    uint drawCommandCapacity;
+    uint drawCountCapacityWords;
+    uint flags;
+};
+
+void main() {
+    // One invocation only - diagnostic probe
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    // Read binding0 visibleCount only
+    uint visible = visibleCount;
+
+    // Use visibleCount in a harmless local smoke expression so the read is retained
+    uint smokeValue = visible ^ 0xAAAAAAAAu;
+
+    // Do NOT read indirectLookup[0]
+    // Do NOT read binding1 metadata
+    // Do NOT read binding5 config
+
+    // Write literal safe command to commands[0]
+    DrawCommand cmd;
+    cmd.vertexCount = 6u;
+    cmd.instanceCount = 1u;
+    cmd.firstVertex = 0u;
+    cmd.firstInstance = smokeValue & 0xFFFFu; // Use smoke value to prevent optimization
+    commands[0] = cmd;
+
+    // Do NOT write drawCount
+}
