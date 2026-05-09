@@ -144,6 +144,11 @@ final class VulkanBerylCmdgenDiagnostics {
     static final boolean CMDGEN_UPLOAD_CONFIG_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_UPLOAD_CONFIG_ONLY", "false"));
     static final boolean CMDGEN_CLEAR_OUTPUTS_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_CLEAR_OUTPUTS_ONLY", "false"));
     static final boolean CMDGEN_BIND_FULL_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_BIND_FULL_ONLY", "false"));
+    static final boolean CMDGEN_DISABLE_BIND_PIPELINE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DISABLE_BIND_PIPELINE", "false"));
+    static final boolean CMDGEN_DISABLE_BIND_DESCRIPTORS = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DISABLE_BIND_DESCRIPTORS", "false"));
+    static final boolean CMDGEN_DISABLE_DISPATCH_CALL = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DISABLE_DISPATCH_CALL", "false"));
+    static final boolean CMDGEN_DISABLE_POST_DISPATCH_BARRIER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DISABLE_POST_DISPATCH_BARRIER", "false"));
+    static final boolean CMDGEN_DISPATCH_NOOP_SAME_LAYOUT = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DISPATCH_NOOP_SAME_LAYOUT", "false"));
     static final boolean CMDGEN_SHADER_READ_RENDERLIST_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_ONLY", "false"));
     static final boolean CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_HEADER_ONLY", "false"));
     static final boolean CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_RENDERLIST_COUNT_ONLY", "false"));
@@ -278,6 +283,7 @@ final class VulkanBerylCmdgenDiagnostics {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_MINIMAL_CONFIG_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_MINIMAL_CONFIG_BINDING0_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_HARDCODED_READ_BINDING0_ONLY, "VOXY_VULKAN_BERYL_CMDGEN_HARDCODED_READ_BINDING0_ONLY");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_NOOP_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_NOOP_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DISPATCH_NOOP_SAME_LAYOUT, "VOXY_VULKAN_BERYL_CMDGEN_DISPATCH_NOOP_SAME_LAYOUT");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_BINDING0_CONFIG_SHADER");
