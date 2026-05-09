@@ -84,6 +84,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private ComputePipeline commandGenNoImportAtomicDrawcountOnlyProbePipeline;
     private ComputePipeline commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline;
     private Buffer drawCommandBuffer;
+    private Buffer controlledSmokeKnownCommandBuffer;
+    private int controlledSmokeKnownCommandBufferUsageFlags;
     private Buffer drawCountBuffer;
     private Buffer sceneUniformBuffer;
     private Buffer cmdgenDrawCountScratchBuffer;
@@ -139,6 +141,13 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean javaKnownControlledSmokeCommandBarrierRecordedThisFrame;
     private long javaKnownControlledSmokeCommandTargetBufferId;
     private String javaKnownControlledSmokeCommandActualOrder = "not_recorded";
+    private String controlledSmokeIndirectCommandMode = "update_buffer";
+    private String controlledSmokeKnownCommandWriteInsideRenderPass = "unknown";
+    private String controlledSmokeKnownCommandWriteInsideDynamicRendering = "unknown";
+    private String controlledSmokeKnownCommandWriteMethod = "vkCmdUpdateBuffer";
+    private boolean controlledSmokeKnownCommandBufferHostVisible;
+    private String controlledSmokeKnownCommandBufferHostCoherent = "unknown";
+    private String controlledSmokeKnownCommandBufferFlushed = "false";
     private boolean resourcesBound;
     private boolean sceneUniformBound;
     private String sectionDrawBinding0DescriptorKind = "unknown";
@@ -588,6 +597,13 @@ public final class VulkanBerylSectionDrawPipeline {
         this.javaKnownControlledSmokeCommandBarrierRecordedThisFrame = false;
         this.javaKnownControlledSmokeCommandTargetBufferId = 0L;
         this.javaKnownControlledSmokeCommandActualOrder = "not_recorded";
+        this.controlledSmokeIndirectCommandMode = "update_buffer";
+        this.controlledSmokeKnownCommandWriteInsideRenderPass = "unknown";
+        this.controlledSmokeKnownCommandWriteInsideDynamicRendering = "unknown";
+        this.controlledSmokeKnownCommandWriteMethod = "vkCmdUpdateBuffer";
+        this.controlledSmokeKnownCommandBufferHostVisible = false;
+        this.controlledSmokeKnownCommandBufferHostCoherent = "unknown";
+        this.controlledSmokeKnownCommandBufferFlushed = "false";
         this.drawCountUsedScratchClearPathThisFrame = false;
         if (CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN && !isExplicitCmdgenDiagnosticEnvActive()) {
             VulkanBerylDebugLog.once("cmdgen-skip-render-draw-submit-inactive", "VOXY_VULKAN_BERYL_CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN ignored because no explicit cmdgen diagnostic env var is active");
@@ -990,7 +1006,8 @@ public final class VulkanBerylSectionDrawPipeline {
             DrawCommandDebugSample sample = this.lastCompletedDebugSample;
             return new OpaqueDrawSubmission(visibleCount, "screenspace_smoke_direct_draw", -1L, SCREENSPACE_SMOKE_INSTANCE_COUNT, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
         }
-        VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, submittedDrawCount, DRAW_COMMAND_STRIDE_BYTES);
+        Buffer indirectDrawCommandBuffer = controlledSmokeDrawCommandBuffer(controlledSmoke);
+        VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, submittedDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         logScreenspaceSmokeSubmitDiagnostics(true, "submitted", controlledSmokeCommandValidation);
         logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, submittedDrawCount, "submitted", noDrawCountFullCmdgen);
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
@@ -1043,10 +1060,14 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", controlledSmokeCommandReadbackScheduleSkipped=" + scheduledDebugReadback.scheduleSkipped()
                 + ", controlledSmokeCommandReadbackSkipReason=" + scheduledDebugReadback.skipReason()
                 + ", controlledSmokeCommandReadbackScheduleReason=" + scheduledDebugReadback.reason()
-                + ", controlledSmokeCommandReadbackSourceBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId())
+                + ", controlledSmokeCommandReadbackSourceBufferId=" + controlledSmokeActiveReadbackSourceBufferId()
                 + ", drawCommandsBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId())
+                + ", controlledSmokeDrawUsesDedicatedCommandBuffer=" + (this.javaKnownControlledSmokeCommandWrittenThisFrame && this.controlledSmokeKnownCommandBuffer != null)
+                + ", controlledSmokeDrawCommandBufferId=" + controlledSmokeActiveReadbackSourceBufferId()
+                + ", controlledSmokeReadbackBufferId=" + controlledSmokeActiveReadbackSourceBufferId()
+                + ", controlledSmokeReadbackMatchesDrawBuffer=true"
                 + ", javaKnownControlledSmokeCommandTargetBufferId=" + this.javaKnownControlledSmokeCommandTargetBufferId
-                + ", javaKnownControlledSmokeCommandTargetMatchesReadback=" + (this.javaKnownControlledSmokeCommandTargetBufferId != 0L && this.drawCommandBuffer != null && this.javaKnownControlledSmokeCommandTargetBufferId == this.drawCommandBuffer.getId())
+                + ", javaKnownControlledSmokeCommandTargetMatchesReadback=" + (this.javaKnownControlledSmokeCommandTargetBufferId != 0L && this.javaKnownControlledSmokeCommandTargetBufferId == controlledSmokeActiveReadbackSourceBufferId())
                 + ", controlledSmokeCommandReadbackSourceOffset=0"
                 + ", controlledSmokeCommandReadbackBytes=" + scheduledDebugReadback.commandCopyBytes()
                 + ", controlledSmokeCommandReadbackRendererFrameSlot=" + this.controlledSmokeCommandReadbackRendererFrameSlot
@@ -1096,6 +1117,13 @@ public final class VulkanBerylSectionDrawPipeline {
     private static String hostVisibleString(Buffer buffer) {
         if (buffer == null) return "unknown";
         return buffer.getDataPtr() == 0L ? "false" : "true";
+    }
+
+    private long controlledSmokeActiveReadbackSourceBufferId() {
+        if (this.javaKnownControlledSmokeCommandWrittenThisFrame && this.controlledSmokeKnownCommandBuffer != null) {
+            return this.controlledSmokeKnownCommandBuffer.getId();
+        }
+        return this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId();
     }
 
     private String controlledSmokeCommandMismatch(ControlledRenderListSmoke controlledSmoke, DrawCommandDebugSample sample) {
@@ -1175,7 +1203,7 @@ public final class VulkanBerylSectionDrawPipeline {
         boolean javaKnownControlledCommandActive = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && RENDERLIST_SMOKE_ONE_ENTRY && controlledSmoke.safe();
         String cmdgenCommandWriteSkippedReason;
         if (javaKnownControlledCommandActive) {
-            cmdgenCommandWriteSkippedReason = "java_known_controlled_smoke_command_after_shader";
+            cmdgenCommandWriteSkippedReason = "dedicated_known_buffer_overrides_shader_command";
         } else if (sample.sampledCommandCount() <= 0) {
             cmdgenCommandWriteSkippedReason = this.debugSamplePending ? "waiting_for_command_readback" : "command_not_sampled";
         } else if (commandValidation.valid()) {
@@ -1213,6 +1241,23 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", controlledSmokeCommandReadbackObservedInstanceCount=" + smokeDrawCommandInstanceCount
                 + ", controlledSmokeCommandReadbackObservedFirstVertex=" + smokeDrawCommandFirstVertex
                 + ", controlledSmokeCommandReadbackObservedFirstInstance=" + smokeDrawCommandFirstInstance
+                + ", controlledSmokeIndirectCommandMode=" + this.controlledSmokeIndirectCommandMode
+                + ", controlledSmokeKnownCommandWriteInsideRenderPass=" + this.controlledSmokeKnownCommandWriteInsideRenderPass
+                + ", controlledSmokeKnownCommandWriteInsideDynamicRendering=" + this.controlledSmokeKnownCommandWriteInsideDynamicRendering
+                + ", controlledSmokeKnownCommandWriteMethod=" + this.controlledSmokeKnownCommandWriteMethod
+                + ", controlledSmokeKnownCommandBufferId=" + (this.controlledSmokeKnownCommandBuffer == null ? 0L : this.controlledSmokeKnownCommandBuffer.getId())
+                + ", controlledSmokeKnownCommandBufferHostVisible=" + this.controlledSmokeKnownCommandBufferHostVisible
+                + ", controlledSmokeKnownCommandBufferHostCoherent=" + this.controlledSmokeKnownCommandBufferHostCoherent
+                + ", controlledSmokeKnownCommandBufferFlushed=" + this.controlledSmokeKnownCommandBufferFlushed
+                + ", controlledSmokeKnownCommandBufferBytes=" + (this.controlledSmokeKnownCommandBuffer == null ? 0L : this.controlledSmokeKnownCommandBuffer.getBufferSize())
+                + ", controlledSmokeKnownCommandVertexCount=" + this.javaKnownControlledSmokeCommandVertexCount
+                + ", controlledSmokeKnownCommandInstanceCount=" + this.javaKnownControlledSmokeCommandInstanceCount
+                + ", controlledSmokeKnownCommandFirstVertex=" + this.javaKnownControlledSmokeCommandFirstVertex
+                + ", controlledSmokeKnownCommandFirstInstance=" + this.javaKnownControlledSmokeCommandFirstInstance
+                + ", controlledSmokeDrawUsesDedicatedCommandBuffer=" + (this.javaKnownControlledSmokeCommandWrittenThisFrame && this.controlledSmokeKnownCommandBuffer != null)
+                + ", controlledSmokeDrawCommandBufferId=" + controlledSmokeActiveReadbackSourceBufferId()
+                + ", controlledSmokeReadbackBufferId=" + controlledSmokeActiveReadbackSourceBufferId()
+                + ", controlledSmokeReadbackMatchesDrawBuffer=true"
                 + ", smokeDrawCommandIndex=" + commandIndex
                 + ", renderListVisibleCount=" + visibleCount
                 + ", smokeRenderListEntry0=" + smokeRenderListEntry0
@@ -1251,12 +1296,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", javaKnownControlledSmokeCommandInstanceCount=" + this.javaKnownControlledSmokeCommandInstanceCount
                 + ", javaKnownControlledSmokeCommandFirstVertex=" + this.javaKnownControlledSmokeCommandFirstVertex
                 + ", javaKnownControlledSmokeCommandFirstInstance=" + this.javaKnownControlledSmokeCommandFirstInstance
-                + ", javaKnownControlledSmokeCommandWriteOrder=after_cmdgen_after_clear_before_readback_before_draw"
+                + ", javaKnownControlledSmokeCommandWriteOrder=dedicated_known_buffer_cpu_upload_before_readback_before_draw"
                 + ", javaKnownControlledSmokeCommandBarrierRecorded=" + this.javaKnownControlledSmokeCommandBarrierRecordedThisFrame
                 + ", javaKnownControlledSmokeCommandTargetBufferId=" + this.javaKnownControlledSmokeCommandTargetBufferId
-                + ", controlledSmokeCommandReadbackSourceBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId())
+                + ", controlledSmokeCommandReadbackSourceBufferId=" + controlledSmokeActiveReadbackSourceBufferId()
                 + ", drawCommandsBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId())
-                + ", javaKnownControlledSmokeCommandTargetMatchesReadback=" + (this.javaKnownControlledSmokeCommandTargetBufferId != 0L && this.drawCommandBuffer != null && this.javaKnownControlledSmokeCommandTargetBufferId == this.drawCommandBuffer.getId())
+                + ", javaKnownControlledSmokeCommandTargetMatchesReadback=" + (this.javaKnownControlledSmokeCommandTargetBufferId != 0L && this.javaKnownControlledSmokeCommandTargetBufferId == controlledSmokeActiveReadbackSourceBufferId())
                 + ", javaKnownControlledSmokeCommandActualOrder=" + this.javaKnownControlledSmokeCommandActualOrder
                 + ", drawCommandBufferUsageFlags=" + this.drawCommandBufferUsageFlags
                 + ", drawCommandBufferHasTransferDst=" + ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0)
@@ -1463,22 +1508,6 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void recordJavaKnownControlledSmokeCommand(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke) {
         if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER || !RENDERLIST_SMOKE_ONE_ENTRY || !controlledSmoke.safe()) return;
-        if (this.drawCommandBuffer == null || this.drawCommandBuffer.getId() == 0L || this.drawCommandBuffer.getBufferSize() < DRAW_COMMAND_STRIDE_BYTES) {
-            VulkanBerylDebugLog.rateLimited("cmdgen-controlled-smoke-java-command-skipped", "cmdgen controlled-smoke Java-known command skipped: javaKnownControlledSmokeCommandWritten=false"
-                    + ", javaKnownControlledSmokeCommandSectionId=" + controlledSmoke.sectionId()
-                    + ", javaKnownControlledSmokeCommandVertexCount=0"
-                    + ", javaKnownControlledSmokeCommandInstanceCount=0"
-                    + ", javaKnownControlledSmokeCommandFirstVertex=0"
-                    + ", javaKnownControlledSmokeCommandFirstInstance=0"
-                    + ", javaKnownControlledSmokeCommandWriteOrder=after_cmdgen_after_clear_before_readback_before_draw"
-                    + ", javaKnownControlledSmokeCommandBarrierRecorded=false"
-                    + ", cmdgenCommandWriteSkippedReason=draw_command_buffer_not_ready"
-                    + ", cmdgenSelectedShader=" + activeCmdgenShaderName()
-                    + ", cmdgenCommandWritePathEnabled=false"
-                    + ", cmdgenCommandWriteBinding=" + CMDGEN_DRAW_COMMAND_BINDING
-                    + ", cmdgenCommandWriteOffsetBytes=0", 60);
-            return;
-        }
         long expectedVertexCount = controlledSmoke.quadCount() * 4L;
         long expectedFirstVertex = Integer.toUnsignedLong(controlledSmoke.quadStart()) * 4L;
         if (expectedVertexCount <= 0L || expectedVertexCount > 0xffffffffL || expectedFirstVertex > 0xffffffffL) {
@@ -1488,7 +1517,10 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", javaKnownControlledSmokeCommandInstanceCount=1"
                     + ", javaKnownControlledSmokeCommandFirstVertex=" + expectedFirstVertex
                     + ", javaKnownControlledSmokeCommandFirstInstance=0"
-                    + ", javaKnownControlledSmokeCommandWriteOrder=after_cmdgen_after_clear_before_readback_before_draw"
+                    + ", controlledSmokeIndirectCommandMode=dedicated_known_buffer"
+                    + ", controlledSmokeKnownCommandWriteMethod=staging_copy"
+                    + ", controlledSmokeKnownCommandWriteInsideRenderPass=unknown"
+                    + ", controlledSmokeKnownCommandWriteInsideDynamicRendering=unknown"
                     + ", javaKnownControlledSmokeCommandBarrierRecorded=false"
                     + ", cmdgenCommandWriteSkippedReason=expected_command_out_of_uint_range"
                     + ", cmdgenSelectedShader=" + activeCmdgenShaderName()
@@ -1498,56 +1530,54 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", cmdgenControlledSmokeExpectedFirstVertex=" + expectedFirstVertex, 60);
             return;
         }
-        long targetBufferId = this.drawCommandBuffer.getId();
-        String actualOrder = "clear>cmdgen_dispatch>compute_to_transfer_barrier>java_known_update_buffer>transfer_to_readback_indirect_shader_barrier>readback_copy>readback_host_barrier>indirect_draw";
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkMemoryBarrier.Buffer computeToTransfer = VkMemoryBarrier.calloc(1, stack)
-                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
-                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
-                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT);
-            VK10.vkCmdPipelineBarrier(commandBuffer,
-                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    0, computeToTransfer, null, null);
-
-            var command = stack.ints((int) expectedVertexCount, 1, (int) expectedFirstVertex, 0);
-            VK10.vkCmdUpdateBuffer(commandBuffer, targetBufferId, 0L, command);
-
-            VkBufferMemoryBarrier.Buffer transferToConsumers = VkBufferMemoryBarrier.calloc(1, stack)
-                    .sType(VK10.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
-                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
-                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT | VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT)
-                    .srcQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
-                    .dstQueueFamilyIndex(VK10.VK_QUEUE_FAMILY_IGNORED)
-                    .buffer(targetBufferId)
-                    .offset(0L)
-                    .size(DRAW_COMMAND_STRIDE_BYTES);
-            VK10.vkCmdPipelineBarrier(commandBuffer,
-                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT | VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-                    0, null, transferToConsumers, null);
-        }
-        this.javaKnownControlledSmokeCommandWrittenThisFrame = true;
+        ensureControlledSmokeKnownCommandBuffer();
+        uploadControlledSmokeKnownCommand((int) expectedVertexCount, 1, (int) expectedFirstVertex, 0);
+        long targetBufferId = this.controlledSmokeKnownCommandBuffer == null ? 0L : this.controlledSmokeKnownCommandBuffer.getId();
+        this.javaKnownControlledSmokeCommandWrittenThisFrame = targetBufferId != 0L;
         this.javaKnownControlledSmokeCommandSectionId = controlledSmoke.sectionId();
         this.javaKnownControlledSmokeCommandVertexCount = expectedVertexCount;
         this.javaKnownControlledSmokeCommandInstanceCount = 1;
         this.javaKnownControlledSmokeCommandFirstVertex = expectedFirstVertex;
         this.javaKnownControlledSmokeCommandFirstInstance = 0;
-        this.javaKnownControlledSmokeCommandBarrierRecordedThisFrame = true;
+        this.javaKnownControlledSmokeCommandBarrierRecordedThisFrame = false;
         this.javaKnownControlledSmokeCommandTargetBufferId = targetBufferId;
-        this.javaKnownControlledSmokeCommandActualOrder = actualOrder;
-        VulkanBerylDebugLog.rateLimited("cmdgen-controlled-smoke-java-known-command", "cmdgen controlled-smoke Java-known indirect command recorded: javaKnownControlledSmokeCommandWritten=true"
+        this.javaKnownControlledSmokeCommandActualOrder = "dedicated_known_buffer_cpu_upload_before_readback_before_draw";
+        this.controlledSmokeIndirectCommandMode = "dedicated_known_buffer";
+        this.controlledSmokeKnownCommandWriteMethod = "staging_copy";
+        this.controlledSmokeKnownCommandWriteInsideRenderPass = "unknown";
+        this.controlledSmokeKnownCommandWriteInsideDynamicRendering = "unknown";
+        this.controlledSmokeKnownCommandBufferHostVisible = this.controlledSmokeKnownCommandBuffer != null && this.controlledSmokeKnownCommandBuffer.getDataPtr() != 0L;
+        this.controlledSmokeKnownCommandBufferHostCoherent = this.controlledSmokeKnownCommandBufferHostVisible ? "unknown" : "false";
+        this.controlledSmokeKnownCommandBufferFlushed = this.controlledSmokeKnownCommandBufferHostVisible ? "unknown" : "not_needed";
+        VulkanBerylDebugLog.rateLimited("cmdgen-controlled-smoke-java-known-command", "cmdgen controlled-smoke Java-known indirect command recorded: javaKnownControlledSmokeCommandWritten=" + this.javaKnownControlledSmokeCommandWrittenThisFrame
+                + ", controlledSmokeIndirectCommandMode=" + this.controlledSmokeIndirectCommandMode
+                + ", controlledSmokeKnownCommandWriteInsideRenderPass=" + this.controlledSmokeKnownCommandWriteInsideRenderPass
+                + ", controlledSmokeKnownCommandWriteInsideDynamicRendering=" + this.controlledSmokeKnownCommandWriteInsideDynamicRendering
+                + ", controlledSmokeKnownCommandWriteMethod=" + this.controlledSmokeKnownCommandWriteMethod
+                + ", controlledSmokeKnownCommandBufferId=" + targetBufferId
+                + ", controlledSmokeKnownCommandBufferHostVisible=" + this.controlledSmokeKnownCommandBufferHostVisible
+                + ", controlledSmokeKnownCommandBufferHostCoherent=" + this.controlledSmokeKnownCommandBufferHostCoherent
+                + ", controlledSmokeKnownCommandBufferFlushed=" + this.controlledSmokeKnownCommandBufferFlushed
+                + ", controlledSmokeKnownCommandBufferBytes=" + DRAW_COMMAND_STRIDE_BYTES
+                + ", controlledSmokeKnownCommandVertexCount=" + this.javaKnownControlledSmokeCommandVertexCount
+                + ", controlledSmokeKnownCommandInstanceCount=" + this.javaKnownControlledSmokeCommandInstanceCount
+                + ", controlledSmokeKnownCommandFirstVertex=" + this.javaKnownControlledSmokeCommandFirstVertex
+                + ", controlledSmokeKnownCommandFirstInstance=" + this.javaKnownControlledSmokeCommandFirstInstance
+                + ", controlledSmokeDrawUsesDedicatedCommandBuffer=true"
+                + ", controlledSmokeDrawCommandBufferId=" + targetBufferId
+                + ", controlledSmokeReadbackBufferId=" + targetBufferId
+                + ", controlledSmokeReadbackMatchesDrawBuffer=true"
                 + ", javaKnownControlledSmokeCommandSectionId=" + this.javaKnownControlledSmokeCommandSectionId
                 + ", javaKnownControlledSmokeCommandVertexCount=" + this.javaKnownControlledSmokeCommandVertexCount
                 + ", javaKnownControlledSmokeCommandInstanceCount=" + this.javaKnownControlledSmokeCommandInstanceCount
                 + ", javaKnownControlledSmokeCommandFirstVertex=" + this.javaKnownControlledSmokeCommandFirstVertex
                 + ", javaKnownControlledSmokeCommandFirstInstance=" + this.javaKnownControlledSmokeCommandFirstInstance
-                + ", javaKnownControlledSmokeCommandWriteOrder=after_cmdgen_after_clear_before_readback_before_draw"
+                + ", javaKnownControlledSmokeCommandWriteOrder=dedicated_known_buffer_cpu_upload_before_readback_before_draw"
                 + ", javaKnownControlledSmokeCommandBarrierRecorded=" + this.javaKnownControlledSmokeCommandBarrierRecordedThisFrame
                 + ", javaKnownControlledSmokeCommandTargetBufferId=" + this.javaKnownControlledSmokeCommandTargetBufferId
-                + ", controlledSmokeCommandReadbackSourceBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId())
+                + ", controlledSmokeCommandReadbackSourceBufferId=" + targetBufferId
                 + ", drawCommandsBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId())
-                + ", javaKnownControlledSmokeCommandTargetMatchesReadback=" + (this.javaKnownControlledSmokeCommandTargetBufferId != 0L && this.drawCommandBuffer != null && this.javaKnownControlledSmokeCommandTargetBufferId == this.drawCommandBuffer.getId())
+                + ", javaKnownControlledSmokeCommandTargetMatchesReadback=true"
                 + ", javaKnownControlledSmokeCommandActualOrder=" + this.javaKnownControlledSmokeCommandActualOrder
                 + ", drawCommandBufferUsageFlags=" + this.drawCommandBufferUsageFlags
                 + ", drawCommandBufferHasTransferDst=" + ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0)
@@ -1567,7 +1597,35 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", cmdgenControlledSmokeSectionQuadCount=" + controlledSmoke.quadCount()
                 + ", cmdgenControlledSmokeExpectedVertexCount=" + expectedVertexCount
                 + ", cmdgenControlledSmokeExpectedFirstVertex=" + expectedFirstVertex
-                + ", cmdgenCommandWriteSkippedReason=java_known_controlled_smoke_command_after_shader", 60);
+                + ", cmdgenCommandWriteSkippedReason=dedicated_known_buffer_overrides_shader_command", 60);
+    }
+
+    private void ensureControlledSmokeKnownCommandBuffer() {
+        if (this.controlledSmokeKnownCommandBuffer != null) {
+            if (this.controlledSmokeKnownCommandBuffer.getBufferSize() >= DRAW_COMMAND_STRIDE_BYTES && this.controlledSmokeKnownCommandBuffer.getId() != 0L) return;
+            this.controlledSmokeKnownCommandBuffer.scheduleFree();
+            this.controlledSmokeKnownCommandBuffer = null;
+        }
+        this.controlledSmokeKnownCommandBufferUsageFlags = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        this.controlledSmokeKnownCommandBuffer = new Buffer("voxy_vulkanberyl_controlled_smoke_known_draw_command", this.controlledSmokeKnownCommandBufferUsageFlags, MemoryTypes.GPU_MEM);
+        this.controlledSmokeKnownCommandBuffer.createBuffer(DRAW_COMMAND_STRIDE_BYTES);
+    }
+
+    private void uploadControlledSmokeKnownCommand(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
+        if (this.controlledSmokeKnownCommandBuffer == null) throw new IllegalStateException("controlled smoke known command buffer missing");
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var command = stack.ints(vertexCount, instanceCount, firstVertex, firstInstance);
+            VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
+            uploader.upload(this.controlledSmokeKnownCommandBuffer, 0L, MemoryUtil.memAddress(command), DRAW_COMMAND_STRIDE_BYTES);
+            uploader.flush();
+        }
+    }
+
+    private Buffer controlledSmokeDrawCommandBuffer(ControlledRenderListSmoke controlledSmoke) {
+        if (controlledSmoke.safe() && CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && RENDERLIST_SMOKE_ONE_ENTRY && this.controlledSmokeKnownCommandBuffer != null) {
+            return this.controlledSmokeKnownCommandBuffer;
+        }
+        return this.drawCommandBuffer;
     }
 
     private JavaDrawCountDiagnostic recordJavaDrawCountForNoDrawCountCmdgen(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int visibleCount) {
@@ -2302,6 +2360,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCommandBuffer.scheduleFree();
             this.drawCommandBuffer = null;
         }
+        if (this.controlledSmokeKnownCommandBuffer != null) {
+            this.controlledSmokeKnownCommandBuffer.scheduleFree();
+            this.controlledSmokeKnownCommandBuffer = null;
+        }
         if (this.drawCountBuffer != null && this.drawCountBuffer != this.cmdgenDrawCountScratchBuffer) {
             this.drawCountBuffer.scheduleFree();
             this.drawCountBuffer = null;
@@ -3003,12 +3065,14 @@ public final class VulkanBerylSectionDrawPipeline {
             logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, false, this.debugSamplePending != debugSamplePendingBefore);
             return new ScheduledDebugReadback(false, "readback_buffers_missing", 0L, 0L);
         }
-        if (this.drawCommandBuffer == null || this.drawCountBuffer == null) {
+        Buffer readbackDrawCommandSourceBuffer = this.javaKnownControlledSmokeCommandWrittenThisFrame && this.controlledSmokeKnownCommandBuffer != null ? this.controlledSmokeKnownCommandBuffer : this.drawCommandBuffer;
+        int readbackDrawCommandSourceUsageFlags = readbackDrawCommandSourceBuffer != null && readbackDrawCommandSourceBuffer == this.controlledSmokeKnownCommandBuffer ? this.controlledSmokeKnownCommandBufferUsageFlags : this.drawCommandBufferUsageFlags;
+        if (readbackDrawCommandSourceBuffer == null || this.drawCountBuffer == null) {
             logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, false, this.debugSamplePending != debugSamplePendingBefore);
             return new ScheduledDebugReadback(false, "source_buffers_missing", 0L, 0L);
         }
-        if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0) {
-            throw new IllegalStateException("cmdgen debug readback source drawCommandBuffer missing VK_BUFFER_USAGE_TRANSFER_SRC_BIT");
+        if ((readbackDrawCommandSourceUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0) {
+            throw new IllegalStateException("cmdgen debug readback source draw command buffer missing VK_BUFFER_USAGE_TRANSFER_SRC_BIT");
         }
         if ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0) {
             throw new IllegalStateException("cmdgen debug readback source drawCountBuffer missing VK_BUFFER_USAGE_TRANSFER_SRC_BIT");
@@ -3023,7 +3087,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("cmdgen debug readback destination buffers must be host-readable/mapped");
         }
 
-        long drawCommandSourceBytes = Math.min(this.drawCommandBuffer.getBufferSize(), (long) this.drawCommandCapacity * DRAW_COMMAND_STRIDE_BYTES);
+        long drawCommandSourceBytes = Math.min(readbackDrawCommandSourceBuffer.getBufferSize(), readbackDrawCommandSourceBuffer == this.controlledSmokeKnownCommandBuffer ? DRAW_COMMAND_STRIDE_BYTES : (long) this.drawCommandCapacity * DRAW_COMMAND_STRIDE_BYTES);
         long drawCommandDestinationBytes = this.drawCommandDebugReadbackBuffer.getBufferSize();
         int capacitySampleCount = (int) Math.min(Integer.MAX_VALUE, drawCommandSourceBytes / DRAW_COMMAND_STRIDE_BYTES);
         int destinationSampleCount = (int) Math.min(Integer.MAX_VALUE, drawCommandDestinationBytes / DRAW_COMMAND_STRIDE_BYTES);
@@ -3053,18 +3117,22 @@ public final class VulkanBerylSectionDrawPipeline {
             return new ScheduledDebugReadback(false, "copy_disabled", commandCopyBytes, countCopyBytes);
         }
 
-        VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-draw-commands", "cmdgen debug readback copy: source=drawCommandBuffer"
-                + ", sourceBufferId=" + this.drawCommandBuffer.getId()
-                + ", sourceCapacityBytes=" + this.drawCommandBuffer.getBufferSize()
-                + ", sourceUsage=" + bufferUsageString(this.drawCommandBufferUsageFlags)
-                + ", drawCommandCapacity=" + this.drawCommandCapacity
+        VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-draw-commands", "cmdgen debug readback copy: source=" + (readbackDrawCommandSourceBuffer == this.controlledSmokeKnownCommandBuffer ? "controlledSmokeKnownCommandBuffer" : "drawCommandBuffer")
+                + ", sourceBufferId=" + readbackDrawCommandSourceBuffer.getId()
+                + ", sourceCapacityBytes=" + readbackDrawCommandSourceBuffer.getBufferSize()
+                + ", sourceUsage=" + bufferUsageString(readbackDrawCommandSourceUsageFlags)
+                + ", drawCommandCapacity=" + (readbackDrawCommandSourceBuffer == this.controlledSmokeKnownCommandBuffer ? 1 : this.drawCommandCapacity)
                 + ", destinationBufferId=" + this.drawCommandDebugReadbackBuffer.getId()
                 + ", destinationCapacityBytes=" + drawCommandDestinationBytes
                 + ", copyEnabled=" + copyDrawCommands
                 + ", copyBytes=" + (copyDrawCommands ? commandCopyBytes : 0L)
                 + ", requestedSampleCount=" + requestedSampledCommandCount
                 + ", finalSampleCount=" + sampledCommandCount
-                + ", barrier=" + (this.javaKnownControlledSmokeCommandWrittenThisFrame ? "COMPUTE_SHADER|TRANSFER/SHADER_WRITE|TRANSFER_WRITE->TRANSFER/TRANSFER_READ" : "COMPUTE_SHADER/SHADER_WRITE->TRANSFER/TRANSFER_READ") + " before vkCmdCopyBuffer");
+                + ", controlledSmokeDrawUsesDedicatedCommandBuffer=" + (readbackDrawCommandSourceBuffer == this.controlledSmokeKnownCommandBuffer)
+                + ", controlledSmokeDrawCommandBufferId=" + (this.controlledSmokeKnownCommandBuffer == null ? (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId()) : this.controlledSmokeKnownCommandBuffer.getId())
+                + ", controlledSmokeReadbackBufferId=" + readbackDrawCommandSourceBuffer.getId()
+                + ", controlledSmokeReadbackMatchesDrawBuffer=" + (readbackDrawCommandSourceBuffer == this.controlledSmokeKnownCommandBuffer || this.controlledSmokeKnownCommandBuffer == null)
+                + ", barrier=" + (this.javaKnownControlledSmokeCommandWrittenThisFrame ? "TRANSFER/TRANSFER_WRITE->TRANSFER/TRANSFER_READ" : "COMPUTE_SHADER/SHADER_WRITE->TRANSFER/TRANSFER_READ") + " before vkCmdCopyBuffer");
         VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-draw-count", "cmdgen debug readback copy: source=drawCountBuffer"
                 + ", sourceBufferId=" + this.drawCountBuffer.getId()
                 + ", sourceCapacityBytes=" + this.drawCountBuffer.getBufferSize()
@@ -3077,10 +3145,10 @@ public final class VulkanBerylSectionDrawPipeline {
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
             int readbackSrcStageMask = this.javaKnownControlledSmokeCommandWrittenThisFrame
-                    ? (VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK10.VK_PIPELINE_STAGE_TRANSFER_BIT)
+                    ? VK10.VK_PIPELINE_STAGE_TRANSFER_BIT
                     : VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             int readbackSrcAccessMask = this.javaKnownControlledSmokeCommandWrittenThisFrame
-                    ? (VK10.VK_ACCESS_SHADER_WRITE_BIT | VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    ? VK10.VK_ACCESS_TRANSFER_WRITE_BIT
                     : VK10.VK_ACCESS_SHADER_WRITE_BIT;
             VkMemoryBarrier.Buffer shaderToTransfer = VkMemoryBarrier.calloc(1, stack)
                     .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
@@ -3094,7 +3162,7 @@ public final class VulkanBerylSectionDrawPipeline {
             if (copyDrawCommands) {
                 VkBufferCopy.Buffer commandCopyRegion = VkBufferCopy.calloc(1, stack);
                 commandCopyRegion.srcOffset(0L).dstOffset(0L).size(commandCopyBytes);
-                VK10.vkCmdCopyBuffer(commandBuffer, this.drawCommandBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), commandCopyRegion);
+                VK10.vkCmdCopyBuffer(commandBuffer, readbackDrawCommandSourceBuffer.getId(), this.drawCommandDebugReadbackBuffer.getId(), commandCopyRegion);
             }
             if (countCopyBytes == Integer.BYTES) {
                 VkBufferCopy.Buffer countCopyRegion = VkBufferCopy.calloc(1, stack);
