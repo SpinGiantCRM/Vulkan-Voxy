@@ -35,6 +35,7 @@ import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_PIPELINE_BIND_POINT_COMPUTE;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 
@@ -45,6 +46,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String DRAW_SHADER_NAME = "vulkanberyl/section/draw";
     private static final String DRAW_DEBUG_FRAGMENT_SHADER_NAME = "vulkanberyl/section/draw_debug";
     private static final String DRAW_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/section/draw.json";
+    private static final int SCENE_UNIFORM_SIZE_BYTES = 96;
 
     static {
         VulkanBerylCmdgenDiagnostics.ensureLoaded();
@@ -83,6 +85,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private ComputePipeline commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline;
     private Buffer drawCommandBuffer;
     private Buffer drawCountBuffer;
+    private Buffer sceneUniformBuffer;
     private Buffer cmdgenDrawCountScratchBuffer;
     private Buffer drawCommandDebugReadbackBuffer;
     private Buffer drawCountDebugReadbackBuffer;
@@ -117,6 +120,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private DrawCommandDebugSample lastCompletedDebugSample = new DrawCommandDebugSample(0, 0, -1L);
     private boolean resourcesBound;
     private boolean sceneUniformBound;
+    private String sectionDrawBinding0DescriptorKind = "unknown";
     private boolean graphicsPipelineCreated;
     private boolean commandGenPipelineCreated;
     private long lastCmdgenRenderListBufferId;
@@ -340,6 +344,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", requestedGeometryCapacityBytes=" + geometryData.getRequestedGeometryCapacityBytes()
                 + ", actualGeometryCapacityBytes=" + geometryData.getGeometryCapacityBytes());
 
+        ensureSceneUniformBuffer();
+        bindUniformBinding(SCENE_UNIFORM_BINDING, this.sceneUniformBuffer, "sceneUniformBuffer");
         bindStorageBinding(GEOMETRY_BINDING, geometryData.getGeometryBuffer(), "geometryData.geometryBuffer");
         bindStorageBinding(METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindStorageBinding(RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
@@ -462,6 +468,7 @@ public final class VulkanBerylSectionDrawPipeline {
         bindComputeStorageBinding(CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
         VulkanBerylDebugLog.once("cmdgen-descriptors-bound", "cmdgen descriptors bound");
         this.resourcesBound = true;
+        logSectionDrawBindingState("resource_bind");
     }
 
     public boolean isReady() {
@@ -847,7 +854,8 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         int submittedDrawCount = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER ? javaDrawCountForNoDrawCountCmdgen.drawCount() : visibleCount;
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
-        this.bindSceneUniform(viewport);
+        this.bindSceneUniform(commandBuffer, viewport);
+        logSectionDrawBindingState("submitted");
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, submittedDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, submittedDrawCount, "submitted", noDrawCountFullCmdgen);
@@ -1536,6 +1544,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCountBuffer.scheduleFree();
             this.drawCountBuffer = null;
         }
+        if (this.sceneUniformBuffer != null) {
+            this.sceneUniformBuffer.scheduleFree();
+            this.sceneUniformBuffer = null;
+        }
         if (this.cmdgenDrawCountScratchBuffer != null) {
             boolean drawCountAliasesScratch = this.drawCountBuffer == this.cmdgenDrawCountScratchBuffer;
             this.cmdgenDrawCountScratchBuffer.scheduleFree();
@@ -1592,13 +1604,13 @@ public final class VulkanBerylSectionDrawPipeline {
     private static List<UBO> createManualDrawDescriptors() {
         List<UBO> descriptors = new java.util.ArrayList<>(7);
         int vertexStage = VK10.VK_SHADER_STAGE_VERTEX_BIT;
-        descriptors.add(new ManualUBO(0, vertexStage, 20)); // mat4 + ivec3 + frame + padding + vec3
-        descriptors.add(new ManualUBO(1, vertexStage, 1));
-        descriptors.add(new ManualUBO(2, vertexStage, 1));
-        descriptors.add(new ManualUBO(3, vertexStage, 1));
-        descriptors.add(new ManualUBO(4, vertexStage, 1));
-        descriptors.add(new ManualUBO(5, vertexStage, 1));
-        descriptors.add(new ManualUBO(6, vertexStage, 1));
+        descriptors.add(new ManualUBO(SCENE_UNIFORM_BINDING, vertexStage, SCENE_UNIFORM_SIZE_BYTES / Integer.BYTES));
+        descriptors.add(new ManualStorageBuffer(1, vertexStage, 1));
+        descriptors.add(new ManualStorageBuffer(2, vertexStage, 1));
+        descriptors.add(new ManualStorageBuffer(3, vertexStage, 1));
+        descriptors.add(new ManualStorageBuffer(GEOMETRY_BINDING, vertexStage, 1));
+        descriptors.add(new ManualStorageBuffer(METADATA_BINDING, vertexStage, 1));
+        descriptors.add(new ManualStorageBuffer(RENDER_LIST_BINDING, vertexStage, 1));
         return descriptors;
     }
 
@@ -3032,6 +3044,31 @@ public final class VulkanBerylSectionDrawPipeline {
         return (int) size;
     }
 
+    private void ensureSceneUniformBuffer() {
+        if (this.sceneUniformBuffer != null) return;
+        this.sceneUniformBuffer = new Buffer("voxy_vulkanberyl_section_draw_scene_uniform", VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        this.sceneUniformBuffer.createBuffer(SCENE_UNIFORM_SIZE_BYTES);
+        this.sceneUniformBound = false;
+    }
+
+    private void bindUniformBinding(int binding, Buffer buffer, String label) {
+        if (buffer == null) throw new IllegalStateException(label + " must not be null");
+        long bufferSize = buffer.getBufferSize();
+        if (bufferSize < SCENE_UNIFORM_SIZE_BYTES || bufferSize > VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES) {
+            throw descriptorRangeException(binding, label, bufferSize);
+        }
+
+        UBO ubo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == binding);
+        if (ubo == null) {
+            throw new IllegalStateException("Section draw descriptor missing: name=" + label + ", binding=" + binding + ", config=" + DRAW_SHADER_CONFIG);
+        }
+        this.sectionDrawBinding0DescriptorKind = descriptorKind(ubo);
+        if (!"uniformBuffer".equals(this.sectionDrawBinding0DescriptorKind)) {
+            throw new IllegalStateException("Section draw SceneUniform descriptor kind mismatch: binding=" + binding + ", descriptorKind=" + this.sectionDrawBinding0DescriptorKind + ", expected=uniformBuffer");
+        }
+        ubo.getBufferSlice().set(buffer, 0L, SCENE_UNIFORM_SIZE_BYTES);
+    }
+
     private void bindStorageBinding(int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
         long bufferSize = buffer.getBufferSize();
@@ -3279,25 +3316,79 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", fixHint=cap Vulkan/Beryl geometry capacity before buffer creation");
     }
 
-    private void bindSceneUniform(VulkanBerylViewport viewport) {
+    private void bindSceneUniform(VkCommandBuffer commandBuffer, VulkanBerylViewport viewport) {
+        if (commandBuffer == null) throw new IllegalStateException("Section draw command buffer is unavailable for SceneUniform upload");
         UBO ubo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == SCENE_UNIFORM_BINDING);
         if (ubo == null) throw new IllegalStateException("Section draw descriptor missing: name=SceneUniform, binding=0, config=" + DRAW_SHADER_CONFIG);
         Buffer uniformBuffer = ubo.getBufferSlice().getBuffer();
         if (uniformBuffer == null) throw new IllegalStateException("Section draw SceneUniform buffer is not bound");
-        long ptr = uniformBuffer.getDataPtr() + ubo.getBufferSlice().getOffset();
-        var mat = new org.joml.Matrix4f(viewport.MVP);
-        mat.translate(-viewport.innerTranslation.x, -viewport.innerTranslation.y, -viewport.innerTranslation.z);
-        mat.getToAddress(ptr);
-        ptr += 4L * 4L * 4L;
-        MemoryUtil.memPutInt(ptr, viewport.section.x);
-        MemoryUtil.memPutInt(ptr + 4L, viewport.section.y);
-        MemoryUtil.memPutInt(ptr + 8L, viewport.section.z);
-        ptr += 16L;
-        MemoryUtil.memPutInt(ptr, viewport.frameId & 0x7fffffff);
-        ptr += 4L;
-        MemoryUtil.memPutFloat(ptr, viewport.innerTranslation.x);
-        MemoryUtil.memPutFloat(ptr + 4L, viewport.innerTranslation.y);
-        MemoryUtil.memPutFloat(ptr + 8L, viewport.innerTranslation.z);
+        if (uniformBuffer.getBufferSize() < SCENE_UNIFORM_SIZE_BYTES) {
+            throw new IllegalStateException("Section draw SceneUniform buffer is too small: bufferSizeBytes=" + uniformBuffer.getBufferSize() + ", requiredBytes=" + SCENE_UNIFORM_SIZE_BYTES);
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var uniformData = stack.calloc(SCENE_UNIFORM_SIZE_BYTES);
+            long ptr = MemoryUtil.memAddress(uniformData);
+            var mat = new org.joml.Matrix4f(viewport.MVP);
+            mat.translate(-viewport.innerTranslation.x, -viewport.innerTranslation.y, -viewport.innerTranslation.z);
+            mat.getToAddress(ptr);
+            ptr += 4L * 4L * 4L;
+            MemoryUtil.memPutInt(ptr, viewport.section.x);
+            MemoryUtil.memPutInt(ptr + 4L, viewport.section.y);
+            MemoryUtil.memPutInt(ptr + 8L, viewport.section.z);
+            ptr += 12L;
+            MemoryUtil.memPutInt(ptr, viewport.frameId & 0x7fffffff);
+            ptr += 4L;
+            MemoryUtil.memPutFloat(ptr, viewport.innerTranslation.x);
+            MemoryUtil.memPutFloat(ptr + 4L, viewport.innerTranslation.y);
+            MemoryUtil.memPutFloat(ptr + 8L, viewport.innerTranslation.z);
+            ptr += 12L;
+            MemoryUtil.memPutFloat(ptr, 0.0F);
+            VK10.vkCmdUpdateBuffer(commandBuffer, uniformBuffer.getId(), ubo.getBufferSlice().getOffset(), uniformData);
+            VkMemoryBarrier.Buffer transferToVertex = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_UNIFORM_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                    0, transferToVertex, null, null);
+        }
+        this.sectionDrawBinding0DescriptorKind = descriptorKind(ubo);
         this.sceneUniformBound = true;
+    }
+
+    private void logSectionDrawBindingState(String drawSubmitReason) {
+        UBO sceneUbo = this.graphicsPipeline == null ? null : this.graphicsPipeline.getUBO(candidate -> candidate.binding == SCENE_UNIFORM_BINDING);
+        Buffer sceneBuffer = sceneUbo == null ? null : sceneUbo.getBufferSlice().getBuffer();
+        boolean sceneBound = sceneBuffer != null && sceneBuffer.getId() != 0L && sceneBuffer.getBufferSize() >= SCENE_UNIFORM_SIZE_BYTES;
+        String descriptorKind = sceneUbo == null ? "unknown" : descriptorKind(sceneUbo);
+        this.sectionDrawBinding0DescriptorKind = descriptorKind;
+        boolean bindingsReady = this.resourcesBound && sceneBound && "uniformBuffer".equals(descriptorKind);
+        VulkanBerylDebugLog.rateLimited("section-draw-bindings-ready:" + drawSubmitReason, "section draw bindings: sectionDrawSceneUniformRequired=true"
+                + ", sectionDrawSceneUniformBound=" + sceneBound
+                + ", sectionDrawSceneUniformBufferId=" + (sceneBuffer == null ? 0L : sceneBuffer.getId())
+                + ", sectionDrawSceneUniformBufferSizeBytes=" + (sceneBuffer == null ? 0L : sceneBuffer.getBufferSize())
+                + ", sectionDrawBinding0DescriptorKind=" + descriptorKind
+                + ", sectionDrawBindingsReady=" + bindingsReady
+                + ", drawSubmitReason=" + drawSubmitReason, 30);
+    }
+
+    private static String descriptorKind(UBO descriptor) {
+        if (descriptor == null) return "unknown";
+        int type = descriptor.getType();
+        if (type == VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) return "uniformBuffer";
+        if (type == VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || type == VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) return "storageBuffer";
+        return "unknown";
+    }
+
+    private static final class ManualStorageBuffer extends ManualUBO {
+        private ManualStorageBuffer(int binding, int stages, int size) {
+            super(binding, stages, size);
+        }
+
+        @Override
+        public int getType() {
+            return VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        }
     }
 }
