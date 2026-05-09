@@ -139,6 +139,10 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean freed;
 
     private static final boolean DRAW_SCREENSPACE_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE", "false"));
+    private static final int SCREENSPACE_SMOKE_VERTEX_COUNT = 3;
+    private static final int SCREENSPACE_SMOKE_INSTANCE_COUNT = 1;
+    private static final int SCREENSPACE_SMOKE_FIRST_VERTEX = 0;
+    private static final int SCREENSPACE_SMOKE_FIRST_INSTANCE = 0;
 
     public void ensureDrawPipeline() {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
@@ -873,9 +877,10 @@ public final class VulkanBerylSectionDrawPipeline {
             VulkanBerylDebugLog.once("cmdgen-render-draw-submit-skipped", "render draw submit intentionally skipped after cmdgen dispatch for this frame: env=VOXY_VULKAN_BERYL_CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN, diagnosticEnv=" + explicitCmdgenDiagnosticEnvSummary());
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "render_draw_submit_skipped_after_cmdgen");
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, false, 0, "render_draw_submit_skipped_after_cmdgen", noDrawCountFullCmdgen);
+            logScreenspaceSmokeSubmitDiagnostics(false, "render_draw_submit_skipped_after_cmdgen");
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "render_draw_submit_skipped_after_cmdgen");
         }
-        if (!indirectAllowed) {
+        if (!indirectAllowed && !DRAW_SCREENSPACE_SMOKE) {
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, false, false, 0, "indirect_gate:" + indirectGateReason, noDrawCountFullCmdgen);
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + indirectGateReason);
@@ -884,13 +889,33 @@ public final class VulkanBerylSectionDrawPipeline {
         logSmokeDrawOutputDiagnostics(geometryData, controlledSmoke, visibleCount, submittedDrawCount);
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(commandBuffer, viewport);
-        logSectionDrawBindingState("submitted");
+        logSectionDrawBindingState(DRAW_SCREENSPACE_SMOKE ? "screenspace_smoke_direct_draw" : "submitted");
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
+        if (DRAW_SCREENSPACE_SMOKE) {
+            VK10.vkCmdDraw(commandBuffer, SCREENSPACE_SMOKE_VERTEX_COUNT, SCREENSPACE_SMOKE_INSTANCE_COUNT, SCREENSPACE_SMOKE_FIRST_VERTEX, SCREENSPACE_SMOKE_FIRST_INSTANCE);
+            logScreenspaceSmokeSubmitDiagnostics(true, indirectAllowed ? "submitted_direct_draw" : "indirect_gate_bypassed_for_direct_draw:" + indirectGateReason);
+            logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, SCREENSPACE_SMOKE_INSTANCE_COUNT, "screenspace_smoke_direct_draw", noDrawCountFullCmdgen);
+            DrawCommandDebugSample sample = this.lastCompletedDebugSample;
+            return new OpaqueDrawSubmission(visibleCount, "screenspace_smoke_direct_draw", -1L, SCREENSPACE_SMOKE_INSTANCE_COUNT, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
+        }
         VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, submittedDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, submittedDrawCount, "submitted", noDrawCountFullCmdgen);
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
         return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", submittedQuadCount, submittedDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
+    }
+
+    private void logScreenspaceSmokeSubmitDiagnostics(boolean submitted, String reason) {
+        if (!DRAW_SCREENSPACE_SMOKE) return;
+        String diagnostic = "screenspaceSmokeEnabled=true"
+                + ", screenspaceSmokeDrawMode=direct_draw"
+                + ", screenspaceSmokeVertexCount=" + SCREENSPACE_SMOKE_VERTEX_COUNT
+                + ", screenspaceSmokeInstanceCount=" + SCREENSPACE_SMOKE_INSTANCE_COUNT
+                + ", screenspaceSmokeFirstVertex=" + SCREENSPACE_SMOKE_FIRST_VERTEX
+                + ", screenspaceSmokeFirstInstance=" + SCREENSPACE_SMOKE_FIRST_INSTANCE
+                + ", screenspaceSmokeSubmitted=" + submitted
+                + ", screenspaceSmokeSubmitReason=" + reason;
+        VulkanBerylDebugLog.stateLimited("screenspace-smoke-draw-isolation", "screenspace smoke draw isolation: " + diagnostic, diagnostic);
     }
 
     private void logSmokeDrawOutputDiagnostics(VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke, int visibleCount, int submittedDrawCount) {
