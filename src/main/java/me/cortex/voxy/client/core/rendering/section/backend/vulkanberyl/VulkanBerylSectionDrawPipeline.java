@@ -495,7 +495,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_HARDCODED_READ_BINDING0_ONLY) {
             this.ensureCommandGenHardcodedBinding0ReadPipeline(renderList.getBuffer());
         }
-        if (CMDGEN_FULL_LAYOUT_NOOP_PROBE) {
+        if (CMDGEN_FULL_LAYOUT_NOOP_PROBE || CMDGEN_DISPATCH_NOOP_SAME_LAYOUT) {
             this.ensureCommandGenFullLayoutNoopProbePipeline();
         }
         if (CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_PROBE) {
@@ -930,10 +930,45 @@ public final class VulkanBerylSectionDrawPipeline {
             if (activeCmdgenShaderSelectionEnvVar() != null) {
                 VulkanBerylDebugLog.once("cmdgen-standalone-binding0-config-dispatch-path", "selected normal-cmdgen shader uses same dispatch path as normal cmdgen");
             }
-            VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, this.commandGenPipeline.getId());
-            this.commandGenPipeline.bindDescriptorSets(commandBuffer, 0);
-            logCmdgenCommandBufferUse(useAltRenderListBuffer ? "alt_renderlist_probe" : (isolationStage == null ? "full" : isolationStage.envName()), commandBuffer, commandBuffer, true);
+            boolean cmdgenSameLayoutNoopActive = CMDGEN_DISPATCH_NOOP_SAME_LAYOUT && isolationStage == null;
+            ComputePipeline cmdgenDispatchPipeline = this.commandGenPipeline;
+            String cmdgenDispatchShaderName;
+            String cmdgenDispatchShaderResource;
+            if (cmdgenSameLayoutNoopActive) {
+                if (this.commandGenFullLayoutNoopProbePipeline == null) {
+                    throw new IllegalStateException("cmdgen full-layout noop pipeline missing for same-layout noop dispatch: env=VOXY_VULKAN_BERYL_CMDGEN_DISPATCH_NOOP_SAME_LAYOUT");
+                }
+                cmdgenDispatchPipeline = this.commandGenFullLayoutNoopProbePipeline;
+                cmdgenDispatchShaderName = CMDGEN_FULL_LAYOUT_NOOP_SHADER_NAME;
+                cmdgenDispatchShaderResource = CMDGEN_FULL_LAYOUT_NOOP_SHADER_RESOURCE;
+                bindFullLayoutProbeDescriptors(cmdgenDispatchPipeline, geometryData, renderList);
+                VulkanBerylDebugLog.once("cmdgen-dispatch-noop-same-layout-active", "cmdgen dispatch noop-same-layout active: env=VOXY_VULKAN_BERYL_CMDGEN_DISPATCH_NOOP_SAME_LAYOUT=true, pipeline=" + cmdgenDispatchShaderName + ", reason=substituting same-descriptor-set-layout noop shader to isolate shader-memory-access vs descriptor/pipeline scope");
+            } else {
+                cmdgenDispatchShaderName = safeActiveCmdgenShaderName();
+                cmdgenDispatchShaderResource = safeActiveCmdgenShaderResource();
+            }
+            String cmdgenDispatchStageName = isolationStage == null ? (cmdgenSameLayoutNoopActive ? "noop_same_layout" : "full") : isolationStage.envName();
+            String cmdgenDispatchValidation = validateCmdgenDispatchDescriptorBindings(cmdgenDispatchPipeline, cmdgenDispatchStageName);
+            boolean cmdgenPipelineBound = false;
+            boolean cmdgenDescriptorsBound = false;
+            boolean cmdgenDispatchCallRecorded = false;
+            boolean cmdgenPostDispatchBarrierRecorded = false;
+            if (CMDGEN_DISABLE_BIND_PIPELINE) {
+                VulkanBerylDebugLog.once("cmdgen-disable-bind-pipeline", "cmdgen vkCmdBindPipeline skipped: env=VOXY_VULKAN_BERYL_CMDGEN_DISABLE_BIND_PIPELINE=true, stage=" + cmdgenDispatchStageName);
+            } else {
+                VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, cmdgenDispatchPipeline.getId());
+                cmdgenPipelineBound = true;
+            }
+            if (CMDGEN_DISABLE_BIND_DESCRIPTORS) {
+                VulkanBerylDebugLog.once("cmdgen-disable-bind-descriptors", "cmdgen bindDescriptorSets skipped: env=VOXY_VULKAN_BERYL_CMDGEN_DISABLE_BIND_DESCRIPTORS=true, stage=" + cmdgenDispatchStageName);
+            } else {
+                cmdgenDispatchPipeline.bindDescriptorSets(commandBuffer, 0);
+                cmdgenDescriptorsBound = true;
+            }
+            logCmdgenCommandBufferUse(useAltRenderListBuffer ? "alt_renderlist_probe" : cmdgenDispatchStageName, commandBuffer, commandBuffer, true);
+            int groupCountX = isolationStage == null ? (noOpCmdgenSmoke ? 1 : ((visibleCount + 127) >>> 7)) : 1;
             if (CMDGEN_BIND_FULL_ONLY) {
+                logCmdgenDispatchPathDiagnostic(cmdgenDispatchPipeline, cmdgenDispatchShaderName, cmdgenDispatchShaderResource, cmdgenDispatchStageName, cmdgenPipelineBound, cmdgenDescriptorsBound, false, false, 0, cmdgenSameLayoutNoopActive, cmdgenDispatchValidation, "cmdgen_bind_full_only");
                 return stopCmdgenIsolation(visibleCount, "cmdgen_bind_full_only");
             }
             if (isolationStage == null && !fullCmdgenDispatchAllowed) {
@@ -941,18 +976,29 @@ public final class VulkanBerylSectionDrawPipeline {
                     VulkanBerylDebugLog.once("cmdgen-debug-readback-full-dispatch-gated", "cmdgen debug readback requested but skipped because full cmdgen dispatch was gated: reason=" + fullCmdgenDispatchBlocker);
                     logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
                 }
+                logCmdgenDispatchPathDiagnostic(cmdgenDispatchPipeline, cmdgenDispatchShaderName, cmdgenDispatchShaderResource, cmdgenDispatchStageName, cmdgenPipelineBound, cmdgenDescriptorsBound, false, false, 0, cmdgenSameLayoutNoopActive, cmdgenDispatchValidation, "cmdgen_dispatch_blocked:" + fullCmdgenDispatchBlocker);
                 return stopCmdgenIsolation(visibleCount, "cmdgen_dispatch_blocked:" + fullCmdgenDispatchBlocker);
             }
-            int groupCountX = isolationStage == null ? (noOpCmdgenSmoke ? 1 : ((visibleCount + 127) >>> 7)) : 1;
-            VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
-            cmdgenDispatchSubmitted = true;
-            cmdgenDispatchGroupCount = groupCountX;
-            this.cmdgenDispatchRecordedThisFrame = true;
-            VulkanBerylDebugLog.once("cmdgen-isolation-dispatch", "cmdgen dispatch submitted: stage=" + (isolationStage == null ? "full" : isolationStage.envName()) + ", groupsX=" + groupCountX);
-            logCmdgenWaitIdleAfterDispatchState(isolationStage == null ? "full" : isolationStage.envName());
+            boolean cmdgenDispatchSafeToRecord = cmdgenPipelineBound && cmdgenDescriptorsBound;
+            if (CMDGEN_DISABLE_DISPATCH_CALL) {
+                VulkanBerylDebugLog.once("cmdgen-disable-dispatch-call", "cmdgen vkCmdDispatch skipped: env=VOXY_VULKAN_BERYL_CMDGEN_DISABLE_DISPATCH_CALL=true, stage=" + cmdgenDispatchStageName + ", intendedGroupsX=" + groupCountX);
+            } else if (!cmdgenDispatchSafeToRecord) {
+                VulkanBerylDebugLog.once("cmdgen-dispatch-skipped-no-bind", "cmdgen vkCmdDispatch skipped because pipeline or descriptors were not bound: stage=" + cmdgenDispatchStageName + ", pipelineBound=" + cmdgenPipelineBound + ", descriptorsBound=" + cmdgenDescriptorsBound + ", intendedGroupsX=" + groupCountX);
+            } else {
+                VK10.vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
+                cmdgenDispatchSubmitted = true;
+                cmdgenDispatchGroupCount = groupCountX;
+                this.cmdgenDispatchRecordedThisFrame = true;
+                cmdgenDispatchCallRecorded = true;
+                VulkanBerylDebugLog.once("cmdgen-isolation-dispatch", "cmdgen dispatch submitted: stage=" + cmdgenDispatchStageName + ", groupsX=" + groupCountX);
+                logCmdgenWaitIdleAfterDispatchState(cmdgenDispatchStageName);
+            }
 
             if (disableAnyDrawCountConsumerPathActive()) {
                 VulkanBerylDebugLog.once("cmdgen-drawcount-after-barrier-skipped", "cmdgen drawCount barrier skipped: stage=after_cmdgen_dispatch, reason=drawCount consumer path is disabled, drawCountConsumers=disabled_by_env");
+                logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", false, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+            } else if (CMDGEN_DISABLE_POST_DISPATCH_BARRIER) {
+                VulkanBerylDebugLog.once("cmdgen-disable-post-dispatch-barrier", "cmdgen post-dispatch barrier skipped: env=VOXY_VULKAN_BERYL_CMDGEN_DISABLE_POST_DISPATCH_BARRIER=true, stage=after_cmdgen_dispatch");
                 logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", false, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
             } else {
                 try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -969,9 +1015,11 @@ public final class VulkanBerylSectionDrawPipeline {
                             null,
                             null
                     );
+                    cmdgenPostDispatchBarrierRecorded = true;
                     logDrawCountBarrierDiagnostic("after_cmdgen_dispatch", true, VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK10.VK_ACCESS_SHADER_WRITE_BIT, VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
                 }
             }
+            logCmdgenDispatchPathDiagnostic(cmdgenDispatchPipeline, cmdgenDispatchShaderName, cmdgenDispatchShaderResource, cmdgenDispatchStageName, cmdgenPipelineBound, cmdgenDescriptorsBound, cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded, cmdgenDispatchGroupCount, cmdgenSameLayoutNoopActive, cmdgenDispatchValidation, "dispatch_path_recorded");
             recordJavaKnownControlledSmokeCommand(commandBuffer, controlledSmoke, viewport.frameId);
             javaDrawCountForNoDrawCountCmdgen = recordJavaDrawCountForNoDrawCountCmdgen(commandBuffer, controlledSmoke, visibleCount);
         }
@@ -4124,6 +4172,107 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", indirectDrawEnabled=" + ENABLE_INDIRECT_DRAW
                 + ", drawCountConsumers=disabled_by_env"
                 + ", reason=drawCount store isolated as device-loss trigger");
+    }
+
+    private static long pipelineBindingBufferId(ComputePipeline pipeline, int binding) {
+        if (pipeline == null) return 0L;
+        UBO ubo = pipeline.getUBO(candidate -> candidate.binding == binding);
+        if (ubo == null) return 0L;
+        Buffer buffer = ubo.getBufferSlice().getBuffer();
+        return buffer == null ? 0L : buffer.getId();
+    }
+
+    private static long pipelineBindingRangeBytes(ComputePipeline pipeline, int binding) {
+        if (pipeline == null) return 0L;
+        UBO ubo = pipeline.getUBO(candidate -> candidate.binding == binding);
+        if (ubo == null) return 0L;
+        Buffer buffer = ubo.getBufferSlice().getBuffer();
+        return buffer == null ? 0L : buffer.getBufferSize();
+    }
+
+    private String validateCmdgenDispatchDescriptorBindings(ComputePipeline pipeline, String stage) {
+        if (pipeline == null) return "pipeline_missing";
+        long binding0Range = pipelineBindingRangeBytes(pipeline, CMDGEN_RENDER_LIST_BINDING);
+        long binding1Range = pipelineBindingRangeBytes(pipeline, CMDGEN_METADATA_BINDING);
+        long binding2Range = pipelineBindingRangeBytes(pipeline, CMDGEN_UNUSED_BINDING2_BINDING);
+        long binding3Range = pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COMMAND_BINDING);
+        long binding4Range = pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COUNT_BINDING);
+        long binding5Range = pipelineBindingRangeBytes(pipeline, CMDGEN_CONFIG_BINDING);
+        long binding0Id = pipelineBindingBufferId(pipeline, CMDGEN_RENDER_LIST_BINDING);
+        long binding1Id = pipelineBindingBufferId(pipeline, CMDGEN_METADATA_BINDING);
+        long binding2Id = pipelineBindingBufferId(pipeline, CMDGEN_UNUSED_BINDING2_BINDING);
+        long binding3Id = pipelineBindingBufferId(pipeline, CMDGEN_DRAW_COMMAND_BINDING);
+        long binding4Id = pipelineBindingBufferId(pipeline, CMDGEN_DRAW_COUNT_BINDING);
+        long binding5Id = pipelineBindingBufferId(pipeline, CMDGEN_CONFIG_BINDING);
+        if (binding0Id == 0L) return "renderlist_buffer_id_zero";
+        if (binding1Id == 0L) return "metadata_buffer_id_zero";
+        if (binding2Id == 0L) return "binding2_buffer_id_zero";
+        if (binding3Id == 0L) return "drawcommand_buffer_id_zero";
+        if (binding4Id == 0L) return "drawcount_buffer_id_zero";
+        if (binding5Id == 0L) return "config_buffer_id_zero";
+        if (binding0Range <= 0L) return "renderlist_range_zero";
+        if (binding1Range <= 0L) return "metadata_range_zero";
+        if (binding2Range <= 0L) return "binding2_range_zero";
+        if (binding3Range < DRAW_COMMAND_STRIDE_BYTES) return "drawcommand_range_below_stride: rangeBytes=" + binding3Range + " minRequired=" + DRAW_COMMAND_STRIDE_BYTES;
+        if (binding4Range < Integer.BYTES) return "drawcount_range_below_word: rangeBytes=" + binding4Range + " minRequired=" + Integer.BYTES;
+        if (binding5Range < CMDGEN_CONFIG_SIZE_BYTES) return "config_range_below_struct: rangeBytes=" + binding5Range + " minRequired=" + CMDGEN_CONFIG_SIZE_BYTES;
+        if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) == 0) return "drawcommand_buffer_missing_storage_usage";
+        if ((this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) == 0) return "drawcommand_buffer_missing_indirect_usage";
+        if ((this.drawCountBufferUsageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) == 0) return "drawcount_buffer_missing_storage_usage";
+        if ((CMDGEN_CONFIG_USAGE_FLAGS & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) == 0) return "config_buffer_missing_storage_usage";
+        VulkanBerylDebugLog.trace("cmdgen-dispatch-descriptor-validation:" + stage, "cmdgen dispatch descriptor validation ok: stage=" + stage
+                + ", binding0Range=" + binding0Range + ", binding1Range=" + binding1Range + ", binding2Range=" + binding2Range
+                + ", binding3Range=" + binding3Range + ", binding4Range=" + binding4Range + ", binding5Range=" + binding5Range);
+        return "ok";
+    }
+
+    private static String cmdgenDispatchRiskFromState(boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenPostDispatchBarrierRecorded, boolean cmdgenSameLayoutNoopActive, String validation) {
+        if (validation != null && !"ok".equals(validation) && !"pipeline_missing".equals(validation)) return "range_or_usage";
+        if (CMDGEN_DISABLE_BIND_PIPELINE || !cmdgenPipelineBound) return "pipeline_bind";
+        if (CMDGEN_DISABLE_BIND_DESCRIPTORS || !cmdgenDescriptorsBound) return "descriptor_bind";
+        if (CMDGEN_DISABLE_DISPATCH_CALL || !cmdgenDispatchCallRecorded) return "dispatch_call";
+        if (CMDGEN_DISABLE_POST_DISPATCH_BARRIER || !cmdgenPostDispatchBarrierRecorded) return "post_dispatch_barrier";
+        if (cmdgenSameLayoutNoopActive) return "shader_memory_access";
+        return "unknown";
+    }
+
+    private void logCmdgenDispatchPathDiagnostic(ComputePipeline pipeline, String shaderName, String shaderResource, String stage, boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenPostDispatchBarrierRecorded, int cmdgenDispatchGroupCount, boolean cmdgenSameLayoutNoopActive, String validation, String reason) {
+        boolean cmdgenDispatchRecorded = cmdgenPipelineBound && cmdgenDescriptorsBound && cmdgenDispatchCallRecorded;
+        String dispatchRisk = cmdgenDispatchRiskFromState(cmdgenPipelineBound, cmdgenDescriptorsBound, cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded, cmdgenSameLayoutNoopActive, validation);
+        VulkanBerylDebugLog.once("cmdgen-dispatch-path-diagnostic:" + stage + ":" + reason, "cmdgen dispatch path diagnostic: stage=" + stage
+                + ", reason=" + reason
+                + ", cmdgenSelectedShader=" + shaderName
+                + ", cmdgenSelectedShaderResource=" + shaderResource
+                + ", cmdgenSameLayoutNoopActive=" + cmdgenSameLayoutNoopActive
+                + ", cmdgenPipelineBound=" + cmdgenPipelineBound
+                + ", cmdgenDescriptorsBound=" + cmdgenDescriptorsBound
+                + ", cmdgenDispatchCallRecorded=" + cmdgenDispatchCallRecorded
+                + ", cmdgenPostDispatchBarrierRecorded=" + cmdgenPostDispatchBarrierRecorded
+                + ", cmdgenDispatchRecorded=" + cmdgenDispatchRecorded
+                + ", cmdgenDispatchGroupCount=" + cmdgenDispatchGroupCount
+                + ", cmdgenDescriptorBinding0BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_RENDER_LIST_BINDING)
+                + ", cmdgenDescriptorBinding1BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_METADATA_BINDING)
+                + ", cmdgenDescriptorBinding2BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_UNUSED_BINDING2_BINDING)
+                + ", cmdgenDescriptorBinding3BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_DRAW_COMMAND_BINDING)
+                + ", cmdgenDescriptorBinding4BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_DRAW_COUNT_BINDING)
+                + ", cmdgenDescriptorBinding5BufferId=" + pipelineBindingBufferId(pipeline, CMDGEN_CONFIG_BINDING)
+                + ", cmdgenDescriptorBinding0RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_RENDER_LIST_BINDING)
+                + ", cmdgenDescriptorBinding1RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_METADATA_BINDING)
+                + ", cmdgenDescriptorBinding2RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_UNUSED_BINDING2_BINDING)
+                + ", cmdgenDescriptorBinding3RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COMMAND_BINDING)
+                + ", cmdgenDescriptorBinding4RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COUNT_BINDING)
+                + ", cmdgenDescriptorBinding5RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_CONFIG_BINDING)
+                + ", cmdgenConfigRenderListCapacity=" + this.lastCmdGenConfigRenderListCapacity
+                + ", cmdgenConfigMetadataSectionCapacity=" + this.lastCmdGenConfigMetadataSectionCapacity
+                + ", cmdgenConfigGeometryCapacityQuads=" + this.lastCmdGenConfigGeometryCapacityQuads
+                + ", cmdgenConfigDrawCommandCapacity=" + this.lastCmdGenConfigDrawCommandCapacity
+                + ", cmdgenConfigDrawCountCapacityWords=" + this.lastCmdGenConfigDrawCountCapacityWords
+                + ", cmdgenConfigFlags=0x" + Integer.toHexString(this.lastCmdGenConfigFlags)
+                + ", cmdgenDescriptorBindingValidation=" + (validation == null ? "null" : validation)
+                + ", drawCommandBufferUsageFlags=0x" + Integer.toHexString(this.drawCommandBufferUsageFlags)
+                + ", drawCountBufferUsageFlags=0x" + Integer.toHexString(this.drawCountBufferUsageFlags)
+                + ", cmdgenConfigUsageFlags=0x" + Integer.toHexString(CMDGEN_CONFIG_USAGE_FLAGS)
+                + ", cmdgenDispatchRisk=" + dispatchRisk);
     }
 
     private static void logSelectedCmdgenShaderDiagnostics(String shaderResource, String shaderName) {
