@@ -2,7 +2,10 @@
 
 layout(local_size_x = 128) in;
 
-#import <voxy:lod/section.glsl>
+struct SectionMeta {
+    uvec4 a;
+    uvec4 b;
+};
 
 struct DrawCommand {
     uint vertexCount;
@@ -11,16 +14,16 @@ struct DrawCommand {
     uint firstInstance;
 };
 
-layout(binding = 0, std430) readonly volatile buffer RenderListBuffer {
+layout(binding = 0, std430) readonly buffer RenderListBuffer {
     uint visibleCount;
     uint indirectLookup[];
 };
 layout(binding = 1, std430) readonly buffer MetadataBuffer {
     SectionMeta sectionData[];
 };
-// Unused binding2 padding keeps Beryl's dense ManualUBO descriptor layout at bindings 0..5.
-layout(binding = 2, std430) readonly buffer CmdGenUnusedBinding2 {
-    uint unusedBinding2Word;
+// Binding 2-5 present to match dense descriptor layout but not read in this shader
+layout(binding = 2, std430) readonly buffer Binding2ProbeBuffer {
+    uint binding2ProbeWord;
 };
 layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
     DrawCommand commands[];
@@ -37,18 +40,9 @@ layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
     uint flags;
 };
 
-const uint CMDGEN_FLAG_NOOP_SMOKE = 1u;
-const uint CMDGEN_FLAG_READ_RENDERLIST_ONLY = 1u << 1u;
-const uint CMDGEN_FLAG_READ_METADATA_ONLY = 1u << 2u;
-const uint CMDGEN_FLAG_WRITE_DRAWS_ONLY = 1u << 3u;
-const uint CMDGEN_FLAG_READ_RENDERLIST_HEADER_ONLY = 1u << 4u;
-const uint CMDGEN_FLAG_READ_RENDERLIST_COUNT_ONLY = 1u << 5u;
-const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_SECTION_ID_ONLY = 1u << 6u;
-const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_START_ONLY = 1u << 7u;
-const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1u << 8u;
-const uint CMDGEN_FLAG_READ_BINDING0_ONLY = 1u << 9u;
-const uint CMDGEN_FLAG_READ_BINDING1_ONLY = 1u << 10u;
-const uint CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1u << 11u;
+uint extractQuadStart(SectionMeta meta) {
+    return meta.a.w;
+}
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
     return meta.b.x & 0xFFFFu;
@@ -66,37 +60,41 @@ uint extractOpaqueQuadCount(SectionMeta meta) {
 }
 
 void main() {
-    uint drawIndex = gl_GlobalInvocationID.x;
-    if ((flags & CMDGEN_FLAG_NOOP_SMOKE) != 0u) {
+    // One invocation only - diagnostic probe
+    if (gl_GlobalInvocationID.x != 0u) {
         return;
     }
 
-    uint safeVisibleCount = min(visibleCount, renderListCapacity);
-    if (drawIndex >= safeVisibleCount) {
+    // Read binding 0: check if there's any visible entry
+    if (visibleCount == 0u) {
         return;
     }
 
-    uint sectionId = indirectLookup[drawIndex];
-    if (sectionId >= metadataSectionCapacity) {
-        return;
-    }
-    if (drawIndex >= drawCommandCapacity) {
+    // Read renderList entry 0 to get section id
+    uint sectionId = indirectLookup[0];
+
+    // Hardcoded large capacity limit to avoid reading binding 5 config
+    const uint HARD_CODED_METADATA_CAPACITY = 0xFFFFFFFFu;
+    if (sectionId >= HARD_CODED_METADATA_CAPACITY) {
         return;
     }
 
+    // Read binding 1 metadata for the section
     SectionMeta meta = sectionData[sectionId];
-    uint translucentQuadCount = extractTranslucentQuadCount(meta);
+
+    // Compute final command values locally (no config reads)
+    uint quadStart = extractQuadStart(meta);
+    uint translucentCount = extractTranslucentQuadCount(meta);
+    uint opaqueQuadStart = quadStart + translucentCount;
     uint opaqueQuadCount = extractOpaqueQuadCount(meta);
-    uint opaqueQuadStart = extractQuadStart(meta) + translucentQuadCount;
-    if (opaqueQuadCount == 0u || opaqueQuadStart > geometryCapacityQuads || opaqueQuadCount > geometryCapacityQuads - opaqueQuadStart) {
-        return;
-    }
 
     uint vertexCount = opaqueQuadCount * 4u;
     uint firstVertex = opaqueQuadStart * 4u;
-    uint firstInstance = drawIndex;
-    uint finalBlockSmoke = safeVisibleCount ^ sectionId ^ vertexCount ^ firstVertex ^ firstInstance;
-    if (finalBlockSmoke == 0xffffffffu) {
-        uint ignored = finalBlockSmoke;
+    uint firstInstance = 0u;
+
+    // Use the computed values to prevent optimization
+    // Do NOT write drawCommands or drawCount
+    if ((vertexCount | firstVertex | firstInstance) == 0xFFFFFFFFu) {
+        uint ignored = vertexCount ^ firstVertex;
     }
 }
