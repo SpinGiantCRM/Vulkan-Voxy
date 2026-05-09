@@ -52,10 +52,6 @@ const uint CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1u << 11u;
 const uint CMDGEN_FLAG_READ_CONFIG_ONLY = 1u << 12u;
 const uint CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE = 1u << 13u;
 
-uint extractQuadStart(SectionMeta meta) {
-    return meta.a.w;
-}
-
 uint extractTranslucentQuadCount(SectionMeta meta) {
     return meta.b.x & 0xFFFFu;
 }
