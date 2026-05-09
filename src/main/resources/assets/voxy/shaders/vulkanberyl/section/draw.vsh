@@ -36,6 +36,18 @@ vec2 taaShift();
 void main() {
     taaOffset = taaShift();
 
+#ifdef VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE
+    uint smokeVertex = uint(gl_VertexIndex) % 3u;
+    vec2 smokePos = smokeVertex == 0u
+            ? vec2(-0.75, -0.75)
+            : (smokeVertex == 1u ? vec2(0.75, -0.75) : vec2(0.0, 0.75));
+    gl_Position = vec4(smokePos, 0.0, 1.0);
+    uv = smokePos * 0.5 + vec2(0.5);
+    interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
+    debugIds = uvec2(uint(gl_InstanceIndex), uint(gl_VertexIndex));
+    return;
+#endif
+
     uint drawIndex = gl_InstanceIndex;
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
