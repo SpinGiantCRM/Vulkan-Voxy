@@ -1115,6 +1115,10 @@ public final class VulkanBerylSectionDrawPipeline {
                     this.controlledSmokeCommandDrawSubmitReason = "diagnostic_readback_copy_disabled";
                 }
             }
+            if (!this.controlledSmokeCommandCanSubmit && controlledSmokeDiagnosticBypassAllowed(controlledSmoke, viewport.frameId)) {
+                this.controlledSmokeCommandCanSubmit = true;
+                this.controlledSmokeCommandDrawSubmitReason = "diagnostic_readback_disabled_submit_allowed";
+            }
         } else {
             this.controlledSmokeCommandValidationState = "not_applicable";
             this.controlledSmokeCommandCanSubmit = true;
@@ -1500,6 +1504,16 @@ public final class VulkanBerylSectionDrawPipeline {
             case "readback_valid" -> "submitted";
             default -> "submitted";
         };
+    }
+
+    private boolean controlledSmokeDiagnosticBypassAllowed(ControlledRenderListSmoke controlledSmoke, int currentFrameId) {
+        if (!DISABLE_CONTROLLED_SMOKE_READBACK_COPY) return false;
+        if (!DRAW_SCREENSPACE_SMOKE_INDIRECT) return false;
+        if (!RENDERLIST_SMOKE_ONE_ENTRY) return false;
+        if (!controlledSmoke.safe()) return false;
+        if (!controlledSmokeKnownCommandUploadCurrentGenerationQueued()) return false;
+        if (!controlledSmokeKnownCommandUploadAgeReady(currentFrameId)) return false;
+        return true;
     }
 
     private boolean controlledSmokeDrawCommandLooksDrawable(ControlledRenderListSmoke controlledSmoke, VulkanBerylSectionGeometryData geometryData, ControlledSmokeCommandValidation commandValidation) {
