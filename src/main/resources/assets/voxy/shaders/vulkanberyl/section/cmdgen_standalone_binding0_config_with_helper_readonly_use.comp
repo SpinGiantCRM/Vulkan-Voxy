@@ -22,8 +22,8 @@ layout(binding = 1, std430) readonly buffer MetadataBuffer {
     SectionMeta sectionData[];
 };
 // Binding 2-5 present to match dense descriptor layout but not read in this shader
-layout(binding = 2, std430) readonly buffer Binding2ProbeBuffer {
-    uint binding2ProbeWord;
+layout(binding = 2, std430) readonly buffer CmdGenUnusedBinding2 {
+    uint unusedBinding2Word;
 };
 layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
     DrawCommand commands[];
