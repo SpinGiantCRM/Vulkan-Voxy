@@ -961,7 +961,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 cmdgenDispatchShaderName = safeActiveCmdgenShaderName();
                 cmdgenDispatchShaderResource = safeActiveCmdgenShaderResource();
             }
-            String cmdgenDispatchStageName = isolationStage == null ? (cmdgenSameLayoutNoopActive ? "noop_same_layout" : "full") : isolationStage.envName();
+            String cmdgenDispatchStageName = isolationStage == null ? (cmdgenSameLayoutNoopActive ? "noop_same_layout" : activeCmdgenShaderMode()) : isolationStage.envName();
             String cmdgenDispatchValidation = validateCmdgenDispatchDescriptorBindings(cmdgenDispatchPipeline, cmdgenDispatchStageName);
             boolean cmdgenPipelineBound = false;
             boolean cmdgenDescriptorsBound = false;
@@ -4253,21 +4253,30 @@ public final class VulkanBerylSectionDrawPipeline {
         return "ok";
     }
 
-    private static String cmdgenDispatchRiskFromState(boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenPostDispatchBarrierRecorded, boolean cmdgenSameLayoutNoopActive, String validation) {
+    private static String cmdgenDispatchRiskFromState(boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenPostDispatchBarrierRecorded, boolean cmdgenSameLayoutNoopActive, String validation, String stage) {
         if (validation != null && !"ok".equals(validation) && !"pipeline_missing".equals(validation)) return "range_or_usage";
         if (CMDGEN_DISABLE_BIND_PIPELINE || !cmdgenPipelineBound) return "pipeline_bind";
         if (CMDGEN_DISABLE_BIND_DESCRIPTORS || !cmdgenDescriptorsBound) return "descriptor_bind";
         if (CMDGEN_DISABLE_DISPATCH_CALL || !cmdgenDispatchCallRecorded) return "dispatch_call";
         if (CMDGEN_DISABLE_POST_DISPATCH_BARRIER || !cmdgenPostDispatchBarrierRecorded) return "post_dispatch_barrier";
         if (cmdgenSameLayoutNoopActive) return "shader_memory_access";
+        // Identify new shader-selection probe paths
+        if ("command_write_after_visiblecount_read_only".equals(stage)) return "visiblecount_read_command_write";
+        if ("command_write_after_indirectlookup0_read_only".equals(stage)) return "indirectlookup0_read_command_write";
+        if ("command_write_after_renderlist_read_no_branch".equals(stage)) return "renderlist_read_no_branch_command_write";
+        if ("command_write_after_visiblecount_branch_only".equals(stage)) return "visiblecount_branch_command_write";
+        if ("command_write_after_renderlist_read_no_metadata".equals(stage)) return "renderlist_read_no_metadata_command_write";
+        if ("command_write_after_metadata0_read_no_renderlist".equals(stage)) return "metadata0_read_no_renderlist_command_write";
+        if ("command_write_before_metadata_read".equals(stage)) return "before_metadata_read_command_write";
+        if ("full".equals(stage) || "full cmdgen.comp".equals(stage) || stage == null) return "full_no_drawcount_write";
         return "unknown";
     }
 
     private void logCmdgenDispatchPathDiagnostic(ComputePipeline pipeline, String shaderName, String shaderResource, String stage, boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenPostDispatchBarrierRecorded, int cmdgenDispatchGroupCount, boolean cmdgenSameLayoutNoopActive, String validation, String reason) {
         boolean cmdgenDispatchRecorded = cmdgenPipelineBound && cmdgenDescriptorsBound && cmdgenDispatchCallRecorded;
-        String dispatchRisk = cmdgenDispatchRiskFromState(cmdgenPipelineBound, cmdgenDescriptorsBound, cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded, cmdgenSameLayoutNoopActive, validation);
+        String dispatchRisk = cmdgenDispatchRiskFromState(cmdgenPipelineBound, cmdgenDescriptorsBound, cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded, cmdgenSameLayoutNoopActive, validation, stage);
         int cmdgenDispatchInvocationLimit = cmdgenDispatchGroupCount * 128;
-        String cmdgenIsolationMode = cmdgenSameLayoutNoopActive ? "noop_same_layout" : (stage.equals("full") ? "full_no_drawcount_write" : stage);
+        String cmdgenIsolationMode = cmdgenSameLayoutNoopActive ? "noop_same_layout" : ("full".equals(stage) || "full cmdgen.comp".equals(stage) ? "full_no_drawcount_write" : stage);
         long controlledSmokeSectionId = this.controlledSmokeCommandExpectedSectionId >= 0 ? Integer.toUnsignedLong(this.controlledSmokeCommandExpectedSectionId) : -1L;
         long controlledSmokeSectionQuadCount = this.controlledSmokeCommandExpectedVertexCount >= 0 ? this.controlledSmokeCommandExpectedVertexCount / 4L : -1L;
         VulkanBerylDebugLog.once("cmdgen-dispatch-path-diagnostic:" + stage + ":" + reason, "cmdgen dispatch path diagnostic: stage=" + stage
