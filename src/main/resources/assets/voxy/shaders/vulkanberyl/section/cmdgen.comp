@@ -49,6 +49,8 @@ const uint CMDGEN_FLAG_READ_RENDERLIST_ENTRY0_QUAD_COUNT_ONLY = 1u << 8u;
 const uint CMDGEN_FLAG_READ_BINDING0_ONLY = 1u << 9u;
 const uint CMDGEN_FLAG_READ_BINDING1_ONLY = 1u << 10u;
 const uint CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1u << 11u;
+const uint CMDGEN_FLAG_READ_CONFIG_ONLY = 1u << 12u;
+const uint CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE = 1u << 13u;
 
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
@@ -68,6 +70,51 @@ uint extractOpaqueQuadCount(SectionMeta meta) {
 
 void main() {
     uint drawIndex = gl_GlobalInvocationID.x;
+
+    // CMDGEN_FLAG_READ_CONFIG_ONLY: read config fields only, no renderList/metadata/commands access
+    if ((flags & CMDGEN_FLAG_READ_CONFIG_ONLY) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        // Read config binding fields into locals so reads are not trivially removed
+        uint localMetadataCapacity = metadataSectionCapacity;
+        uint localRenderListCapacity = renderListCapacity;
+        uint localGeometryCapacity = geometryCapacityQuads;
+        uint localDrawCommandCapacity = drawCommandCapacity;
+        uint localDrawCountCapacity = drawCountCapacityWords;
+        uint localFlags = flags;
+        // Use the locals to prevent optimization
+        if ((localMetadataCapacity | localRenderListCapacity | localGeometryCapacity |
+             localDrawCommandCapacity | localDrawCountCapacity | localFlags) == 0xffffffffu) {
+            uint ignored = localMetadataCapacity;
+        }
+        return;
+    }
+
+    // CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE: read renderList[0] and metadata only, no writes
+    if ((flags & CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE) != 0u) {
+        if (drawIndex != 0u) {
+            return;
+        }
+        // Only read renderList[0] if capacity > 0
+        if (renderListCapacity > 0u) {
+            uint sectionId = indirectLookup[0];
+            // Read metadata only if sectionId is valid
+            if (sectionId < metadataSectionCapacity) {
+                SectionMeta meta = sectionData[sectionId];
+                uint quadStart = extractQuadStart(meta);
+                uint translucentCount = extractTranslucentQuadCount(meta);
+                uint opaqueQuadStart = quadStart + translucentCount;
+                uint opaqueQuadCount = extractOpaqueQuadCount(meta);
+                // Compute values locally but do not write commands or drawCount
+                if ((quadStart | opaqueQuadStart | opaqueQuadCount) == 0xffffffffu) {
+                    uint ignored = quadStart;
+                }
+            }
+        }
+        return;
+    }
+
     if ((flags & CMDGEN_FLAG_NOOP_SMOKE) != 0u) {
         if (drawIndex == 0u && drawCountCapacityWords > 0u) {
             drawCount = 0u;
