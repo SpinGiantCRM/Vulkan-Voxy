@@ -89,15 +89,17 @@ void addRequest(inout UnpackedNode node) {
     if (frameId < 4u) {
         return;
     }
-    //printf("Put node decend request");
     if (!hasRequested(node)) {
-        if (requestQueueIndex.x < requestQueueSize) {//Soft limit
-            uint atomRes = atomicAdd(requestQueueIndex.x, 1);
-            if (atomRes < MAX_REQUEST_QUEUE_SIZE) {//Hard limit
-                //Mark node as having a request submitted to prevent duplicate submissions
-                requestQueue[atomRes] = getRawPos(node);
+        uint limit = min(requestQueueSize, uint(MAX_REQUEST_QUEUE_SIZE));
+        uint observed = requestQueueIndex.x;
+        while (observed < limit) {
+            uint previous = atomicCompSwap(requestQueueIndex.x, observed, observed + 1u);
+            if (previous == observed) {
+                requestQueue[observed] = getRawPos(node);
                 markRequested(node);
+                return;
             }
+            observed = previous;
         }
     }
 }
