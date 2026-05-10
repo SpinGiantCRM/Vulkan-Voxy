@@ -1982,12 +1982,19 @@ public final class VulkanBerylSectionDrawPipeline {
         updateControlledSmokeCommandGeneration(controlledSmoke.sectionId(), expectedVertexCount, 1, expectedFirstVertex, 0, targetBufferId);
 
         // Write command to drawCommandBuffer at offset 0
+        // VkDrawIndirectCommand is 16 bytes: vertexCount, instanceCount, firstVertex, firstInstance (all uint32)
+        final int MAIN_BUFFER_KNOWN_COMMAND_PAYLOAD_BYTES = 16;
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            var command = stack.ints(4);
-            command.put(0, (int) expectedVertexCount);
-            command.put(1, 1);
-            command.put(2, (int) expectedFirstVertex);
-            command.put(3, 0);
+            ByteBuffer command = stack.malloc(MAIN_BUFFER_KNOWN_COMMAND_PAYLOAD_BYTES).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            command.putInt(0, (int) expectedVertexCount);
+            command.putInt(4, 1);
+            command.putInt(8, (int) expectedFirstVertex);
+            command.putInt(12, 0);
+            VulkanBerylDebugLog.rateLimited("java-known-controlled-smoke-main-buffer-payload-diag",
+                "mainBufferKnownCommandPayloadBytes=" + MAIN_BUFFER_KNOWN_COMMAND_PAYLOAD_BYTES
+                + ", mainBufferKnownCommandPayloadCapacity=" + command.capacity()
+                + ", mainBufferKnownCommandWriteOffsets=0,4,8,12"
+                + ", mainBufferKnownCommandPayloadOrder=LITTLE_ENDIAN", 120);
             VK10.vkCmdUpdateBuffer(commandBuffer, this.drawCommandBuffer.getId(), 0L, command);
         }
 
