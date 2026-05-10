@@ -84,6 +84,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private ComputePipeline commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline;
     private ComputePipeline commandGenNoImportAtomicDrawcountOnlyProbePipeline;
     private ComputePipeline commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline;
+    private ComputePipeline commandGenDenseLayoutNoopProbePipeline;
     private ComputePipeline commandGenReadRenderlistMetadataNoWritePipeline;
     private Buffer drawCommandBuffer;
     private Buffer controlledSmokeKnownCommandBuffer;
@@ -587,6 +588,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE) {
             this.ensureCommandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline();
         }
+        if (CMDGEN_DENSE_LAYOUT_NOOP_PROBE) {
+            this.ensureCommandGenDenseLayoutNoopProbePipeline();
+        }
         bindComputeStorageBinding(CMDGEN_METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindComputeStorageBinding(CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
         bindComputeStorageBinding(CMDGEN_UNUSED_BINDING2_BINDING, this.cmdGenUnusedBinding2Buffer, "cmdGenUnusedBinding2Buffer");
@@ -792,7 +796,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_PROBE
                 || CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE
                 || CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE
-                || CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE;
+                || CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE
+                || CMDGEN_DENSE_LAYOUT_NOOP_PROBE;
         String cmdgenBlocker = validateCmdgenDispatchInputs(geometryData, renderList, visibleCount, controlledSmoke, (noOpCmdgenSmoke && isolationStage == null) || singleSsboReadProbe, isolationStage);
         if (cmdgenBlocker != null) {
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, false, 0, false, false, 0, "cmdgen_blocked:" + cmdgenBlocker, noDrawCountFullCmdgen);
@@ -921,6 +926,9 @@ public final class VulkanBerylSectionDrawPipeline {
             }
             if (CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE) {
                 return dispatchFullLayoutProbe(commandBuffer, visibleCount, geometryData, renderList, this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline, "no_import_single_invocation_real_command_no_atomic_probe");
+            }
+            if (CMDGEN_DENSE_LAYOUT_NOOP_PROBE) {
+                return dispatchDenseLayoutNoopProbe(commandBuffer, visibleCount, geometryData, renderList);
             }
             if (skipDrawCountClearBeforeDispatchActive() && !this.drawCountClearCommandRecordedThisFrame) {
                 barrierTransferToComputeForCmdgenNonDrawCountTransfers(commandBuffer, useAltRenderListBuffer ? this.cmdGenRenderListAltProbeBuffer : null);
@@ -2576,6 +2584,27 @@ public final class VulkanBerylSectionDrawPipeline {
         VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
         VulkanBerylDebugLog.once("cmdgen-" + stage + "-dispatch-submitted", "cmdgen full-layout probe dispatch submitted: stage=" + stage);
         return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+    }
+
+    private OpaqueDrawSubmission dispatchDenseLayoutNoopProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
+        if (this.commandGenDenseLayoutNoopProbePipeline == null) throw new IllegalStateException("cmdgen dense-layout noop probe pipeline missing");
+        bindDenseLayoutNoopProbeDescriptors(this.commandGenDenseLayoutNoopProbePipeline, geometryData, renderList);
+        barrierTransferToCompute(commandBuffer);
+        VK10.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, this.commandGenDenseLayoutNoopProbePipeline.getId());
+        this.commandGenDenseLayoutNoopProbePipeline.bindDescriptorSets(commandBuffer, 0);
+        VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
+        VulkanBerylDebugLog.once("cmdgen-dense-layout-noop-probe-dispatch-submitted", "cmdgen dense-layout noop probe dispatch: cmdgenSelectedShader=" + CMDGEN_DENSE_LAYOUT_NOOP_SHADER_NAME + ", cmdgenIsolationMode=dense_layout_noop, cmdgenDispatchRecorded=true, cmdgenDispatchGroupCount=1, cmdgenDescriptorBindingValidation=ok");
+        return stopCmdgenIsolation(visibleCount, "cmdgen_dense_layout_noop");
+    }
+
+    private void bindDenseLayoutNoopProbeDescriptors(ComputePipeline pipeline, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
+        ensureCmdGenUnusedBinding2Buffer();
+        bindPipelineStorageBinding(pipeline, CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
+        bindPipelineStorageBinding(pipeline, CMDGEN_METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
+        bindPipelineStorageBinding(pipeline, CMDGEN_UNUSED_BINDING2_BINDING, this.cmdGenUnusedBinding2Buffer, "cmdGenUnusedBinding2Buffer");
+        bindPipelineStorageBinding(pipeline, CMDGEN_DRAW_COMMAND_BINDING, this.drawCommandBuffer, "drawCommandBuffer");
+        bindPipelineStorageBinding(pipeline, CMDGEN_DRAW_COUNT_BINDING, cmdgenDrawCountDescriptorBuffer(), drawCountDescriptorLabel());
+        bindPipelineStorageBinding(pipeline, CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
     }
 
     private void bindFullLayoutProbeDescriptors(ComputePipeline pipeline, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
@@ -4244,6 +4273,29 @@ public final class VulkanBerylSectionDrawPipeline {
     private void ensureCommandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline() {
         if (this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline != null) return;
         this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_RESOURCE, CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_NAME, "CmdGenNoImportSingleInvocationRealCommandNoAtomicProbe");
+    }
+
+    private void ensureCommandGenDenseLayoutNoopProbePipeline() {
+        if (this.commandGenDenseLayoutNoopProbePipeline != null) return;
+        ComputePipeline.Builder builder = new ComputePipeline.Builder(CMDGEN_DENSE_LAYOUT_NOOP_SHADER_RESOURCE);
+        builder.setUniforms(createManualCmdGenDescriptors(), List.of());
+        try {
+            var preprocessedShader = VulkanBerylShaderImportPreprocessor.preprocessToTemp(CMDGEN_DENSE_LAYOUT_NOOP_SHADER_RESOURCE);
+            if (!java.nio.file.Files.isRegularFile(preprocessedShader.shaderPath())) {
+                throw new IllegalStateException("Preprocessed cmdgen dense-layout noop shader file missing before compile: " + preprocessedShader.shaderPath());
+            }
+            builder.compileShader(preprocessedShader.rootUrl(), CMDGEN_DENSE_LAYOUT_NOOP_SHADER_NAME);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to compile section cmdgen dense-layout noop shader (compute=" + CMDGEN_DENSE_LAYOUT_NOOP_SHADER_NAME + ")", e);
+        }
+        try {
+            this.commandGenDenseLayoutNoopProbePipeline = builder.createPipeline();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create section cmdgen dense-layout noop compute pipeline", e);
+        }
+        if (this.commandGenDenseLayoutNoopProbePipeline == null || this.commandGenDenseLayoutNoopProbePipeline.getId() == 0L) {
+            throw new IllegalStateException("Failed to create section cmdgen dense-layout noop compute pipeline");
+        }
     }
 
     private void ensureCommandGenReadRenderlistMetadataNoWritePipeline() {

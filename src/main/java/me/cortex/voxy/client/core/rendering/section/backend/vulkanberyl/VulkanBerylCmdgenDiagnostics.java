@@ -257,6 +257,7 @@ final class VulkanBerylCmdgenDiagnostics {
     static final boolean CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE", "false"));
     static final boolean CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE", "false"));
     static final boolean CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE", "false"));
+    static final boolean CMDGEN_DENSE_LAYOUT_NOOP_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DENSE_LAYOUT_NOOP_PROBE", "false"));
     static final boolean CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER", "false"));
     static final boolean CMDGEN_DEBUG_READBACK = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK", "false"));
     static final boolean CMDGEN_DEBUG_READBACK_NO_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_COPY", "false"));
@@ -394,6 +395,7 @@ final class VulkanBerylCmdgenDiagnostics {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_DENSE_LAYOUT_NOOP_PROBE, "VOXY_VULKAN_BERYL_CMDGEN_DENSE_LAYOUT_NOOP_PROBE");
         return active;
     }
 
