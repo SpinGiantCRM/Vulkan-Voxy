@@ -224,6 +224,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean DISABLE_CONTROLLED_SMOKE_READBACK_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_READBACK_COPY", "false"));
     private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", "false"));
     private static final boolean CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND", "false"));
+    private static final boolean CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD", "false"));
     private static final int SCREENSPACE_SMOKE_VERTEX_COUNT = 3;
     private static final int SCREENSPACE_SMOKE_INSTANCE_COUNT = 1;
     private static final int SCREENSPACE_SMOKE_FIRST_VERTEX = 0;
@@ -1935,6 +1936,36 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void recordJavaKnownControlledSmokeCommandToMainBuffer(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int frameId) {
         if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER || !RENDERLIST_SMOKE_ONE_ENTRY || !controlledSmoke.safe()) return;
+
+        if (CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD) {
+            this.controlledSmokeKnownCommandUploadSkipped = true;
+            this.controlledSmokeKnownCommandUploadSkipReason = "main_buffer_skip_by_env";
+            this.controlledSmokeKnownCommandUploadRecordedThisFrame = false;
+            this.controlledSmokeKnownCommandUploadMethodThisFrame = "none";
+            this.controlledSmokeIndirectCommandMode = "main_draw_command_buffer_known_command";
+            this.javaKnownControlledSmokeCommandWrittenThisFrame = false;
+            this.javaKnownControlledSmokeCommandTargetBufferId = this.drawCommandBuffer != null ? this.drawCommandBuffer.getId() : 0L;
+            this.javaKnownControlledSmokeCommandTargetMatchesDrawBuffer = "skipped_by_env";
+            this.controlledSmokeKnownCommandWriteMethod = "skipped_by_env";
+            this.commandBufferSubmitRisk = "main_buffer_known_command_upload_skipped";
+            this.controlledSmokeKnownCommandWriteInsideRenderPass = "unknown";
+            this.controlledSmokeKnownCommandWriteInsideDynamicRendering = "unknown";
+            this.javaKnownControlledSmokeCommandBarrierRecordedThisFrame = false;
+            this.javaKnownControlledSmokeCommandActualOrder = "not_recorded_skipped_by_env";
+            VulkanBerylDebugLog.rateLimited("controlled-smoke-main-buffer-known-command-upload-skipped-by-env",
+                "controlled smoke main buffer known command upload skipped by env: env=VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD"
+                + ", controlledSmokeMainBufferKnownCommandUploadSkippedByEnv=true"
+                + ", controlledSmokeKnownCommandWriteMethod=skipped_by_env"
+                + ", commandBufferSubmitRisk=main_buffer_known_command_upload_skipped"
+                + ", javaKnownControlledSmokeCommandWritten=false"
+                + ", controlledSmokeIndirectCommandMode=main_draw_command_buffer_known_command"
+                + ", javaKnownControlledSmokeCommandTargetMatchesDrawBuffer=skipped_by_env"
+                + ", drawSubmitReason=main_buffer_known_command_upload_skipped"
+                + ", indirectDrawRecorded=" + this.anyVkCmdDrawIndirectRecordedThisFrame
+                + ", screenspaceSmokeIndirectSubmitted=pending"
+                + ", screenspaceSmokeIndirectSubmitReason=waiting_for_valid_command", 60);
+            return;
+        }
 
         // Check if drawCommandBuffer has required usage bits
         boolean hasTransferDst = (this.drawCommandBufferUsageFlags & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0;
