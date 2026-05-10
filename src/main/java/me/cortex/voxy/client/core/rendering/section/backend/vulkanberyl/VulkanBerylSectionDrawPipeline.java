@@ -2546,7 +2546,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", metadataBinding=" + metadataBinding
                 + ", metadataBufferId=" + metadataProbeBuffer.getId()
                 + ", descriptorRangeBytes=" + metadataProbeBuffer.getBufferSize());
-        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+        return completeProbeDispatch(visibleCount, stage);
     }
 
     private OpaqueDrawSubmission dispatchBinding2ProbeBufferNoConfigProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
@@ -2560,7 +2560,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.once("cmdgen-" + stage + "-dispatch-submitted", "cmdgen binding2 probe-buffer no-config probe dispatch submitted: stage=" + stage
                 + ", binding2BufferId=" + this.cmdGenBinding2ProbeBuffer.getId()
                 + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
-        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+        return completeProbeDispatch(visibleCount, stage);
     }
 
     private OpaqueDrawSubmission dispatchBinding2ProbeBufferConstProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
@@ -2579,7 +2579,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.once("cmdgen-" + stage + "-dispatch-submitted", "cmdgen binding2 probe-buffer const probe dispatch submitted: stage=" + stage
                 + ", binding2BufferId=" + this.cmdGenBinding2ProbeBuffer.getId()
                 + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
-        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+        return completeProbeDispatch(visibleCount, stage);
     }
 
     private OpaqueDrawSubmission dispatchBinding1AndBinding2NoConfigProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, Buffer binding2ProbeBuffer, String stage) {
@@ -2600,7 +2600,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding1DescriptorRangeBytes=" + this.cmdGenTinyMetadataProbeBuffer.getBufferSize()
                 + ", binding2BufferId=" + binding2ProbeBuffer.getId()
                 + ", binding2DescriptorRangeBytes=" + binding2ProbeBuffer.getBufferSize());
-        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+        return completeProbeDispatch(visibleCount, stage);
     }
 
     private OpaqueDrawSubmission dispatchBinding1AndBinding2ConstProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
@@ -2626,7 +2626,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding1DescriptorRangeBytes=" + this.cmdGenTinyMetadataProbeBuffer.getBufferSize()
                 + ", binding2BufferId=" + this.cmdGenBinding2ProbeBuffer.getId()
                 + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
-        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+        return completeProbeDispatch(visibleCount, stage);
     }
 
     private OpaqueDrawSubmission dispatchMinimalSsboReadProbe(VkCommandBuffer commandBuffer, int visibleCount, ComputePipeline pipeline, Buffer buffer, int descriptorBinding, String shaderName, String stage, boolean uploadTinyWord) {
@@ -2664,7 +2664,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", descriptorBinding=" + descriptorBinding
                 + ", descriptorRangeBytes=" + bufferSize
                 + ", uploadedTinyWord=" + uploadTinyWord);
-        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+        return completeProbeDispatch(visibleCount, stage);
     }
 
     private OpaqueDrawSubmission dispatchFullLayoutProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
@@ -2679,7 +2679,7 @@ public final class VulkanBerylSectionDrawPipeline {
         pipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
         VulkanBerylDebugLog.once("cmdgen-" + stage + "-dispatch-submitted", "cmdgen full-layout probe dispatch submitted: stage=" + stage);
-        return stopCmdgenIsolation(visibleCount, "cmdgen_" + stage);
+        return completeProbeDispatch(visibleCount, stage);
     }
 
     private OpaqueDrawSubmission dispatchDenseLayoutNoopProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
@@ -2690,7 +2690,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.commandGenDenseLayoutNoopProbePipeline.bindDescriptorSets(commandBuffer, 0);
         VK10.vkCmdDispatch(commandBuffer, 1, 1, 1);
         VulkanBerylDebugLog.once("cmdgen-dense-layout-noop-probe-dispatch-submitted", "cmdgen dense-layout noop probe dispatch: cmdgenSelectedShader=" + CMDGEN_DENSE_LAYOUT_NOOP_SHADER_NAME + ", cmdgenIsolationMode=dense_layout_noop, cmdgenDispatchRecorded=true, cmdgenDispatchGroupCount=1, cmdgenDescriptorBindingValidation=ok");
-        return stopCmdgenIsolation(visibleCount, "cmdgen_dense_layout_noop");
+        return completeProbeDispatch(visibleCount, "dense_layout_noop");
     }
 
     private void bindDenseLayoutNoopProbeDescriptors(ComputePipeline pipeline, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
@@ -2774,6 +2774,47 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", drawSubmitReason=" + reason);
         VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, reason);
         return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, reason);
+    }
+
+    /**
+     * Complete a cmdgen probe dispatch that actually recorded vkCmdDispatch.
+     * Emits TEST_STATUS with cmdgenDispatchRecorded=true, cmdgenSkipped=false.
+     * Sets cmdgenDispatchRecordedThisFrame=true and reports valid cmdgen sample.
+     */
+    private OpaqueDrawSubmission completeProbeDispatch(int visibleCount, String stage) {
+        this.cmdgenDispatchRecordedThisFrame = true;
+        int tsl = VulkanBerylCmdgenDiagnostics.TRAVERSAL_STAGE_LIMIT;
+        String tsm = VulkanBerylCmdgenDiagnostics.traversalStageMeaning(tsl);
+        String penv = VulkanBerylCmdgenDiagnostics.selectedProbeEnvVarName();
+        String pshader = VulkanBerylCmdgenDiagnostics.selectedProbeShaderName();
+        String pisolation = VulkanBerylCmdgenDiagnostics.selectedProbeIsolationModeName();
+        boolean probeSel = VulkanBerylCmdgenDiagnostics.isProbeSelected();
+        VulkanBerylDebugLog.alwaysRaw("[Voxy][VulkanBeryl][TEST_STATUS]"
+                + " traversalStageLimit=" + tsl
+                + ", stageMeaning=" + tsm
+                + ", rawRenderListVisibleCount=" + this.rawVisibleCountForTestStatus
+                + ", renderListVisibleCountForDraw=" + visibleCount
+                + ", cmdgenProbeSelected=" + probeSel
+                + ", probeEnvName=" + (penv == null ? "none" : penv)
+                + ", cmdgenSelectedShader=" + (pshader == null ? "none" : pshader)
+                + ", cmdgenIsolationMode=" + (pisolation == null ? "not_selected" : pisolation)
+                + ", cmdgenDispatchCallRecorded=true"
+                + ", cmdgenPostDispatchBarrierRecorded=false"
+                + ", cmdgenDispatchRecorded=true"
+                + ", cmdgenDispatchGroupCount=1"
+                + ", cmdgenSkipped=false"
+                + ", cmdgenSkipReason=none"
+                + ", indirectAllowed=false"
+                + ", indirectDrawRecorded=false"
+                + ", submittedDrawCount=0"
+                + ", drawSubmitReason=cmdgen_probe_dispatched:" + stage);
+        VulkanBerylLodBringupDiagnostics.updateCmdgenSample(true, "cmdgen_probe_dispatched:" + stage);
+        return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0,
+                this.lastCompletedDebugSample.sampledCommandCount(),
+                this.lastCompletedDebugSample.invalidSampledCommandCount(),
+                this.lastCompletedDebugSample.sampledQuadCount(),
+                this.debugSamplePending,
+                "cmdgen_probe_dispatched:" + stage);
     }
 
     private static CmdgenIsolationStage selectedCmdgenIsolationStage() {
