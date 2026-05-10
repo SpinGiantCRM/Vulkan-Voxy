@@ -1,0 +1,45 @@
+#version 460
+
+layout(local_size_x = 128) in;
+
+#import <voxy:lod/section.glsl>
+
+struct DrawCommand {
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+};
+
+layout(binding = 0, std430) readonly volatile buffer RenderListBuffer {
+    uint visibleCount;
+    uint indirectLookup[];
+};
+layout(binding = 1, std430) readonly buffer MetadataBuffer {
+    SectionMeta sectionData[];
+};
+// Unused binding2 padding keeps Beryl's dense ManualUBO descriptor layout at bindings 0..5.
+layout(binding = 2, std430) readonly buffer CmdGenUnusedBinding2 {
+    uint unusedBinding2Word;
+};
+layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
+    DrawCommand commands[];
+};
+layout(binding = 4, std430) buffer DrawCountBuffer {
+    uint drawCount;
+};
+layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
+    uint metadataSectionCapacity;
+    uint renderListCapacity;
+    uint geometryCapacityQuads;
+    uint drawCommandCapacity;
+    uint drawCountCapacityWords;
+    uint flags;
+};
+
+void main() {
+    // Stage 1 isolation: dense-layout noop.
+    // All 6 cmdgen descriptors bound exactly as normal cmdgen.comp.
+    // Returns immediately — no buffer reads, no buffer writes.
+    // Purpose: test whether descriptor binding alone (without memory access) survives.
+}
