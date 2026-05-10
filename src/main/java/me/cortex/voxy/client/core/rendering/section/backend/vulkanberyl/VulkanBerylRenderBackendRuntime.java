@@ -9,6 +9,7 @@ import me.cortex.voxy.client.core.rendering.section.backend.PrimaryRenderWorkCon
 import me.cortex.voxy.client.core.rendering.section.backend.SectionRenderBackendRuntime;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.util.MemoryBuffer;
+import me.cortex.voxy.common.world.WorldEngine;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
@@ -96,6 +97,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private boolean requestReadbackScheduled;
     private boolean requestReadbackCompleted;
     private boolean lastRequestReadbackDiscarded;
+    private String lastRequestBatchDiscardReason = "none";
     private boolean lastRenderListCounterDiscarded;
     private boolean lastRenderListSampleDiscarded;
     private int frameSequence;
@@ -369,25 +371,112 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
         ByteBuffer requestBytes = MemoryUtil.memByteBuffer(readbackPtr, (int) VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES);
         int rawCount = requestBytes.getInt(0);
-        VulkanBerylDebugLog.trace("traversal-request-readback", "Traversal readback: frameId=" + this.requestReadbackFrameId + " gpuCompletionConfirmed=true rawRequestCount=" + rawCount);
-        int maxByBuffer = (int) ((VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES - 8L) / 8L);
+        int maxRequestQueueSize = this.traversalResources.getMaxRequestQueueSize();
+        long requestReadbackBufferSizeBytes = VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES;
+        int maxByBuffer = (int) ((requestReadbackBufferSizeBytes - 8L) / 8L);
+
+        VulkanBerylDebugLog.trace("traversal-request-readback", "Traversal readback: frameId=" + this.requestReadbackFrameId
+                + " gpuCompletionConfirmed=true rawRequestCount=" + rawCount
+                + " maxRequestQueueSize=" + maxRequestQueueSize
+                + " maxRequestCountByBuffer=" + maxByBuffer
+                + " requestReadbackBufferSizeBytes=" + requestReadbackBufferSizeBytes);
+
         int acceptedCount = rawCount;
         boolean discarded = false;
-        if (rawCount < 0 || rawCount > this.traversalResources.getMaxRequestQueueSize() || rawCount > maxByBuffer) {
-            VulkanBerylDebugLog.warnRateLimited("invalid-traversal-request-count", "Invalid/corrupt Vulkan/Beryl traversal request count, discarding readback batch: rawRequestCount=" + rawCount
-                    + " maxRequestQueueSize=" + this.traversalResources.getMaxRequestQueueSize() + " maxByBuffer=" + maxByBuffer);
-            acceptedCount = 0;
+        String discardReason = "none";
+
+        // Validate request count
+        if (rawCount < 0) {
+            discardReason = "rawRequestCount_negative";
+            discarded = true;
+        } else if (rawCount > maxRequestQueueSize) {
+            discardReason = "rawRequestCount_exceeds_maxRequestQueueSize";
+            discarded = true;
+        } else if (rawCount > maxByBuffer) {
+            discardReason = "rawRequestCount_exceeds_maxByBuffer";
             discarded = true;
         }
-        this.lastRequestReadbackDiscarded = discarded;
 
-        if (!discarded && acceptedCount > 0) {
-            long batchSize = 8L + (long) acceptedCount * 8L;
-            MemoryBuffer batch = new MemoryBuffer(batchSize).cpyFrom(readbackPtr);
-            this.nodeManager.submitRequestBatch(batch);
+        long requiredRequestBatchBytes = 0L;
+        if (!discarded && rawCount > 0) {
+            long countTimes8 = (long) rawCount * 8L;
+            if (countTimes8 / 8L != (long) rawCount) {
+                discardReason = "requiredRequestBatchBytes_overflow";
+                discarded = true;
+            } else {
+                requiredRequestBatchBytes = 8L + countTimes8;
+                if (requiredRequestBatchBytes < 0L) {
+                    discardReason = "requiredRequestBatchBytes_negative";
+                    discarded = true;
+                } else if (requiredRequestBatchBytes > requestReadbackBufferSizeBytes) {
+                    discardReason = "requiredRequestBatchBytes_exceeds_buffer";
+                    discarded = true;
+                }
+            }
         }
-        VulkanBerylDebugLog.trace("request-readback-status", "Request readback: rawRequestCount=" + rawCount + " acceptedRequestCount=" + acceptedCount
-                + " requestBatchDiscarded=" + discarded);
+
+        // Decode preview of first few positions for diagnostics
+        String firstPositionsPreview = "[]";
+        if (!discarded && rawCount > 0) {
+            int previewLimit = Math.min(rawCount, 8);
+            StringBuilder sb = new StringBuilder("[");
+            int ptr = 8; // Skip count (4 bytes) + padding (4 bytes)
+            for (int i = 0; i < previewLimit; i++) {
+                if (i > 0) sb.append(", ");
+                long upper = Integer.toUnsignedLong(requestBytes.getInt(ptr)); ptr += 4;
+                long lower = Integer.toUnsignedLong(requestBytes.getInt(ptr)); ptr += 4;
+                long pos = (upper << 32) | lower;
+                sb.append(WorldEngine.pprintPos(pos));
+            }
+            sb.append("]");
+            firstPositionsPreview = sb.toString();
+        }
+
+        if (discarded) {
+            acceptedCount = 0;
+            VulkanBerylDebugLog.warnRateLimited("invalid-traversal-request-count",
+                    "Invalid/corrupt Vulkan/Beryl traversal request count, discarding readback batch:"
+                    + " rawRequestCount=" + rawCount
+                    + " acceptedRequestCount=" + acceptedCount
+                    + " requestBatchDiscarded=true"
+                    + " requestBatchDiscardReason=" + discardReason
+                    + " requestBatchSizeBytes=0"
+                    + " requiredRequestBatchBytes=" + requiredRequestBatchBytes
+                    + " requestReadbackBufferSizeBytes=" + requestReadbackBufferSizeBytes
+                    + " maxRequestQueueSize=" + maxRequestQueueSize
+                    + " maxRequestCountByBuffer=" + maxByBuffer
+                    + " requestReadbackFrameId=" + this.requestReadbackFrameId
+                    + " firstPositionsPreview=" + firstPositionsPreview);
+        }
+
+        this.lastRequestReadbackDiscarded = discarded;
+        this.lastRequestBatchDiscardReason = discardReason;
+
+        long batchSize = 0L;
+        if (!discarded && acceptedCount > 0) {
+            batchSize = 8L + (long) acceptedCount * 8L;
+            MemoryBuffer batch = new MemoryBuffer(batchSize).cpyFrom(readbackPtr);
+            try {
+                this.nodeManager.submitRequestBatch(batch);
+            } catch (Exception e) {
+                batch.free();
+                throw e;
+            }
+        }
+
+        VulkanBerylDebugLog.trace("request-readback-status", "Request readback:"
+                + " rawRequestCount=" + rawCount
+                + " acceptedRequestCount=" + acceptedCount
+                + " requestBatchDiscarded=" + discarded
+                + " requestBatchDiscardReason=" + discardReason
+                + " requestBatchSizeBytes=" + batchSize
+                + " requiredRequestBatchBytes=" + requiredRequestBatchBytes
+                + " requestReadbackBufferSizeBytes=" + requestReadbackBufferSizeBytes
+                + " maxRequestQueueSize=" + maxRequestQueueSize
+                + " maxRequestCountByBuffer=" + maxByBuffer
+                + " requestReadbackFrameId=" + this.requestReadbackFrameId
+                + " firstPositionsPreview=" + firstPositionsPreview);
+
         this.requestReadbackPending = false;
         this.requestReadbackCompleted = !discarded;
     }

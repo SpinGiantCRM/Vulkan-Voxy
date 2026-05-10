@@ -258,17 +258,58 @@ public class AsyncNodeManager {
                 break;
             workDone++;
             long ptr = job.address;
-            int count = MemoryUtil.memGetInt(ptr);
-            ptr += 8;//Its 8 to keep alignment
-            if (job.size < count * 8L + 8) {
-                throw new IllegalStateException();
+            boolean batchValid = true;
+            String discardReason = "none";
+            long batchSizeBytes = job.size;
+            int count = 0;
+            long requiredBytes = 0L;
+            try {
+                // Validate batch envelope before processing
+                if (ptr == 0L) {
+                    batchValid = false;
+                    discardReason = "null_address";
+                } else if (batchSizeBytes < 8L) {
+                    batchValid = false;
+                    discardReason = "batch_too_small_for_header";
+                } else {
+                    count = MemoryUtil.memGetInt(ptr);
+                    if (count < 0) {
+                        batchValid = false;
+                        discardReason = "negative_count";
+                    } else {
+                        long countTimes8 = (long) count * 8L;
+                        if (countTimes8 / 8L != (long) count) {
+                            batchValid = false;
+                            discardReason = "required_bytes_overflow";
+                        } else {
+                            requiredBytes = 8L + countTimes8;
+                            if (requiredBytes < 0L || requiredBytes > batchSizeBytes) {
+                                batchValid = false;
+                                discardReason = "required_bytes_exceed_batch_size";
+                            }
+                        }
+                    }
+                }
+
+                if (!batchValid) {
+                    Logger.warn("[Voxy][AsyncNodeManager] Discarding malformed async request batch:"
+                            + " asyncRequestBatchDiscarded=true"
+                            + " asyncRequestBatchDiscardReason=" + discardReason
+                            + " asyncRequestBatchSizeBytes=" + batchSizeBytes
+                            + " asyncRequestBatchRequiredBytes=" + requiredBytes
+                            + " asyncRequestBatchCount=" + count);
+                    continue;
+                }
+
+                ptr += 8;//Its 8 to keep alignment
+                for (int i = 0; i < count; i++) {
+                    long pos = ((long) MemoryUtil.memGetInt(ptr)) << 32; ptr += 4;
+                    pos |= Integer.toUnsignedLong(MemoryUtil.memGetInt(ptr)); ptr += 4;
+                    this.manager.processRequest(pos);
+                }
+            } finally {
+                job.free();
             }
-            for (int i = 0; i < count; i++) {
-                long pos = ((long) MemoryUtil.memGetInt(ptr)) << 32; ptr += 4;
-                pos |= Integer.toUnsignedLong(MemoryUtil.memGetInt(ptr)); ptr += 4;
-                this.manager.processRequest(pos);
-            }
-            job.free();
         }
 
 
