@@ -218,6 +218,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean lastDrawCountAllocationUsedScratchPath;
     private boolean lastOldRealDrawCountBufferStillExists;
     private boolean freed;
+    private int rawVisibleCountForTestStatus = -1;
 
     private static final boolean DRAW_SCREENSPACE_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE", "false"));
     private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT", "false"));
@@ -463,6 +464,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (renderList == null) throw new IllegalArgumentException("renderList must not be null");
         if (this.graphicsPipeline == null) throw new IllegalStateException("graphics pipeline must be created before resources are bound");
         guardCmdgenProbeExclusivity();
+        VulkanBerylCmdgenDiagnostics.logActiveEnvSummaryOnce();
         this.cmdgenDescriptorsReboundThisFrame = false;
 
         long geometryBytes = geometryData.getGeometryBuffer().getBufferSize();
@@ -642,6 +644,17 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("section draw pipeline/resources are not initialized");
         }
         guardCmdgenProbeExclusivity();
+
+        // TEST_STATUS common fields
+        int testTraversalStageLimit = VulkanBerylCmdgenDiagnostics.TRAVERSAL_STAGE_LIMIT;
+        String testStageMeaning = VulkanBerylCmdgenDiagnostics.traversalStageMeaning(testTraversalStageLimit);
+        String testProbeEnvName = VulkanBerylCmdgenDiagnostics.selectedProbeEnvVarName();
+        String testSelectedShader = VulkanBerylCmdgenDiagnostics.selectedProbeShaderName();
+        String testIsolationMode = VulkanBerylCmdgenDiagnostics.selectedProbeIsolationModeName();
+        boolean testProbeSelected = VulkanBerylCmdgenDiagnostics.isProbeSelected();
+        String testProbeSelectionReason = VulkanBerylCmdgenDiagnostics.probeSelectionReason();
+        logProbeSelectionLine(testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode, testProbeSelectionReason);
+
         this.drawCountClearedThisFrame = false;
         this.drawCountClearCommandRecordedThisFrame = false;
         this.drawCountUsedRealClearPathThisFrame = false;
@@ -701,6 +714,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         int rawVisibleCount = controlledSmoke.enabled() ? (controlledSmoke.safe() ? 1 : 0) : renderList.getLastVisibleCount();
         int visibleCount = Math.max(0, Math.min(rawVisibleCount, maxEntryCount));
+        this.rawVisibleCountForTestStatus = rawVisibleCount;
         VulkanBerylRenderBackendRuntime.FrameSafetyState frameSafety = VulkanBerylRenderBackendRuntime.getLastFrameSafetyState();
         CmdgenIsolationStage isolationStage = selectedCmdgenIsolationStage();
         boolean noDrawCountFullCmdgen = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
@@ -715,6 +729,8 @@ public final class VulkanBerylSectionDrawPipeline {
         boolean indirectAllowed = ENABLE_INDIRECT_DRAW && cmdgenSampleValid && indirectSafetyAllowed;
         boolean cmdgenDispatchSubmitted = false;
         int cmdgenDispatchGroupCount = 0;
+        boolean cmdgenDispatchCallRecorded = false;
+        boolean cmdgenPostDispatchBarrierRecorded = false;
         String gateReason = controlledSmoke.enabled() ? controlledSmoke.reason() : frameSafety.reason();
         String indirectGateReason = !ENABLE_INDIRECT_DRAW
                 ? "indirect_draw_disabled"
@@ -736,6 +752,11 @@ public final class VulkanBerylSectionDrawPipeline {
         JavaDrawCountDiagnostic javaDrawCountForNoDrawCountCmdgen = new JavaDrawCountDiagnostic(visibleCount, "render_list_visible_count");
         if (visibleCount <= 0) {
             logVisibleCountZeroReason(renderList, rawVisibleCount, visibleCount, frameSafety, controlledSmoke, cpuSelectionSmoke, noDrawCountFullCmdgen);
+            logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
+                    testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
+                    false, false, false, 0,
+                    true, "no_visible_render_list_entries",
+                    false, false, 0, "visible_count_zero_or_negative");
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "visible_count_zero_or_negative");
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
         }
@@ -744,6 +765,11 @@ public final class VulkanBerylSectionDrawPipeline {
                 VulkanBerylDebugLog.once("cmdgen-debug-readback-full-dispatch-gated", "cmdgen debug readback requested but skipped because full cmdgen dispatch was gated: reason=" + fullCmdgenDispatchBlocker);
                 logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
             }
+            logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
+                    testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
+                    false, false, false, 0,
+                    true, "cmdgen_gate:" + gateReason,
+                    false, false, 0, "cmdgen_gate:" + gateReason);
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, false, 0, false, false, 0, "cmdgen_gate:" + gateReason, noDrawCountFullCmdgen);
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "cmdgen_gate:" + gateReason);
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "cmdgen_gate:" + gateReason);
@@ -762,6 +788,11 @@ public final class VulkanBerylSectionDrawPipeline {
             logCmdgenCommandBufferUse(isolationStage == null ? "create_only" : isolationStage.envName(), commandBuffer, commandBuffer, true);
             VulkanBerylDebugLog.once("cmdgen-create-only-skipped", "cmdgen dispatch skipped/create-only");
             VulkanBerylDebugLog.once("cmdgen-debug-readback-state", "cmdgen debug readback " + (CMDGEN_DEBUG_READBACK ? "enabled" : "skipped"));
+            logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
+                    testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
+                    false, false, false, 0,
+                    true, "cmdgen_create_only",
+                    false, false, 0, "cmdgen_create_only");
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, false, 0, false, false, 0, "cmdgen_create_only", noDrawCountFullCmdgen);
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "cmdgen_create_only");
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "cmdgen_create_only");
@@ -800,6 +831,11 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_DENSE_LAYOUT_NOOP_PROBE;
         String cmdgenBlocker = validateCmdgenDispatchInputs(geometryData, renderList, visibleCount, controlledSmoke, (noOpCmdgenSmoke && isolationStage == null) || singleSsboReadProbe, isolationStage);
         if (cmdgenBlocker != null) {
+            logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
+                    testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
+                    false, false, false, 0,
+                    true, "cmdgen_blocked:" + cmdgenBlocker,
+                    false, false, 0, "cmdgen_blocked:" + cmdgenBlocker);
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, false, 0, false, false, 0, "cmdgen_blocked:" + cmdgenBlocker, noDrawCountFullCmdgen);
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "cmdgen_blocked:" + cmdgenBlocker);
             return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "cmdgen_blocked:" + cmdgenBlocker);
@@ -980,9 +1016,7 @@ public final class VulkanBerylSectionDrawPipeline {
             String cmdgenDispatchValidation = validateCmdgenDispatchDescriptorBindings(cmdgenDispatchPipeline, cmdgenDispatchStageName);
             boolean cmdgenPipelineBound = false;
             boolean cmdgenDescriptorsBound = false;
-            boolean cmdgenDispatchCallRecorded = false;
             boolean cmdgenDispatchSkippedByEnv = false;
-            boolean cmdgenPostDispatchBarrierRecorded = false;
             String cmdgenPostDispatchBarrierSkippedReason = null;
             if (CMDGEN_DISABLE_BIND_PIPELINE) {
                 VulkanBerylDebugLog.once("cmdgen-disable-bind-pipeline", "cmdgen vkCmdBindPipeline skipped: env=VOXY_VULKAN_BERYL_CMDGEN_DISABLE_BIND_PIPELINE=true, stage=" + cmdgenDispatchStageName);
@@ -1058,6 +1092,15 @@ public final class VulkanBerylSectionDrawPipeline {
                 }
             }
             logCmdgenDispatchPathDiagnostic(cmdgenDispatchPipeline, cmdgenDispatchShaderName, cmdgenDispatchShaderResource, cmdgenDispatchStageName, cmdgenPipelineBound, cmdgenDescriptorsBound, cmdgenDispatchCallRecorded, cmdgenDispatchSkippedByEnv, cmdgenPostDispatchBarrierRecorded, cmdgenPostDispatchBarrierSkippedReason, cmdgenDispatchGroupCount, cmdgenSameLayoutNoopActive, cmdgenDispatchValidation, "dispatch_path_recorded");
+            boolean testCmdgenDispatchRecorded = cmdgenPipelineBound && cmdgenDescriptorsBound && cmdgenDispatchCallRecorded;
+            String testCmdgenSkipReason = testCmdgenDispatchRecorded ? null : (cmdgenDispatchSkippedByEnv ? "dispatch_call_disabled_by_env" : (cmdgenPipelineBound ? (cmdgenDescriptorsBound ? "dispatch_call_not_recorded" : "descriptors_not_bound") : "pipeline_not_bound"));
+            boolean testCmdgenSkipped = !testCmdgenDispatchRecorded;
+            logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
+                    testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
+                    cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded,
+                    testCmdgenDispatchRecorded, cmdgenDispatchGroupCount,
+                    testCmdgenSkipped, testCmdgenSkipReason,
+                    false, false, 0, "cmdgen_dispatch_recorded");
             recordJavaKnownControlledSmokeCommand(commandBuffer, controlledSmoke, viewport.frameId);
             javaDrawCountForNoDrawCountCmdgen = recordJavaDrawCountForNoDrawCountCmdgen(commandBuffer, controlledSmoke, visibleCount);
         }
@@ -1070,6 +1113,12 @@ public final class VulkanBerylSectionDrawPipeline {
         logNoDrawCountDiagnosticIndirectGate(noDrawCountDiagnosticIndirectGate, indirectAllowed);
 
         if (disableAnyDrawCountConsumerPathActive()) {
+            logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
+                    testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
+                    cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded,
+                    cmdgenDispatchSubmitted, cmdgenDispatchGroupCount,
+                    !cmdgenDispatchSubmitted, "drawcount_consumer_path_disabled",
+                    indirectAllowed, false, 0, "drawcount_consumer_path_disabled");
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, false, 0, "drawcount_consumer_path_disabled", noDrawCountFullCmdgen);
             logDrawCountConsumerPathDisabled(visibleCount, indirectAllowed, CMDGEN_DEBUG_READBACK);
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "drawcount_consumer_path_disabled");
@@ -1120,6 +1169,12 @@ public final class VulkanBerylSectionDrawPipeline {
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "render_draw_submit_skipped_after_cmdgen");
         }
         if (!indirectAllowed && !screenspaceSmokeDirectDrawEnabled()) {
+            logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
+                    testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
+                    cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded,
+                    cmdgenDispatchSubmitted, cmdgenDispatchGroupCount,
+                    !cmdgenDispatchSubmitted, "indirect_gate:" + indirectGateReason,
+                    false, false, 0, "indirect_gate:" + indirectGateReason);
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, false, false, 0, "indirect_gate:" + indirectGateReason, noDrawCountFullCmdgen);
             logScreenspaceSmokeSubmitDiagnostics(false, "indirect_gate:" + indirectGateReason, null);
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
@@ -2355,6 +2410,47 @@ public final class VulkanBerylSectionDrawPipeline {
         logControlledSmokeCommandRecordingDiagnostics(renderListVisibleCountForDraw, indirectDrawRecorded, drawSubmitReason);
     }
 
+    private void logTestStatus(int traversalStageLimit, String stageMeaning,
+                               int rawRenderListVisibleCount, int renderListVisibleCountForDraw,
+                               boolean cmdgenProbeSelected, String probeEnvName,
+                               String cmdgenSelectedShader, String cmdgenIsolationMode,
+                               boolean cmdgenDispatchCallRecorded, boolean cmdgenPostDispatchBarrierRecorded,
+                               boolean cmdgenDispatchRecorded, int cmdgenDispatchGroupCount,
+                               boolean cmdgenSkipped, String cmdgenSkipReason,
+                               boolean indirectAllowed, boolean indirectDrawRecorded,
+                               int submittedDrawCount, String drawSubmitReason) {
+        VulkanBerylDebugLog.alwaysRaw("[Voxy][VulkanBeryl][TEST_STATUS]"
+                + " traversalStageLimit=" + traversalStageLimit
+                + ", stageMeaning=" + stageMeaning
+                + ", rawRenderListVisibleCount=" + rawRenderListVisibleCount
+                + ", renderListVisibleCountForDraw=" + renderListVisibleCountForDraw
+                + ", cmdgenProbeSelected=" + cmdgenProbeSelected
+                + ", probeEnvName=" + (probeEnvName == null ? "none" : probeEnvName)
+                + ", cmdgenSelectedShader=" + (cmdgenSelectedShader == null ? "none" : cmdgenSelectedShader)
+                + ", cmdgenIsolationMode=" + (cmdgenIsolationMode == null ? "not_selected" : cmdgenIsolationMode)
+                + ", cmdgenDispatchCallRecorded=" + cmdgenDispatchCallRecorded
+                + ", cmdgenPostDispatchBarrierRecorded=" + cmdgenPostDispatchBarrierRecorded
+                + ", cmdgenDispatchRecorded=" + cmdgenDispatchRecorded
+                + ", cmdgenDispatchGroupCount=" + cmdgenDispatchGroupCount
+                + ", cmdgenSkipped=" + cmdgenSkipped
+                + ", cmdgenSkipReason=" + (cmdgenSkipReason == null ? "not_applicable" : cmdgenSkipReason)
+                + ", indirectAllowed=" + indirectAllowed
+                + ", indirectDrawRecorded=" + indirectDrawRecorded
+                + ", submittedDrawCount=" + submittedDrawCount
+                + ", drawSubmitReason=" + (drawSubmitReason == null ? "not_applicable" : drawSubmitReason));
+    }
+
+    private void logProbeSelectionLine(boolean cmdgenProbeSelected, String probeEnvName,
+                                        String cmdgenSelectedShader, String cmdgenIsolationMode,
+                                        String probeSelectionReason) {
+        VulkanBerylDebugLog.once("cmdgen-probe-selection-" + probeSelectionReason,
+                "cmdgen probe selection: cmdgenProbeSelected=" + cmdgenProbeSelected
+                + ", probeEnvName=" + (probeEnvName == null ? "none" : probeEnvName)
+                + ", cmdgenSelectedShader=" + (cmdgenSelectedShader == null ? "none" : cmdgenSelectedShader)
+                + ", cmdgenIsolationMode=" + (cmdgenIsolationMode == null ? "not_selected" : cmdgenIsolationMode)
+                + ", cmdgenProbeSelectionReason=" + probeSelectionReason);
+    }
+
     private void logControlledSmokeCommandRecordingDiagnostics(int renderListVisibleCountForDraw, boolean indirectDrawRecorded, String drawSubmitReason) {
         if (!RENDERLIST_SMOKE_ONE_ENTRY) return;
         boolean controlledSmokeIndirectDrawRecorded = indirectDrawRecorded
@@ -2651,6 +2747,31 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private OpaqueDrawSubmission stopCmdgenIsolation(int visibleCount, String reason) {
         VulkanBerylDebugLog.once(reason, "cmdgen isolation stop: " + reason);
+        int tsl = VulkanBerylCmdgenDiagnostics.TRAVERSAL_STAGE_LIMIT;
+        String tsm = VulkanBerylCmdgenDiagnostics.traversalStageMeaning(tsl);
+        String penv = VulkanBerylCmdgenDiagnostics.selectedProbeEnvVarName();
+        String pshader = VulkanBerylCmdgenDiagnostics.selectedProbeShaderName();
+        String pisolation = VulkanBerylCmdgenDiagnostics.selectedProbeIsolationModeName();
+        boolean probeSel = VulkanBerylCmdgenDiagnostics.isProbeSelected();
+        VulkanBerylDebugLog.alwaysRaw("[Voxy][VulkanBeryl][TEST_STATUS]"
+                + " traversalStageLimit=" + tsl
+                + ", stageMeaning=" + tsm
+                + ", rawRenderListVisibleCount=" + this.rawVisibleCountForTestStatus
+                + ", renderListVisibleCountForDraw=" + visibleCount
+                + ", cmdgenProbeSelected=" + probeSel
+                + ", probeEnvName=" + (penv == null ? "none" : penv)
+                + ", cmdgenSelectedShader=" + (pshader == null ? "none" : pshader)
+                + ", cmdgenIsolationMode=" + (pisolation == null ? "not_selected" : pisolation)
+                + ", cmdgenDispatchCallRecorded=" + (probeSel || reason.contains("dispatch_blocked") ? false : false)
+                + ", cmdgenPostDispatchBarrierRecorded=false"
+                + ", cmdgenDispatchRecorded=false"
+                + ", cmdgenDispatchGroupCount=0"
+                + ", cmdgenSkipped=true"
+                + ", cmdgenSkipReason=" + reason
+                + ", indirectAllowed=false"
+                + ", indirectDrawRecorded=false"
+                + ", submittedDrawCount=0"
+                + ", drawSubmitReason=" + reason);
         VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, reason);
         return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, reason);
     }
