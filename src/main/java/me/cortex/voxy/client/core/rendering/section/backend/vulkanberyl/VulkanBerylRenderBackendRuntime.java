@@ -456,11 +456,39 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         if (!discarded && acceptedCount > 0) {
             batchSize = 8L + (long) acceptedCount * 8L;
             MemoryBuffer batch = new MemoryBuffer(batchSize).cpyFrom(readbackPtr);
-            try {
-                this.nodeManager.submitRequestBatch(batch);
-            } catch (Exception e) {
+
+            // Verify batch header integrity before submission
+            int requestBatchHeaderCountBeforeSubmit = -1;
+            int requestBatchHeaderPaddingOrReservedWord = 0;
+            if (batch.address != 0L && batch.size >= 8L) {
+                requestBatchHeaderCountBeforeSubmit = MemoryUtil.memGetInt(batch.address);
+                requestBatchHeaderPaddingOrReservedWord = MemoryUtil.memGetInt(batch.address + 4L);
+            }
+
+            if (batchSize != requiredRequestBatchBytes) {
+                Logger.warn("[Voxy][VulkanBerylRuntime] Producer size mismatch, discarding request batch before submit:"
+                        + " rawRequestCount=" + rawCount
+                        + " acceptedRequestCount=" + acceptedCount
+                        + " requestBatchDiscarded=true"
+                        + " requestBatchDiscardReason=producer_size_mismatch"
+                        + " requestBatchSizeBytes=" + batchSize
+                        + " requiredRequestBatchBytes=" + requiredRequestBatchBytes
+                        + " requestReadbackFrameId=" + this.requestReadbackFrameId
+                        + " requestBatchHeaderCountBeforeSubmit=" + requestBatchHeaderCountBeforeSubmit
+                        + " requestBatchHeaderPaddingOrReservedWord=" + requestBatchHeaderPaddingOrReservedWord
+                        + " firstPositionsPreview=" + firstPositionsPreview);
                 batch.free();
-                throw e;
+                discarded = true;
+                this.lastRequestReadbackDiscarded = true;
+                this.lastRequestBatchDiscardReason = "producer_size_mismatch";
+                acceptedCount = 0;
+            } else {
+                try {
+                    this.nodeManager.submitRequestBatch(batch);
+                } catch (Exception e) {
+                    batch.free();
+                    throw e;
+                }
             }
         }
 

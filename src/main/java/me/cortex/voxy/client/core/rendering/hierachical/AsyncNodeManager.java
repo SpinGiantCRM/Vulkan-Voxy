@@ -625,6 +625,48 @@ public class AsyncNodeManager {
     }
 
     public void submitRequestBatch(MemoryBuffer batch) {//Only called from render thread
+        long submittedRequestBatchSizeBytes = batch.size;
+        int submittedRequestBatchCount = -1;
+        long submittedRequestBatchRequiredBytes = -1L;
+        boolean submitRequestBatchAccepted = false;
+        String submitRequestBatchRejectReason = "none";
+        try {
+            long ptr = batch.address;
+            if (ptr == 0L) {
+                submitRequestBatchRejectReason = "null_address";
+            } else if (submittedRequestBatchSizeBytes < 4L) {
+                submitRequestBatchRejectReason = "batch_too_small_for_count_field";
+            } else {
+                submittedRequestBatchCount = MemoryUtil.memGetInt(ptr);
+                if (submittedRequestBatchCount < 0) {
+                    submitRequestBatchRejectReason = "negative_count";
+                } else {
+                    long countTimes8 = (long) submittedRequestBatchCount * 8L;
+                    if (countTimes8 / 8L != (long) submittedRequestBatchCount) {
+                        submitRequestBatchRejectReason = "required_bytes_overflow";
+                    } else {
+                        submittedRequestBatchRequiredBytes = 8L + countTimes8;
+                        if (submittedRequestBatchRequiredBytes < 0L || submittedRequestBatchRequiredBytes > submittedRequestBatchSizeBytes) {
+                            submitRequestBatchRejectReason = "required_bytes_exceed_batch_size";
+                        } else {
+                            submitRequestBatchAccepted = true;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            submitRequestBatchRejectReason = "exception_during_validation: " + e.getMessage();
+        }
+        if (!submitRequestBatchAccepted) {
+            Logger.warn("[Voxy][AsyncNodeManager] Rejecting malformed request batch at enqueue:"
+                    + " submitRequestBatchAccepted=false"
+                    + " submitRequestBatchRejectReason=" + submitRequestBatchRejectReason
+                    + " submittedRequestBatchSizeBytes=" + submittedRequestBatchSizeBytes
+                    + " submittedRequestBatchCount=" + submittedRequestBatchCount
+                    + " submittedRequestBatchRequiredBytes=" + submittedRequestBatchRequiredBytes);
+            batch.free();
+            return;
+        }
         this.requestBatchQueue.add(batch);
         this.addWork();
     }
