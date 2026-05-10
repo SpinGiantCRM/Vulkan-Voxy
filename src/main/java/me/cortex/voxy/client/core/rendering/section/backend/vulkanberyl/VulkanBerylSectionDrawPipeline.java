@@ -2696,17 +2696,28 @@ public final class VulkanBerylSectionDrawPipeline {
                                                     boolean noDrawCountFullCmdgen,
                                                     String stage) {
         boolean cpuSelectionFound = cpuSelectionSmoke.safe();
+        int metadataSectionCapacity = geometryData.getMaxSectionCount();
+        int drawCommandCapacity = safeDrawCommandCapacity();
+        int drawCountCapacityWords = this.drawCountBuffer == null ? 0 : (int) (this.drawCountBuffer.getBufferSize() / Integer.BYTES);
+        int cpuSelectionSectionId = cpuSelectionSmoke.sectionId();
+        boolean firstEntryWithinMetadataCapacity = cpuSelectionFound && cpuSelectionSectionId >= 0 && cpuSelectionSectionId < metadataSectionCapacity;
+        boolean visibleCountWithinDrawCommandCapacity = visibleCount > 0 && visibleCount <= drawCommandCapacity;
         String message = "Render-list visibility diagnostics: stage=" + stage
                 + " rawRenderListLastVisibleCount=" + renderList.getLastVisibleCount()
                 + " rawVisibleCountUsed=" + rawVisibleCount
                 + " clampedVisibleCount=" + visibleCount
                 + " maxEntryCount=" + renderList.getMaxEntryCount()
+                + " metadataSectionCapacity=" + metadataSectionCapacity
+                + " drawCommandCapacity=" + drawCommandCapacity
+                + " drawCountCapacityWords=" + drawCountCapacityWords
                 + " controlledSmokeEnabled=" + controlledSmoke.enabled()
                 + " controlledSmokeSafe=" + controlledSmoke.safe()
                 + " cpuVisibilitySelectionFound=" + cpuSelectionFound
                 + " cpuVisibilitySelectionReason=" + cpuSelectionSmoke.reason()
-                + " cpuSelectionSectionId=" + cpuSelectionSmoke.sectionId()
-                + " sectionCount=" + Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount())
+                + " cpuSelectionSectionId=" + cpuSelectionSectionId
+                + " firstEntryWithinMetadataCapacity=" + firstEntryWithinMetadataCapacity
+                + " visibleCountWithinDrawCommandCapacity=" + visibleCountWithinDrawCommandCapacity
+                + " sectionCount=" + Math.min(geometryData.getSectionCount(), metadataSectionCapacity)
                 + " geometrySyncGeneration=" + geometryData.getGeometrySyncGeneration()
                 + " usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
                 + " noDrawCountFullCmdgen=" + noDrawCountFullCmdgen;
@@ -2714,6 +2725,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ";renderListLastVisibleCount=" + renderList.getLastVisibleCount()
                 + ";clampedVisibleCount=" + visibleCount
                 + ";maxEntryCount=" + renderList.getMaxEntryCount()
+                + ";metadataSectionCapacity=" + metadataSectionCapacity
+                + ";drawCommandCapacity=" + drawCommandCapacity
+                + ";drawCountCapacityWords=" + drawCountCapacityWords
+                + ";cpuSelectionSectionId=" + cpuSelectionSectionId
+                + ";firstEntryWithinMetadataCapacity=" + firstEntryWithinMetadataCapacity
+                + ";visibleCountWithinDrawCommandCapacity=" + visibleCountWithinDrawCommandCapacity
                 + ";noDrawCountFullCmdgen=" + noDrawCountFullCmdgen;
         VulkanBerylDebugLog.stateLimited("render-list-visibility-diagnostics", message, stateSnapshot);
     }

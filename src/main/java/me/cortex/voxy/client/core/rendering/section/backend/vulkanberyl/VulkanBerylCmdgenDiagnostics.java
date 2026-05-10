@@ -128,6 +128,8 @@ final class VulkanBerylCmdgenDiagnostics {
     static final String CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_atomic_drawcount_only";
     static final String CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_no_import_single_invocation_real_command_no_atomic.comp";
     static final String CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_NAME = "vulkanberyl/section/cmdgen_no_import_single_invocation_real_command_no_atomic";
+    static final String CMDGEN_DENSE_LAYOUT_NOOP_SHADER_RESOURCE = "voxy:shaders/vulkanberyl/section/cmdgen_dense_layout_noop.comp";
+    static final String CMDGEN_DENSE_LAYOUT_NOOP_SHADER_NAME = "vulkanberyl/section/cmdgen_dense_layout_noop";
     static final String CMDGEN_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/section/cmdgen.json";
 
     static final int GEOMETRY_BINDING = 4;
@@ -255,6 +257,7 @@ final class VulkanBerylCmdgenDiagnostics {
     static final boolean CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_PROBE", "false"));
     static final boolean CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE", "false"));
     static final boolean CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE", "false"));
+    static final boolean CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER", "false"));
     static final boolean CMDGEN_DEBUG_READBACK = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK", "false"));
     static final boolean CMDGEN_DEBUG_READBACK_NO_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_NO_COPY", "false"));
     static final boolean CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CMDGEN_DEBUG_READBACK_DRAW_COUNT_ONLY", "false"));
@@ -441,6 +444,7 @@ final class VulkanBerylCmdgenDiagnostics {
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER");
         addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER");
+        addActiveCmdgenProbeEnvVar(active, CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER, "VOXY_VULKAN_BERYL_CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER");
         return active;
     }
 
@@ -482,6 +486,7 @@ final class VulkanBerylCmdgenDiagnostics {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_RESOURCE;
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_RESOURCE;
         if (CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return CMDGEN_NO_DRAWCOUNT_WRITE_SHADER_RESOURCE;
+        if (CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER) return CMDGEN_DENSE_LAYOUT_NOOP_SHADER_RESOURCE;
         return CMDGEN_SHADER_RESOURCE;
     }
 
@@ -513,6 +518,7 @@ final class VulkanBerylCmdgenDiagnostics {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER_NAME;
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_NAME;
         if (CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return CMDGEN_NO_DRAWCOUNT_WRITE_SHADER_NAME;
+        if (CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER) return CMDGEN_DENSE_LAYOUT_NOOP_SHADER_NAME;
         return CMDGEN_SHADER_NAME;
     }
 
@@ -544,6 +550,7 @@ final class VulkanBerylCmdgenDiagnostics {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER";
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER";
         if (CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER";
+        if (CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER) return "VOXY_VULKAN_BERYL_CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER";
         return null;
     }
 
@@ -575,6 +582,7 @@ final class VulkanBerylCmdgenDiagnostics {
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER) return "standalone drawcount no-config literal zero write";
         if (CMDGEN_USE_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER) return "standalone drawcount declared no write";
         if (CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return "full cmdgen command writes with GPU drawCount stores disabled";
+        if (CMDGEN_USE_DENSE_LAYOUT_NOOP_SHADER) return "dense layout noop — binds all 6 descriptors, reads nothing, writes nothing";
         return "normal cmdgen.comp";
     }
 
