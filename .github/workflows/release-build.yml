@@ -142,6 +142,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ steps.release_tag.outputs.tag }}" \
-            "${{ steps.select_jar.outputs.jar }}" \
-            --clobber
+          set -euo pipefail
+
+          tag="${{ steps.release_tag.outputs.tag }}"
+          jar="${{ steps.select_jar.outputs.jar }}"
+
+          echo "Release tag: $tag"
+          echo "Jar path: $jar"
+
+          if [ ! -f "$jar" ]; then
+            echo "ERROR: Jar file does not exist: $jar"
+            exit 1
+          fi
+
+          echo "Running: gh release upload \"$tag\" \"$jar\" --clobber"
+          gh release upload "$tag" "$jar" --clobber
+          echo "Upload completed successfully."
