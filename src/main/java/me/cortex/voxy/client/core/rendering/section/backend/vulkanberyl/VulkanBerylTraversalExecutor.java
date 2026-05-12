@@ -196,7 +196,7 @@ public final class VulkanBerylTraversalExecutor {
         requireLiveResources();
         if (this.traversalPipeline == null) throw new IllegalStateException("traversal pipeline must be created before binding descriptors");
 
-        bindStorageBinding(SCENE_UNIFORM_BINDING, this.traversalResources.getUniformBuffer(), "traversalResources.uniformBuffer");
+        bindUniformBinding(SCENE_UNIFORM_BINDING, this.traversalResources.getUniformBuffer(), "traversalResources.uniformBuffer");
         bindStorageBinding(REQUEST_QUEUE_BINDING, this.traversalResources.getRequestBuffer(), "traversalResources.requestBuffer");
         bindStorageBinding(RENDER_QUEUE_BINDING, this.renderList.getBuffer(), "renderList.buffer");
         bindStorageBinding(NODE_DATA_BINDING, this.nodeMetadataStore.getNodeBuffer(), "nodeMetadataStore.nodeBuffer");
@@ -205,6 +205,7 @@ public final class VulkanBerylTraversalExecutor {
         bindStorageBinding(NODE_QUEUE_SOURCE_BINDING, this.traversalResources.getScratchQueueA(), "traversalResources.scratchQueueA");
         bindStorageBinding(NODE_QUEUE_SINK_BINDING, this.traversalResources.getScratchQueueB(), "traversalResources.scratchQueueB");
         bindStorageBinding(RENDER_TRACKER_BINDING, this.traversalResources.getRenderTrackerBuffer(), "traversalResources.renderTrackerBuffer");
+        logTraversalBinding1DescriptorCheck();
         this.descriptorsBound = true;
         this.lastDescriptorFailure = "none";
     }
@@ -1195,11 +1196,23 @@ public final class VulkanBerylTraversalExecutor {
         }
     }
 
+    private void bindUniformBinding(int binding, Buffer buffer, String label) {
+        bindDescriptorBinding(binding, buffer, label, "uniformBuffer");
+    }
+
     private void bindStorageBinding(int binding, Buffer buffer, String label) {
+        bindDescriptorBinding(binding, buffer, label, "storageBuffer");
+    }
+
+    private void bindDescriptorBinding(int binding, Buffer buffer, String label, String expectedDescriptorKind) {
         requireBuffer(label, buffer);
         UBO ubo = this.traversalPipeline.getUBO(candidate -> candidate.binding == binding);
         if (ubo == null) {
             throw new IllegalStateException("Traversal descriptor binding " + binding + " is missing from traversal.json");
+        }
+        String actualDescriptorKind = normalizeDescriptorKind(String.valueOf(ubo.getType()));
+        if (!expectedDescriptorKind.equals(actualDescriptorKind)) {
+            throw new IllegalStateException("Traversal descriptor binding " + binding + " (" + label + ") expected " + expectedDescriptorKind + " but was " + actualDescriptorKind);
         }
         long bufferSize = buffer.getBufferSize();
         if (bufferSize <= 0L || bufferSize > Integer.MAX_VALUE) {
@@ -1211,5 +1224,11 @@ public final class VulkanBerylTraversalExecutor {
             this.lastDescriptorFailure = "binding=" + binding + ", method=UBO.getBufferSlice().set(Buffer,offset,size), label=" + label + ", reason=" + e.getMessage();
             throw new IllegalStateException("Failed to bind traversal descriptor binding " + binding + " (" + label + ")", e);
         }
+    }
+
+    private void logTraversalBinding1DescriptorCheck() {
+        UBO sceneUniform = this.traversalPipeline.getUBO(candidate -> candidate.binding == SCENE_UNIFORM_BINDING);
+        String actual = sceneUniform == null ? "missing" : normalizeDescriptorKind(String.valueOf(sceneUniform.getType()));
+        VulkanBerylDebugLog.once("traversal-binding1-descriptor-check", "Traversal binding1 descriptor check: binding1 expected=uniformBuffer actual=" + actual);
     }
 }

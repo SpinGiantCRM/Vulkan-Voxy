@@ -17,6 +17,7 @@ import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 
 public final class VulkanBerylTraversalResources {
     // Keep in sync with MDIC hierarchical traversal limits.
@@ -63,7 +64,7 @@ public final class VulkanBerylTraversalResources {
         this.scratchQueueB = new Buffer("voxy_vulkanberyl_traversal_scratch_b", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
         this.scratchQueueB.createBuffer(SCRATCH_QUEUE_SIZE_BYTES);
 
-        this.uniformBuffer = new Buffer("voxy_vulkanberyl_traversal_uniform", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
+        this.uniformBuffer = new Buffer("voxy_vulkanberyl_traversal_uniform", VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
         this.uniformBuffer.createBuffer(UNIFORM_BUFFER_SIZE_BYTES);
 
         this.queueIndexBuffer = new Buffer("voxy_vulkanberyl_traversal_queue_index", VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
