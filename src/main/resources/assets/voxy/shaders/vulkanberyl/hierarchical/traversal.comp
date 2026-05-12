@@ -2,7 +2,7 @@
 
 // Vulkan/Beryl traversal port of the MDIC hierarchical traversal shader.
 // Binding layout (set = 0):
-// 0: reserved Hi-Z sampler slot (compiled out until Vulkan/Beryl binds a real Hi-Z image/sampler)
+// Binding 0 is intentionally absent while Vulkan/Beryl Hi-Z is disabled/compiled out.
 // 1: scene uniform buffer
 // 2: request queue buffer
 // 3: render queue/list buffer

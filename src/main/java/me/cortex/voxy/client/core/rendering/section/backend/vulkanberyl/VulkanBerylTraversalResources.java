@@ -202,19 +202,35 @@ public final class VulkanBerylTraversalResources {
                                  boolean renderListCounterCleared,
                                  boolean transferToComputeBarrier) {}
 
-    public void uploadQueueIndex(int queueIndex, VulkanBerylGeometryUploader uploader) {
+    public void recordQueueIndexUpdate(VkCommandBuffer commandBuffer, int queueIndex) {
         requireNotFreed();
+        if (commandBuffer == null) {
+            throw new IllegalArgumentException("commandBuffer must not be null");
+        }
         if (queueIndex < 0 || queueIndex >= MAX_ITERATIONS) {
             throw new IllegalArgumentException("queueIndex out of range: " + queueIndex);
         }
-        if (uploader == null) {
-            throw new IllegalArgumentException("uploader must not be null");
-        }
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            long queueIndexPtr = memAddress(stack.ints(queueIndex));
-            uploader.upload(this.queueIndexBuffer, 0L, queueIndexPtr, QUEUE_INDEX_BUFFER_SIZE_BYTES);
-            uploader.flush();
+            VkMemoryBarrier.Buffer computeToTransfer = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT | VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0, computeToTransfer, null, null);
+
+            VK10.vkCmdUpdateBuffer(commandBuffer, this.queueIndexBuffer.getId(), 0L, stack.ints(queueIndex));
+
+            VkMemoryBarrier.Buffer transferToCompute = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_SHADER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    0, transferToCompute, null, null);
         }
     }
 

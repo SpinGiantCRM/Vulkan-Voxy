@@ -14,8 +14,8 @@
 
 layout(local_size_x=32) in;
 
-// Mirrors the original real traversal Hi-Z declaration so VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_SMOKE=true
-// can isolate sampler2D binding 0 versus Java's temporary buffer-backed ReservedHizDummy descriptor.
+// Keeps an explicit smoke-only Hi-Z declaration so VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_SMOKE=true
+// can isolate sampler2D binding 0 versus Java's smoke-only dummy descriptor.
 layout(binding = HIZ_BINDING) uniform sampler2D hizDepthSampler;
 
 layout(binding = SCENE_UNIFORM_BINDING, std140) uniform SceneUniform {
