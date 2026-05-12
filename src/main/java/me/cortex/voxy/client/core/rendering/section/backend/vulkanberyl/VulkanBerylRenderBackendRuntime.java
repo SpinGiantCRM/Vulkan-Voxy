@@ -253,7 +253,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + " readbackScheduledThisFrame=" + traversalReadbacksScheduled
                 + " readbackReason=" + this.lastRenderListReadbackReason
                 + " renderListPopulationBlocker=" + renderListPopulationBlocker);
-        logRenderListPopulationDiagnostics(renderList, topNodeCount, frameInit, traversalDispatchAllowed, initialTraversalDispatch, remainingTraversalDispatchesRan, traversalReadbacksScheduled, renderListPopulationBlocker, activeTraversalStageLimit);
+        logRenderListPopulationDiagnostics(renderList, topNodeCount, frameInit, traversalDispatchAllowed, initialTraversalDispatch, remainingTraversalDispatchesRan, traversalReadbacksScheduled, renderListPopulationBlocker, activeTraversalStageLimit, this.traversalExecutor);
         this.frameSequence++;
         this.frameId++;
         updateFrameSafetyState(renderList.getMaxEntryCount());
@@ -965,19 +965,36 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                                                    int remainingTraversalDispatchesRan,
                                                    boolean traversalReadbacksScheduled,
                                                    String renderListPopulationBlocker,
-                                                   int traversalStageLimit) {
+                                                   int traversalStageLimit,
+                                                   VulkanBerylTraversalExecutor traversalExecutor) {
         String stageMeaning = traversalStageMeaning(traversalStageLimit);
+        String traversalErrorState = traversalExecutor == null ? "traversal_executor_unavailable" : traversalExecutor.getLastDescriptorFailure();
+        String deviceLossOrErrorState = !"none".equals(traversalErrorState)
+                ? traversalErrorState
+                : (this.lastRenderListCounterDiscarded ? "render_list_readback_discarded:" + this.lastRenderListReadbackReason : "none_observed");
         String message = "Render-list population state: traversalStageLimit=" + traversalStageLimit
                 + " stageMeaning=" + stageMeaning
                 + " topNodeCount=" + topNodeCount
                 + " scratchQueueASeededCount=" + frameInit.scratchQueueASeededCount()
+                + " traversalDispatchAllowed=" + traversalDispatchAllowed
                 + " initialTraversalDispatch=" + initialTraversalDispatch
+                + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
+                + " traversalReadbacksScheduled=" + traversalReadbacksScheduled
+                + " renderListPopulationBlocker=" + renderListPopulationBlocker
                 + " rawRenderListVisibleCount=" + this.lastRawVisibleSectionCount
-                + " readbackReason=" + this.lastRenderListReadbackReason;
+                + " renderListVisibleCount=" + this.lastVisibleSectionCount
+                + " readbackValid=" + this.lastRenderListReadbackValid
+                + " readbackReason=" + this.lastRenderListReadbackReason
+                + " traversalErrorState=" + traversalErrorState
+                + " deviceLossOrErrorState=" + deviceLossOrErrorState;
         String stateSnapshot = "traversalStageLimit=" + traversalStageLimit
                 + ";stageMeaning=" + stageMeaning
+                + ";traversalDispatchAllowed=" + traversalDispatchAllowed
+                + ";initialTraversalDispatch=" + initialTraversalDispatch
+                + ";renderListPopulationBlocker=" + renderListPopulationBlocker
                 + ";rawRenderListVisibleCount=" + this.lastRawVisibleSectionCount
-                + ";renderListPopulationBlocker=" + renderListPopulationBlocker;
+                + ";renderListVisibleCount=" + this.lastVisibleSectionCount
+                + ";deviceLossOrErrorState=" + deviceLossOrErrorState;
         VulkanBerylDebugLog.stateLimited("render-list-population-state", message, stateSnapshot);
     }
 
