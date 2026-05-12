@@ -39,6 +39,7 @@ public final class VulkanBerylTraversalExecutor {
     private static final String TRAVERSAL_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/hierarchical/traversal.json";
     private static final Pattern SHADER_LINE_PATTERN = Pattern.compile(":(\\d+):\\s+error:");
     private static final String FORCE_REAL_MAIN_RETURN_DEFINE = "VOXY_VULKAN_BERYL_TRAVERSAL_FORCE_REAL_MAIN_RETURN";
+    private static final String TRAVERSAL_UNUSED_HIZ_PADDING_LABEL = "UnusedHiZPaddingBerylDenseLayout";
     private static final String STATIC_IMPORT_LEVEL_ENV = "VOXY_VULKAN_BERYL_TRAVERSAL_STATIC_IMPORT_LEVEL";
     private static final int STATIC_IMPORT_LEVEL = parseTraversalStaticImportLevel();
     private static final boolean FORCE_REAL_MAIN_RETURN = Boolean.parseBoolean(System.getenv().getOrDefault(FORCE_REAL_MAIN_RETURN_DEFINE, "false")) || STATIC_IMPORT_LEVEL >= 0;
@@ -196,6 +197,7 @@ public final class VulkanBerylTraversalExecutor {
         requireLiveResources();
         if (this.traversalPipeline == null) throw new IllegalStateException("traversal pipeline must be created before binding descriptors");
 
+        bindUniformBinding(HIZ_BINDING, this.traversalResources.getUniformBuffer(), "traversalResources.uniformBuffer(unused Hi-Z padding / Beryl dense-layout compatibility)");
         bindUniformBinding(SCENE_UNIFORM_BINDING, this.traversalResources.getUniformBuffer(), "traversalResources.uniformBuffer");
         bindStorageBinding(REQUEST_QUEUE_BINDING, this.traversalResources.getRequestBuffer(), "traversalResources.requestBuffer");
         bindStorageBinding(RENDER_QUEUE_BINDING, this.renderList.getBuffer(), "renderList.buffer");
@@ -354,7 +356,7 @@ public final class VulkanBerylTraversalExecutor {
         this.descriptorDispatchDiagnosticsLogged = true;
         Buffer renderListBuffer = this.renderList.getBuffer();
         if (this.traversalPipeline.getUBO(candidate -> candidate.binding == HIZ_BINDING) != null) {
-            logTraversalDescriptorBinding(HIZ_BINDING, "SmokeHizDummy", this.traversalResources.getUniformBuffer(), renderListBuffer);
+            logTraversalDescriptorBinding(HIZ_BINDING, TRAVERSAL_UNUSED_HIZ_PADDING_LABEL, this.traversalResources.getUniformBuffer(), renderListBuffer);
         }
         logTraversalDescriptorBinding(SCENE_UNIFORM_BINDING, "traversalResources.uniformBuffer", this.traversalResources.getUniformBuffer(), renderListBuffer);
         logTraversalDescriptorBinding(REQUEST_QUEUE_BINDING, "traversalResources.requestBuffer", this.traversalResources.getRequestBuffer(), renderListBuffer);
@@ -698,7 +700,7 @@ public final class VulkanBerylTraversalExecutor {
 
     private Buffer bufferForTraversalBinding(int binding) {
         return switch (binding) {
-            case SCENE_UNIFORM_BINDING -> this.traversalResources.getUniformBuffer();
+            case HIZ_BINDING, SCENE_UNIFORM_BINDING -> this.traversalResources.getUniformBuffer();
             case REQUEST_QUEUE_BINDING -> this.traversalResources.getRequestBuffer();
             case RENDER_QUEUE_BINDING -> this.renderList.getBuffer();
             case NODE_DATA_BINDING -> this.nodeMetadataStore.getNodeBuffer();
@@ -713,6 +715,7 @@ public final class VulkanBerylTraversalExecutor {
 
     private static String labelForTraversalBinding(int binding) {
         return switch (binding) {
+            case HIZ_BINDING -> TRAVERSAL_UNUSED_HIZ_PADDING_LABEL;
             case SCENE_UNIFORM_BINDING -> "SceneUniform";
             case REQUEST_QUEUE_BINDING -> "RequestQueue";
             case RENDER_QUEUE_BINDING -> "RenderQueue";
@@ -787,7 +790,7 @@ public final class VulkanBerylTraversalExecutor {
         String declaration = binding0 == null ? "<none>" : binding0.declaration();
         String expectedDescriptorType = binding0 == null ? "none" : binding0.expectedDescriptorType();
         UBO javaDescriptor = this.traversalPipeline == null ? null : this.traversalPipeline.getUBO(candidate -> candidate.binding == HIZ_BINDING);
-        String javaDescriptorLabel = javaDescriptor == null ? "<none>" : "SmokeHizDummy";
+        String javaDescriptorLabel = javaDescriptor == null ? "<none>" : TRAVERSAL_UNUSED_HIZ_PADDING_LABEL;
         String javaDescriptorKind = javaDescriptor == null ? "none" : reflectDescriptorKind(javaDescriptor);
         Buffer buffer = javaDescriptor == null ? null : this.traversalResources.getUniformBuffer();
         long bufferId = buffer == null ? 0L : buffer.getId();
@@ -1049,11 +1052,12 @@ public final class VulkanBerylTraversalExecutor {
         return builder.toString();
     }
 
-    private List<UBO> createTraversalManualDescriptors(int computeStage, boolean includeSmokeHizBinding) {
-        List<UBO> descriptors = new ArrayList<>(includeSmokeHizBinding ? 10 : 9);
-        if (includeSmokeHizBinding) {
-            descriptors.add(createManualUniformDescriptor(HIZ_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SmokeHizDummy"));
-        }
+    private List<UBO> createTraversalManualDescriptors(int computeStage, boolean smokeShader) {
+        List<UBO> descriptors = new ArrayList<>(10);
+        // Binding 0 is not used by real traversal while Vulkan/Beryl Hi-Z is disabled,
+        // but Beryl manual descriptor lists must be dense from binding 0. Keep this
+        // harmless uniform-buffer padding descriptor bound to the existing scene UBO.
+        descriptors.add(createManualUniformDescriptor(HIZ_BINDING, computeStage, this.traversalResources.getUniformBuffer(), smokeShader ? "SmokeHizDummy" : TRAVERSAL_UNUSED_HIZ_PADDING_LABEL));
         descriptors.add(createManualUniformDescriptor(SCENE_UNIFORM_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SceneUniform"));
         descriptors.add(createManualStorageDescriptor(REQUEST_QUEUE_BINDING, computeStage, this.traversalResources.getRequestBuffer(), "RequestQueue"));
         descriptors.add(createManualStorageDescriptor(RENDER_QUEUE_BINDING, computeStage, this.renderList.getBuffer(), "RenderQueue"));
@@ -1096,7 +1100,8 @@ public final class VulkanBerylTraversalExecutor {
                 + ", minBinding=" + minBinding
                 + ", maxBinding=" + maxBinding
                 + ", bindings=" + bindings
-                + ", denseFromZero=" + denseFromZero;
+                + ", denseFromZero=" + denseFromZero
+                + ", binding0=" + (bindings.contains(HIZ_BINDING) ? "unusedHiZPadding/BerylDenseLayoutDummy" : "absent");
     }
 
     private static UBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label, String descriptorKind) {
@@ -1120,7 +1125,7 @@ public final class VulkanBerylTraversalExecutor {
     }
 
     private static String expectedJavaDescriptorKind(int binding) {
-        return binding == SCENE_UNIFORM_BINDING ? "uniformBuffer" : "storageBuffer";
+        return binding == HIZ_BINDING || binding == SCENE_UNIFORM_BINDING ? "uniformBuffer" : "storageBuffer";
     }
 
     private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
