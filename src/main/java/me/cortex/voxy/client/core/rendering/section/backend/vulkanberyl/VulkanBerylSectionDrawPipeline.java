@@ -726,10 +726,12 @@ public final class VulkanBerylSectionDrawPipeline {
         boolean noDrawCountFullCmdgen = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
         ControlledRenderListSmoke cpuSelectionSmoke = controlledSmoke.enabled() ? controlledSmoke : findControlledRenderListSmokeSection(viewport, geometryData, renderList);
         logRenderListVisibilityDiagnostics(renderList, geometryData, controlledSmoke, cpuSelectionSmoke, rawVisibleCount, visibleCount, noDrawCountFullCmdgen, "frame_gate");
-        boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK && !noDrawCountFullCmdgen;
-        boolean fullCmdgenDispatchAllowed = ENABLE_CMDGEN_DISPATCH && (isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED);
+        boolean realRenderListCmdgenAllowed = ENABLE_CMDGEN_DISPATCH && !controlledSmoke.enabled() && visibleCount > 0 && frameSafety.allowCmdGen();
+        boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK && !noDrawCountFullCmdgen && !realRenderListCmdgenAllowed;
+        boolean fullCmdgenDispatchAllowed = ENABLE_CMDGEN_DISPATCH && (realRenderListCmdgenAllowed || isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED);
         String fullCmdgenDispatchBlocker = fullCmdgenDispatchAllowed ? "ready" : (!ENABLE_CMDGEN_DISPATCH ? "cmdgen_dispatch_disabled" : "select_isolation_stage_or_force_full_cmdgen_dispatch_with_indirect_disabled");
-        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (noOpCmdgenSmoke || isolationStage != null || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED || frameSafety.allowCmdGen() || controlledSmoke.safe());
+        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (realRenderListCmdgenAllowed || noOpCmdgenSmoke || isolationStage != null || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED || frameSafety.allowCmdGen() || controlledSmoke.safe());
+        String cmdgenAllowReason = realRenderListCmdgenAllowed ? "real_render_list_cmdgen_allowed" : (controlledSmoke.safe() ? "controlled_smoke_section_available" : (noOpCmdgenSmoke ? "noop_cmdgen_smoke_allowed" : "ready"));
         boolean cmdgenSampleValid = this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0;
         boolean indirectSafetyAllowed = frameSafety.allowIndirectDraw() || controlledSmoke.safe();
         boolean indirectAllowed = ENABLE_INDIRECT_DRAW && cmdgenSampleValid && indirectSafetyAllowed;
@@ -753,6 +755,8 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", forceFullCmdgenDispatchWithIndirectDisabled=" + FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED
                 + ", noDrawCountFullCmdgen=" + noDrawCountFullCmdgen
                 + ", fullCmdgenDispatchAllowed=" + fullCmdgenDispatchAllowed
+                + ", realRenderListCmdgenAllowed=" + realRenderListCmdgenAllowed
+                + ", cmdgenAllowReason=" + cmdgenAllowReason
                 + ", finalGateReason=" + cmdgenGateReason
                 + ", finalBlockerReason=" + fullCmdgenDispatchBlocker);
         JavaDrawCountDiagnostic javaDrawCountForNoDrawCountCmdgen = new JavaDrawCountDiagnostic(visibleCount, "render_list_visible_count");
@@ -762,9 +766,9 @@ public final class VulkanBerylSectionDrawPipeline {
                     testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
                     false, false, false, 0,
                     true, "no_visible_render_list_entries",
-                    false, false, 0, "visible_count_zero_or_negative");
-            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "visible_count_zero_or_negative");
-            return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "visible_count_zero_or_negative");
+                    false, false, 0, "no_visible_render_list_entries");
+            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "no_visible_render_list_entries");
+            return new OpaqueDrawSubmission(0, "indirect_generated_per_section", 0L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "no_visible_render_list_entries");
         }
         if (!cmdgenAllowed) {
             if (CMDGEN_DEBUG_READBACK && !fullCmdgenDispatchAllowed) {
@@ -835,7 +839,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE
                 || CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE
                 || CMDGEN_DENSE_LAYOUT_NOOP_PROBE;
-        String cmdgenBlocker = validateCmdgenDispatchInputs(geometryData, renderList, visibleCount, controlledSmoke, (noOpCmdgenSmoke && isolationStage == null) || singleSsboReadProbe, isolationStage);
+        String cmdgenBlocker = validateCmdgenDispatchInputs(geometryData, renderList, visibleCount, controlledSmoke, realRenderListCmdgenAllowed || (noOpCmdgenSmoke && isolationStage == null) || singleSsboReadProbe, isolationStage);
         if (cmdgenBlocker != null) {
             logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
                     testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
@@ -1179,12 +1183,12 @@ public final class VulkanBerylSectionDrawPipeline {
                     testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
                     cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded,
                     cmdgenDispatchSubmitted, cmdgenDispatchGroupCount,
-                    !cmdgenDispatchSubmitted, "indirect_gate:" + indirectGateReason,
-                    false, false, 0, "indirect_gate:" + indirectGateReason);
-            logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, false, false, 0, "indirect_gate:" + indirectGateReason, noDrawCountFullCmdgen);
-            logScreenspaceSmokeSubmitDiagnostics(false, "indirect_gate:" + indirectGateReason, null);
-            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
-            return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + indirectGateReason);
+                    !cmdgenDispatchSubmitted, cmdgenDispatchSubmitted ? null : indirectGateReason,
+                    false, false, 0, indirectGateReason);
+            logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, false, false, 0, indirectGateReason, noDrawCountFullCmdgen);
+            logScreenspaceSmokeSubmitDiagnostics(false, indirectGateReason, null);
+            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, indirectGateReason);
+            return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, indirectGateReason);
         }
         int submittedDrawCount = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER ? javaDrawCountForNoDrawCountCmdgen.drawCount() : Math.min(visibleCount, this.drawCommandCapacity);
         ControlledSmokeCommandValidation controlledSmokeCommandValidation = controlledSmokeCommandAlreadyObserved ? preScheduleControlledSmokeCommandValidation : validateControlledSmokeCommandReadback(controlledSmoke);
@@ -2879,7 +2883,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int shaderFlag() { return this.shaderFlag; }
         int minimumRenderListBytes() { return this.minimumRenderListBytes; }
         boolean requiresControlledSection() {
-            return this == READ_METADATA_ONLY || this == WRITE_DRAWS_ONLY || this == READ_RENDERLIST_METADATA_NO_WRITE;
+            return this == READ_METADATA_ONLY || this == WRITE_DRAWS_ONLY;
         }
     }
 
@@ -3809,7 +3813,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 || VulkanBerylDebugLog.VERBOSE_LOGS;
     }
 
-    private String validateCmdgenDispatchInputs(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, int visibleCount, ControlledRenderListSmoke controlledSmoke, boolean noOpCmdgenSmoke, CmdgenIsolationStage isolationStage) {
+    private String validateCmdgenDispatchInputs(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, int visibleCount, ControlledRenderListSmoke controlledSmoke, boolean skipControlledSectionValidation, CmdgenIsolationStage isolationStage) {
         if (this.commandGenPipeline == null) return "cmdgen_pipeline_missing";
         if (this.drawCommandBuffer == null) return "draw_command_buffer_missing";
         if (this.drawCountBuffer == null) return "draw_count_buffer_missing";
@@ -3850,11 +3854,11 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.cmdGenConfigBuffer.getBufferSize() < CMDGEN_CONFIG_SIZE_BYTES) {
             return "cmdgen_config_capacity_too_small: bufferBytes=" + this.cmdGenConfigBuffer.getBufferSize() + " required=" + CMDGEN_CONFIG_SIZE_BYTES;
         }
-        if (noOpCmdgenSmoke || (isolationStage != null && !isolationStage.requiresControlledSection())) {
+        if (skipControlledSectionValidation || (isolationStage != null && !isolationStage.requiresControlledSection())) {
             return null;
         }
         if (!controlledSmoke.safe()) {
-            return "controlled_section_unavailable:" + controlledSmoke.reason();
+            return "controlled_smoke_section_unavailable:" + controlledSmoke.reason();
         }
         int sectionId = controlledSmoke.sectionId();
         if (sectionId < 0 || sectionId >= geometryData.getMaxSectionCount()) {
