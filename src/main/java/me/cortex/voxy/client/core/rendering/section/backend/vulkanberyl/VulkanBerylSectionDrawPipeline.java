@@ -1122,6 +1122,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     testCmdgenSkipped, testCmdgenSkipReason,
                     indirectAllowed, false, 0, indirectGateReason);
             recordJavaKnownControlledSmokeCommand(commandBuffer, controlledSmoke, viewport.frameId);
+            recordScreenspaceSmokeIndirectKnownCommand(viewport.frameId);
             javaDrawCountForNoDrawCountCmdgen = recordJavaDrawCountForNoDrawCountCmdgen(commandBuffer, controlledSmoke, visibleCount);
         }
 
@@ -1259,24 +1260,24 @@ public final class VulkanBerylSectionDrawPipeline {
             DrawCommandDebugSample blockedSample = this.lastCompletedDebugSample;
             return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), -1L, 0, blockedSample.sampledCommandCount(), blockedSample.invalidSampledCommandCount(), blockedSample.sampledQuadCount(), this.debugSamplePending, submitReason);
         }
-        if (controlledSmokeCommandReadback && !controlledSmokeCommandValidation.valid()) {
+        if (!DRAW_SCREENSPACE_SMOKE_INDIRECT && controlledSmokeCommandReadback && !controlledSmokeCommandValidation.valid()) {
             String waitingReason = (this.controlledSmokeCommandReadbackCompleted && controlledSmokeCommandReadbackMatchesCurrentExpected()) || controlledSmokeCommandCompletedInvalidBeforeFinalReadback ? "diagnostic_invalid_command" : "diagnostic_waiting_for_current_command_readback";
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, waitingReason);
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, false, 0, waitingReason, noDrawCountFullCmdgen);
             logScreenspaceSmokeSubmitDiagnostics(false, waitingReason, controlledSmokeCommandValidation);
             return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, waitingReason);
         }
-        if (controlledSmoke.enabled() && this.controlledSmokeCommandReadbackCompleted && controlledSmokeCommandValidation != null && !controlledSmokeCommandValidation.valid() && !screenspaceSmokeDirectDrawEnabled()) {
+        if (controlledSmoke.enabled() && this.controlledSmokeCommandReadbackCompleted && controlledSmokeCommandValidation != null && !controlledSmokeCommandValidation.valid() && !screenspaceSmokeShaderEnabled()) {
             String submitReason = "diagnostic_invalid_command";
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, submitReason);
             logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, false, 0, submitReason, noDrawCountFullCmdgen);
             logScreenspaceSmokeSubmitDiagnostics(false, submitReason, controlledSmokeCommandValidation);
             return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, submitReason);
         }
-        if (DRAW_SCREENSPACE_SMOKE_INDIRECT && (controlledSmokeCommandValidation == null || !this.controlledSmokeCommandReadbackCompleted || !controlledSmokeCommandValidation.valid())) {
-            String submitReason = controlledSmokeCommandValidation != null && this.controlledSmokeCommandReadbackCompleted ? "invalid_command" : "waiting_for_valid_command";
-            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, "screenspace_smoke_indirect_" + submitReason);
-            logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, false, 0, "screenspace_smoke_indirect_" + submitReason, noDrawCountFullCmdgen);
+        if (DRAW_SCREENSPACE_SMOKE_INDIRECT && (this.controlledSmokeKnownCommandBuffer == null || this.controlledSmokeKnownCommandBuffer.getId() == 0L)) {
+            String submitReason = "screenspace_smoke_indirect_command_buffer_missing";
+            VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, submitReason);
+            logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, false, 0, submitReason, noDrawCountFullCmdgen);
             logScreenspaceSmokeSubmitDiagnostics(false, submitReason, controlledSmokeCommandValidation);
             return new OpaqueDrawSubmission(visibleCount, "screenspace_smoke_indirect_draw", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, submitReason);
         }
@@ -1300,8 +1301,9 @@ public final class VulkanBerylSectionDrawPipeline {
             DrawCommandDebugSample sample = this.lastCompletedDebugSample;
             return new OpaqueDrawSubmission(visibleCount, "screenspace_smoke_direct_draw", -1L, SCREENSPACE_SMOKE_INSTANCE_COUNT, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
         }
-        Buffer indirectDrawCommandBuffer = controlledSmokeDrawCommandBuffer(controlledSmoke);
-        if (controlledSmoke.safe() && CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && RENDERLIST_SMOKE_ONE_ENTRY) {
+        Buffer indirectDrawCommandBuffer = DRAW_SCREENSPACE_SMOKE_INDIRECT ? this.controlledSmokeKnownCommandBuffer : controlledSmokeDrawCommandBuffer(controlledSmoke);
+        int effectiveIndirectDrawCount = DRAW_SCREENSPACE_SMOKE_INDIRECT ? 1 : submittedDrawCount;
+        if (!DRAW_SCREENSPACE_SMOKE_INDIRECT && controlledSmoke.safe() && CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && RENDERLIST_SMOKE_ONE_ENTRY) {
             boolean readbackGenMatches = controlledSmokeCommandReadbackMatchesCurrentGeneration();
             boolean observedMatchesExpected = controlledSmokeCommandReadbackObservedMatchesCurrentExpected();
             boolean drawableForSafety = controlledSmokeDrawCommandLooksDrawable(controlledSmoke, geometryData, controlledSmokeCommandValidation);
@@ -1342,20 +1344,20 @@ public final class VulkanBerylSectionDrawPipeline {
             DrawCommandDebugSample blockedSample = this.lastCompletedDebugSample;
             return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), -1L, 0, blockedSample.sampledCommandCount(), blockedSample.invalidSampledCommandCount(), blockedSample.sampledQuadCount(), this.debugSamplePending, this.controlledSmokeCommandDrawSubmitReason);
         }
-        VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, submittedDrawCount, DRAW_COMMAND_STRIDE_BYTES);
+        VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         this.anyVkCmdDrawIndirectRecordedThisFrame = true;
-        this.drawRecordedReasonThisFrame = controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : "normal_indirect_draw";
+        this.drawRecordedReasonThisFrame = DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : "normal_indirect_draw");
         logScreenspaceSmokeSubmitDiagnostics(true, "submitted", controlledSmokeCommandValidation);
-        logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, submittedDrawCount, "submitted", noDrawCountFullCmdgen);
+        logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, effectiveIndirectDrawCount, "submitted", noDrawCountFullCmdgen);
         logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
                 testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
                 cmdgenDispatchCallRecorded, cmdgenPostDispatchBarrierRecorded,
                 cmdgenDispatchSubmitted, cmdgenDispatchGroupCount,
                 !cmdgenDispatchSubmitted, cmdgenDispatchSubmitted ? null : "cmdgen_dispatch_not_submitted",
-                indirectAllowed, true, submittedDrawCount, null);
+                indirectAllowed, true, effectiveIndirectDrawCount, null);
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
-        return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), submittedQuadCount, submittedDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
+        return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), submittedQuadCount, effectiveIndirectDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
     }
 
     private record ScheduledDebugReadback(boolean scheduled, String reason, long commandCopyBytes, long countCopyBytes, boolean alreadyPending, boolean scheduleSkipped, String skipReason, int rendererFrameSlot, long commandBufferAddress, long generation) {
@@ -2207,6 +2209,71 @@ public final class VulkanBerylSectionDrawPipeline {
             + ", controlledSmokeCommandGeneration=" + this.controlledSmokeCommandGeneration
             + ", controlledSmokeCommandExpectedVertexCount=" + expectedVertexCount
             + ", controlledSmokeCommandExpectedFirstVertex=" + expectedFirstVertex, 30);
+    }
+
+    private void recordScreenspaceSmokeIndirectKnownCommand(int frameId) {
+        if (!DRAW_SCREENSPACE_SMOKE_INDIRECT) return;
+        if (DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD) {
+            this.controlledSmokeKnownCommandUploadSkipped = true;
+            this.controlledSmokeKnownCommandUploadSkipReason = "diagnostic_disabled_by_env";
+            this.controlledSmokeKnownCommandUploadTupleChanged = false;
+            this.controlledSmokeKnownCommandUploadRecordedThisFrame = false;
+            this.controlledSmokeKnownCommandUploadMethodThisFrame = "none";
+            VulkanBerylDebugLog.rateLimited("screenspace-smoke-indirect-known-command-upload-disabled-env", "screenspace smoke indirect known command upload disabled by env: env=VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD, drawSubmitReason=diagnostic_known_command_upload_disabled", 60);
+            return;
+        }
+        ensureControlledSmokeKnownCommandBuffer();
+        long targetBufferId = this.controlledSmokeKnownCommandBuffer == null ? 0L : this.controlledSmokeKnownCommandBuffer.getId();
+        long previousGeneration = this.controlledSmokeCommandGeneration;
+        updateControlledSmokeCommandGeneration(-2, SCREENSPACE_SMOKE_VERTEX_COUNT, SCREENSPACE_SMOKE_INSTANCE_COUNT, SCREENSPACE_SMOKE_FIRST_VERTEX, SCREENSPACE_SMOKE_FIRST_INSTANCE, targetBufferId);
+        boolean tupleChanged = this.controlledSmokeCommandGeneration != previousGeneration
+                || this.controlledSmokeCommandUploadGeneration != this.controlledSmokeCommandGeneration
+                || this.controlledSmokeCommandUploadGeneration < 0L;
+        if (tupleChanged) {
+            uploadControlledSmokeKnownCommand(SCREENSPACE_SMOKE_VERTEX_COUNT, SCREENSPACE_SMOKE_INSTANCE_COUNT, SCREENSPACE_SMOKE_FIRST_VERTEX, SCREENSPACE_SMOKE_FIRST_INSTANCE);
+            this.controlledSmokeCommandUploadGeneration = this.controlledSmokeCommandGeneration;
+            this.controlledSmokeCommandUploadFrameId = frameId;
+            this.controlledSmokeCommandUploadExpectedVertexCount = SCREENSPACE_SMOKE_VERTEX_COUNT;
+            this.controlledSmokeCommandUploadExpectedInstanceCount = SCREENSPACE_SMOKE_INSTANCE_COUNT;
+            this.controlledSmokeCommandUploadExpectedFirstVertex = SCREENSPACE_SMOKE_FIRST_VERTEX;
+            this.controlledSmokeCommandUploadExpectedFirstInstance = SCREENSPACE_SMOKE_FIRST_INSTANCE;
+            this.controlledSmokeKnownCommandUploadSkipped = false;
+            this.controlledSmokeKnownCommandUploadSkipReason = "none";
+            this.controlledSmokeKnownCommandUploadTupleChanged = true;
+        } else {
+            this.controlledSmokeKnownCommandUploadSkipped = true;
+            this.controlledSmokeKnownCommandUploadSkipReason = "unchanged_expected_command";
+            this.controlledSmokeKnownCommandUploadTupleChanged = false;
+        }
+        this.javaKnownControlledSmokeCommandWrittenThisFrame = targetBufferId != 0L;
+        this.javaKnownControlledSmokeCommandSectionId = -2;
+        this.javaKnownControlledSmokeCommandVertexCount = SCREENSPACE_SMOKE_VERTEX_COUNT;
+        this.javaKnownControlledSmokeCommandInstanceCount = SCREENSPACE_SMOKE_INSTANCE_COUNT;
+        this.javaKnownControlledSmokeCommandFirstVertex = SCREENSPACE_SMOKE_FIRST_VERTEX;
+        this.javaKnownControlledSmokeCommandFirstInstance = SCREENSPACE_SMOKE_FIRST_INSTANCE;
+        this.javaKnownControlledSmokeCommandBarrierRecordedThisFrame = false;
+        this.javaKnownControlledSmokeCommandTargetBufferId = targetBufferId;
+        this.javaKnownControlledSmokeCommandTargetMatchesDrawBuffer = "false";
+        this.javaKnownControlledSmokeCommandActualOrder = "dedicated_known_buffer_cpu_upload_before_draw";
+        this.controlledSmokeIndirectCommandMode = "screenspace_smoke_dedicated_known_buffer";
+        this.controlledSmokeKnownCommandWriteMethod = "staging_copy";
+        this.controlledSmokeKnownCommandWriteInsideRenderPass = "unknown";
+        this.controlledSmokeKnownCommandWriteInsideDynamicRendering = "unknown";
+        this.controlledSmokeKnownCommandBufferHostVisible = this.controlledSmokeKnownCommandBuffer != null && this.controlledSmokeKnownCommandBuffer.getDataPtr() != 0L;
+        this.controlledSmokeKnownCommandBufferHostCoherent = this.controlledSmokeKnownCommandBufferHostVisible ? "unknown" : "false";
+        this.controlledSmokeKnownCommandBufferFlushed = this.controlledSmokeKnownCommandBufferHostVisible ? "unknown" : "not_needed";
+        VulkanBerylDebugLog.rateLimited("screenspace-smoke-indirect-known-command", "screenspace smoke indirect known command recorded: drawPath=vkCmdDrawIndirect"
+                + ", commandBuffer=dedicated_known_buffer"
+                + ", submittedDrawCount=1"
+                + ", vertexCount=" + SCREENSPACE_SMOKE_VERTEX_COUNT
+                + ", instanceCount=" + SCREENSPACE_SMOKE_INSTANCE_COUNT
+                + ", firstVertex=" + SCREENSPACE_SMOKE_FIRST_VERTEX
+                + ", firstInstance=" + SCREENSPACE_SMOKE_FIRST_INSTANCE
+                + ", shaderBypassesGeometry=true"
+                + ", shaderBypassesRenderList=true"
+                + ", shaderBypassesMetadata=true"
+                + ", targetBufferId=" + targetBufferId
+                + ", tupleChanged=" + tupleChanged, 30);
     }
 
     private void recordJavaKnownControlledSmokeCommand(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int frameId) {
