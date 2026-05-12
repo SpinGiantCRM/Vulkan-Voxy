@@ -37,6 +37,8 @@ void main() {
     taaOffset = taaShift();
 
 #ifdef VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE
+    // Isolated graphics-pipeline smoke path: do not read section geometry, metadata,
+    // render-list lookup entries, camera MVP, or depth-derived world positions.
     uint smokeVertex = uint(gl_VertexIndex) % 3u;
     vec2 smokePos = smokeVertex == 0u
             ? vec2(-0.75, -0.75)
