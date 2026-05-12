@@ -12,10 +12,10 @@ This fork is focused on adapting Voxy toward VulkanMod/Beryl/no-Sodium testing w
 
 ## Current runtime requirements
 
-- Minecraft **26.1.x** instance using **Fabric Loader**
-- **Fabric API**
-- **VulkanMod 0.6.5**
-- **Beryl 0.1.3-alpha+1** (if separate in your runtime/modpack)
+- Minecraft **26.1.2** instance using **Fabric Loader 0.18.6 or newer**
+- **Fabric API 0.145.3+26.1.1 or newer**
+- **VulkanMod 0.6.5 or newer**
+- **Beryl 0.1.3-alpha+1 or newer** (if separate in your runtime/modpack)
 - **Vulkan-Voxy** jar
 - **No Sodium** for current Vulkan/Beryl testing
 
