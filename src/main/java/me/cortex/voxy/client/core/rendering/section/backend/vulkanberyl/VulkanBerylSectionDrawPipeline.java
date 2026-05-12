@@ -206,6 +206,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private long lastCmdgenRenderListBufferId;
     private long lastCmdgenRenderListRangeBytes;
     private boolean cmdgenDescriptorsReboundThisFrame;
+    private long drawCommandBufferAllocationGeneration;
+    private long lastCmdgenBinding3ReboundGeneration;
     private String lastCmdgenDescriptorDiagnostic = "";
     private String lastCmdgenCommandBufferDiagnostic = "";
     private String lastSmokeDrawOutputDiagnostic = "";
@@ -3357,6 +3359,8 @@ public final class VulkanBerylSectionDrawPipeline {
         this.drawCommandBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         this.drawCommandBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_commands", this.drawCommandBufferUsageFlags, MemoryTypes.GPU_MEM);
         this.drawCommandBuffer.createBuffer(commandBytes);
+        this.drawCommandBufferAllocationGeneration++;
+        this.lastCmdgenBinding3ReboundGeneration = -1L;
         Buffer oldDrawCountBuffer = this.drawCountBuffer;
         long oldDrawCountBufferId = oldDrawCountBuffer == null ? 0L : oldDrawCountBuffer.getId();
         if (oldDrawCountBuffer != null && oldDrawCountBuffer != this.cmdgenDrawCountScratchBuffer) oldDrawCountBuffer.scheduleFree();
@@ -4737,6 +4741,14 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", cmdgenDescriptorBinding1RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_METADATA_BINDING)
                 + ", cmdgenDescriptorBinding2RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_UNUSED_BINDING2_BINDING)
                 + ", cmdgenDescriptorBinding3RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COMMAND_BINDING)
+                + ", cmdgenDescriptorBinding3ActualBufferBytes=" + (this.drawCommandBuffer == null ? -1L : this.drawCommandBuffer.getBufferSize())
+                + ", cmdgenDescriptorBinding3ExpectedBytes=" + (this.drawCommandCapacity <= 0 ? -1L : drawCommandBinding3ExpectedBytes())
+                + ", cmdgenDescriptorBinding3RangeMatchesExpected=" + (pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COMMAND_BINDING) == (this.drawCommandCapacity <= 0 ? -1L : drawCommandBinding3ExpectedBytes()))
+                + ", drawCommandCapacity=" + this.drawCommandCapacity
+                + ", drawCommandStrideBytes=" + DRAW_COMMAND_STRIDE_BYTES
+                + ", drawCommandBufferAllocationGeneration=" + this.drawCommandBufferAllocationGeneration
+                + ", cmdgenBinding3DescriptorReboundGeneration=" + this.lastCmdgenBinding3ReboundGeneration
+                + ", cmdgenBinding3DescriptorStaleRisk=" + (this.lastCmdgenBinding3ReboundGeneration == this.drawCommandBufferAllocationGeneration ? "none" : "descriptor_not_rebound_after_draw_command_buffer_allocation")
                 + ", cmdgenDescriptorBinding4RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_DRAW_COUNT_BINDING)
                 + ", cmdgenDescriptorBinding5RangeBytes=" + pipelineBindingRangeBytes(pipeline, CMDGEN_CONFIG_BINDING)
                 + ", cmdgenControlledSmokeSectionId=" + controlledSmokeSectionId
@@ -5052,8 +5064,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
         int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
-        VulkanBerylDebugLog.verboseOnce("manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorClass=ManualUBO, manualStructInts=" + structSizeInts);
-        return new ManualUBO(binding, computeStage, structSizeInts);
+        VulkanBerylDebugLog.verboseOnce("manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorKind=storageBuffer, descriptorType=" + VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC + ", descriptorClass=ManualStorageBuffer, manualStructInts=" + structSizeInts);
+        return new ManualStorageBuffer(binding, computeStage, structSizeInts);
     }
 
     private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
@@ -5114,12 +5126,46 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         UBO ubo = this.commandGenPipeline.getUBO(candidate -> candidate.binding == binding);
         if (ubo == null) throw new IllegalStateException("Section cmdgen descriptor missing: name=" + label + ", binding=" + binding + ", config=" + CMDGEN_SHADER_CONFIG);
+        String descriptorKind = descriptorKind(ubo);
+        if (!"storageBuffer".equals(descriptorKind)) {
+            throw new IllegalStateException("Section cmdgen descriptor kind mismatch: name=" + label + ", binding=" + binding + ", descriptorKind=" + descriptorKind + ", expected=storageBuffer, config=" + CMDGEN_SHADER_CONFIG);
+        }
         if (binding == CMDGEN_CONFIG_BINDING && buffer == this.cmdGenConfigBuffer && bufferSize != CMDGEN_CONFIG_SIZE_BYTES) {
             throw new IllegalStateException("cmdGenConfigBuffer descriptor range mismatch: binding=" + binding + ", bufferBytes=" + bufferSize + ", expectedRangeBytes=" + CMDGEN_CONFIG_SIZE_BYTES);
         }
         int rangeBytes = (int) bufferSize;
+        if (binding == CMDGEN_DRAW_COMMAND_BINDING && buffer == this.drawCommandBuffer) {
+            rangeBytes = validateDrawCommandBinding3DescriptorRange(bufferSize, label);
+            this.lastCmdgenBinding3ReboundGeneration = this.drawCommandBufferAllocationGeneration;
+        }
         VulkanBerylDebugLog.trace("binding-cmdgen-descriptor:" + binding + ":" + label, "Binding cmdgen descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
         ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
+    }
+
+
+    private int validateDrawCommandBinding3DescriptorRange(long bufferSize, String label) {
+        long expectedBytes = drawCommandBinding3ExpectedBytes();
+        if (this.drawCommandCapacity <= 0) {
+            throw new IllegalStateException("drawCommandBuffer descriptor range cannot be validated before drawCommandCapacity is initialized: binding="
+                    + CMDGEN_DRAW_COMMAND_BINDING + ", label=" + label + ", bufferBytes=" + bufferSize);
+        }
+        if (bufferSize != expectedBytes) {
+            throw new IllegalStateException("drawCommandBuffer descriptor range mismatch: binding="
+                    + CMDGEN_DRAW_COMMAND_BINDING
+                    + ", label=" + label
+                    + ", bufferBytes=" + bufferSize
+                    + ", expectedBytes=" + expectedBytes
+                    + ", drawCommandCapacity=" + this.drawCommandCapacity
+                    + ", drawCommandStrideBytes=" + DRAW_COMMAND_STRIDE_BYTES);
+        }
+        if (expectedBytes > VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES) {
+            throw descriptorRangeException(CMDGEN_DRAW_COMMAND_BINDING, label, expectedBytes);
+        }
+        return Math.toIntExact(expectedBytes);
+    }
+
+    private long drawCommandBinding3ExpectedBytes() {
+        return Math.multiplyExact((long) this.drawCommandCapacity, DRAW_COMMAND_STRIDE_BYTES);
     }
 
     private void updateAndBindCmdGenConfigBuffer(VulkanBerylSectionGeometryData geometryData, int renderListCapacity, int flags) {
