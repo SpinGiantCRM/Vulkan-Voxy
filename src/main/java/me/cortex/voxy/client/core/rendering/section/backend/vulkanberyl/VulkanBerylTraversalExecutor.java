@@ -144,7 +144,7 @@ public final class VulkanBerylTraversalExecutor {
         } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to resolve Beryl compute stage for manual traversal descriptors", e);
         }
-        List<UBO> manualDescriptors = createTraversalManualDescriptors(computeStage);
+        List<UBO> manualDescriptors = createTraversalManualDescriptors(computeStage, smokeShader);
         String manualDescriptorDiagnostics = describeDescriptorBindingLayout(manualDescriptors);
         VulkanBerylDebugLog.verboseOnce("traversal-manual-descriptor-layout", "Traversal manual descriptor layout: " + manualDescriptorDiagnostics);
         try {
@@ -267,11 +267,10 @@ public final class VulkanBerylTraversalExecutor {
             throw new IllegalStateException("Renderer returned null Vulkan command buffer");
         }
 
-        VulkanBerylGeometryUploader uploader = VulkanBerylGeometryUploader.get();
         int maxIterations = Math.min(this.traversalResources.getMaxIterations(), Math.max(1, maxTraversalIterations));
         int iterations = 0;
         for (int iter = 1; iter < maxIterations; iter++) {
-            this.traversalResources.uploadQueueIndex(iter, uploader);
+            this.traversalResources.recordQueueIndexUpdate(commandBuffer, iter);
 
             Buffer source = (iter & 1) == 0 ? this.traversalResources.getScratchQueueA() : this.traversalResources.getScratchQueueB();
             Buffer sink = (iter & 1) == 0 ? this.traversalResources.getScratchQueueB() : this.traversalResources.getScratchQueueA();
@@ -338,6 +337,7 @@ public final class VulkanBerylTraversalExecutor {
         requireMethod(VK10.class, "vkCmdDispatch", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, int.class, int.class);
         requireMethod(VK10.class, "vkCmdPipelineBarrier", missing, org.lwjgl.vulkan.VkCommandBuffer.class, int.class, int.class, int.class, org.lwjgl.vulkan.VkMemoryBarrier.Buffer.class, org.lwjgl.vulkan.VkBufferMemoryBarrier.Buffer.class, org.lwjgl.vulkan.VkImageMemoryBarrier.Buffer.class);
         requireMethod(VK10.class, "vkCmdDispatchIndirect", missing, org.lwjgl.vulkan.VkCommandBuffer.class, long.class, long.class);
+        requireMethod(VK10.class, "vkCmdUpdateBuffer", missing, org.lwjgl.vulkan.VkCommandBuffer.class, long.class, long.class, java.nio.IntBuffer.class);
 
         if (!missing.isEmpty()) {
             throw new UnsupportedOperationException("Vulkan/Beryl traversal compute dispatch integration missing required API: " + String.join(", ", missing));
@@ -353,7 +353,9 @@ public final class VulkanBerylTraversalExecutor {
         }
         this.descriptorDispatchDiagnosticsLogged = true;
         Buffer renderListBuffer = this.renderList.getBuffer();
-        logTraversalDescriptorBinding(HIZ_BINDING, "ReservedHizDummy", this.traversalResources.getUniformBuffer(), renderListBuffer);
+        if (this.traversalPipeline.getUBO(candidate -> candidate.binding == HIZ_BINDING) != null) {
+            logTraversalDescriptorBinding(HIZ_BINDING, "SmokeHizDummy", this.traversalResources.getUniformBuffer(), renderListBuffer);
+        }
         logTraversalDescriptorBinding(SCENE_UNIFORM_BINDING, "traversalResources.uniformBuffer", this.traversalResources.getUniformBuffer(), renderListBuffer);
         logTraversalDescriptorBinding(REQUEST_QUEUE_BINDING, "traversalResources.requestBuffer", this.traversalResources.getRequestBuffer(), renderListBuffer);
         logTraversalDescriptorBinding(RENDER_QUEUE_BINDING, "renderList.buffer", renderListBuffer, renderListBuffer);
@@ -385,12 +387,16 @@ public final class VulkanBerylTraversalExecutor {
         if (raw == null || raw.isBlank()) {
             return -1;
         }
+        String value = raw.trim();
+        if ("full".equalsIgnoreCase(value)) {
+            return 5;
+        }
         try {
-            int level = Integer.parseInt(raw.trim());
+            int level = Integer.parseInt(value);
             if (level < 0) return -1;
             return Math.min(level, 5);
         } catch (NumberFormatException e) {
-            throw new IllegalStateException(STATIC_IMPORT_LEVEL_ENV + " must be an integer 0..5/full, but was: " + raw, e);
+            throw new IllegalStateException(STATIC_IMPORT_LEVEL_ENV + " must be an integer 0..5 or full, but was: " + raw, e);
         }
     }
 
@@ -780,9 +786,10 @@ public final class VulkanBerylTraversalExecutor {
         ShaderBindingDeclaration binding0 = findShaderBindingDeclaration(source, HIZ_BINDING);
         String declaration = binding0 == null ? "<none>" : binding0.declaration();
         String expectedDescriptorType = binding0 == null ? "none" : binding0.expectedDescriptorType();
-        String javaDescriptorLabel = "ReservedHizDummy";
-        String javaDescriptorKind = "uniformBuffer";
-        Buffer buffer = this.traversalResources.getUniformBuffer();
+        UBO javaDescriptor = this.traversalPipeline == null ? null : this.traversalPipeline.getUBO(candidate -> candidate.binding == HIZ_BINDING);
+        String javaDescriptorLabel = javaDescriptor == null ? "<none>" : "SmokeHizDummy";
+        String javaDescriptorKind = javaDescriptor == null ? "none" : reflectDescriptorKind(javaDescriptor);
+        Buffer buffer = javaDescriptor == null ? null : this.traversalResources.getUniformBuffer();
         long bufferId = buffer == null ? 0L : buffer.getId();
         boolean mismatch = binding0 != null && !javaDescriptorKind.equals(expectedDescriptorType);
         return " traversalBinding0Declared=" + (binding0 != null)
@@ -1042,19 +1049,21 @@ public final class VulkanBerylTraversalExecutor {
         return builder.toString();
     }
 
-    private List<UBO> createTraversalManualDescriptors(int computeStage) {
-        return List.of(
-                createManualUniformDescriptor(HIZ_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "ReservedHizDummy"),
-                createManualUniformDescriptor(SCENE_UNIFORM_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SceneUniform"),
-                createManualStorageDescriptor(REQUEST_QUEUE_BINDING, computeStage, this.traversalResources.getRequestBuffer(), "RequestQueue"),
-                createManualStorageDescriptor(RENDER_QUEUE_BINDING, computeStage, this.renderList.getBuffer(), "RenderQueue"),
-                createManualStorageDescriptor(NODE_DATA_BINDING, computeStage, this.nodeMetadataStore.getNodeBuffer(), "NodeData"),
-                createManualStorageDescriptor(NODE_QUEUE_INDEX_BINDING, computeStage, this.traversalResources.getQueueIndexBuffer(), "NodeQueueIndex"),
-                createManualStorageDescriptor(NODE_QUEUE_META_BINDING, computeStage, this.traversalResources.getQueueMetaBuffer(), "NodeQueueMeta"),
-                createManualStorageDescriptor(NODE_QUEUE_SOURCE_BINDING, computeStage, this.traversalResources.getScratchQueueA(), "NodeQueueSource"),
-                createManualStorageDescriptor(NODE_QUEUE_SINK_BINDING, computeStage, this.traversalResources.getScratchQueueB(), "NodeQueueSink"),
-                createManualStorageDescriptor(RENDER_TRACKER_BINDING, computeStage, this.traversalResources.getRenderTrackerBuffer(), "RenderTracker")
-        );
+    private List<UBO> createTraversalManualDescriptors(int computeStage, boolean includeSmokeHizBinding) {
+        List<UBO> descriptors = new ArrayList<>(includeSmokeHizBinding ? 10 : 9);
+        if (includeSmokeHizBinding) {
+            descriptors.add(createManualUniformDescriptor(HIZ_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SmokeHizDummy"));
+        }
+        descriptors.add(createManualUniformDescriptor(SCENE_UNIFORM_BINDING, computeStage, this.traversalResources.getUniformBuffer(), "SceneUniform"));
+        descriptors.add(createManualStorageDescriptor(REQUEST_QUEUE_BINDING, computeStage, this.traversalResources.getRequestBuffer(), "RequestQueue"));
+        descriptors.add(createManualStorageDescriptor(RENDER_QUEUE_BINDING, computeStage, this.renderList.getBuffer(), "RenderQueue"));
+        descriptors.add(createManualStorageDescriptor(NODE_DATA_BINDING, computeStage, this.nodeMetadataStore.getNodeBuffer(), "NodeData"));
+        descriptors.add(createManualStorageDescriptor(NODE_QUEUE_INDEX_BINDING, computeStage, this.traversalResources.getQueueIndexBuffer(), "NodeQueueIndex"));
+        descriptors.add(createManualStorageDescriptor(NODE_QUEUE_META_BINDING, computeStage, this.traversalResources.getQueueMetaBuffer(), "NodeQueueMeta"));
+        descriptors.add(createManualStorageDescriptor(NODE_QUEUE_SOURCE_BINDING, computeStage, this.traversalResources.getScratchQueueA(), "NodeQueueSource"));
+        descriptors.add(createManualStorageDescriptor(NODE_QUEUE_SINK_BINDING, computeStage, this.traversalResources.getScratchQueueB(), "NodeQueueSink"));
+        descriptors.add(createManualStorageDescriptor(RENDER_TRACKER_BINDING, computeStage, this.traversalResources.getRenderTrackerBuffer(), "RenderTracker"));
+        return descriptors;
     }
 
 
@@ -1111,7 +1120,7 @@ public final class VulkanBerylTraversalExecutor {
     }
 
     private static String expectedJavaDescriptorKind(int binding) {
-        return binding == SCENE_UNIFORM_BINDING || binding == HIZ_BINDING ? "uniformBuffer" : "storageBuffer";
+        return binding == SCENE_UNIFORM_BINDING ? "uniformBuffer" : "storageBuffer";
     }
 
     private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
