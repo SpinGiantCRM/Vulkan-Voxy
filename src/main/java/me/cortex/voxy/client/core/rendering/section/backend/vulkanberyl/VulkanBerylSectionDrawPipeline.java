@@ -229,9 +229,9 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean freed;
     private int rawVisibleCountForTestStatus = -1;
 
-    private static final boolean DRAW_SCREENSPACE_SMOKE = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE", "false"));
-    private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT", "false"));
-    private static final boolean DRAW_WORLDSPACE_SMOKE_INDIRECT = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT", "false"));
+    private static final boolean DRAW_SCREENSPACE_SMOKE = environmentFlag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE");
+    private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT");
+    private static final boolean DRAW_WORLDSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT");
     private static final boolean DISABLE_CONTROLLED_SMOKE_READBACK_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_READBACK_COPY", "false"));
     private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", "false"));
     private static final boolean CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND", "false"));
@@ -241,6 +241,19 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int SCREENSPACE_SMOKE_INSTANCE_COUNT = 1;
     private static final int SCREENSPACE_SMOKE_FIRST_VERTEX = 0;
     private static final int SCREENSPACE_SMOKE_FIRST_INSTANCE = 0;
+
+    private static boolean environmentFlag(String name) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            value = System.getProperty(name);
+        }
+        if (value == null) return false;
+        String normalized = value.trim();
+        return "true".equalsIgnoreCase(normalized)
+                || "1".equals(normalized)
+                || "yes".equalsIgnoreCase(normalized)
+                || "on".equalsIgnoreCase(normalized);
+    }
 
     private static boolean screenspaceSmokeShaderEnabled() {
         return DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT;
@@ -1361,6 +1374,8 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private OpaqueDrawSubmission renderScreenspaceSmokeIndirectIsolated(Renderer renderer, VulkanBerylViewport viewport, VkCommandBuffer commandBuffer) {
         recordScreenspaceSmokeIndirectKnownCommand(viewport.frameId);
+        VulkanBerylDebugLog.rateLimited("screenspace-smoke-normal-lod-skipped", "screenspace smoke indirect selected before normal render-list draw submission: normalLodDrawSkippedForSmoke=true"
+                + ", drawSubmitReason=screenspace_smoke_indirect_draw", 1);
         if (this.controlledSmokeKnownCommandBuffer == null || this.controlledSmokeKnownCommandBuffer.getId() == 0L) {
             String submitReason = "screenspace_smoke_indirect_command_buffer_missing";
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, submitReason);
@@ -1703,9 +1718,10 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", smokeCommand.instanceCount=" + SCREENSPACE_SMOKE_INSTANCE_COUNT
                     + ", smokeCommand.firstVertex=" + SCREENSPACE_SMOKE_FIRST_VERTEX
                     + ", smokeCommand.firstInstance=" + SCREENSPACE_SMOKE_FIRST_INSTANCE
+                    + ", normalLodDrawSkippedForSmoke=true"
                     + ", indirectDrawRecorded=" + this.anyVkCmdDrawIndirectRecordedThisFrame
                     + ", drawSubmitReason=" + submitReason;
-            VulkanBerylDebugLog.stateLimited("screenspace-smoke-indirect-draw-isolation", "screenspace smoke indirect draw isolation: " + diagnostic, diagnostic);
+            VulkanBerylDebugLog.rateLimited("screenspace-smoke-indirect-draw-isolation", "screenspace smoke indirect draw isolation: " + diagnostic, 1);
             return;
         }
         String diagnostic = "screenspaceSmokeEnabled=true"
@@ -2278,7 +2294,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", shaderBypassesRenderList=true"
                 + ", shaderBypassesMetadata=true"
                 + ", targetBufferId=" + targetBufferId
-                + ", tupleChanged=" + tupleChanged, 30);
+                + ", tupleChanged=" + tupleChanged, 1);
     }
 
     private void recordJavaKnownControlledSmokeCommand(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int frameId) {
