@@ -66,7 +66,7 @@ void main() {
 
     uint quadIndex = (uint(gl_VertexIndex) >> 2u);
     QuadData quad;
-    setupQuad(quad, quadData[quadIndex], extractRawPos(meta), (gl_VertexIndex & 3u) == 1u);
+    setupQuad(quad, quadData[quadIndex], extractRawPos(meta));
 
     uint cornerId = uint(gl_VertexIndex) & 3u;
     gl_Position = getQuadCornerPos(quad, cornerId);

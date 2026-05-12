@@ -15,7 +15,7 @@ vec3 swizzelDataAxis(uint axis, vec3 data) {
     return mix(mix(data.zxy, data.xzy, bvec3(axis == 0u)), data, bvec3(axis == 1u));
 }
 
-void setupQuad(out QuadData quad, const in Quad rawQuad, uvec2 sPos, bool generateAttributes) {
+void setupQuad(out QuadData quad, const in Quad rawQuad, uvec2 sPos) {
     uint lodLevel = getLoDLevel(sPos);
     float lodScale = float(1u << lodLevel);
     ivec3 baseSection = (getLoDPosition(sPos) << int(lodLevel)) - baseSectionPos;
@@ -24,13 +24,11 @@ void setupQuad(out QuadData quad, const in Quad rawQuad, uvec2 sPos, bool genera
     uint modelId = extractStateId(rawQuad);
     ivec2 quadSize = extractSize(rawQuad);
 
-    if (generateAttributes) {
-        uint flags = 0u;
-        flags |= (modelId << 16u);
-        flags |= (uint(quadSize.x - 1) << 8u) | (uint(quadSize.y - 1) << 12u);
-        flags |= (face << 4u);
-        quad.attributeData = uvec4(flags, 0xFFFFFFFFu, 0u, 0u);
-    }
+    uint flags = 0u;
+    flags |= (modelId << 16u);
+    flags |= (uint(quadSize.x - 1) << 8u) | (uint(quadSize.y - 1) << 12u);
+    flags |= (face << 4u);
+    quad.attributeData = uvec4(flags, 0xFFFFFFFFu, 0u, 0u);
 
     vec3 quadStart = extractPos(rawQuad);
     vec2 faceSpan = vec2(quadSize);

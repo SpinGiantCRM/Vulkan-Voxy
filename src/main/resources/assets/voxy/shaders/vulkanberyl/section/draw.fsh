@@ -9,8 +9,13 @@
 #extension GL_NV_fragment_shader_barycentric: require
 #endif
 
-layout(binding = 0) uniform sampler2D blockModelAtlas;
-layout(binding = 2) uniform sampler2D depthTex;
+// The Vulkan/Beryl bring-up path uses draw_debug.fsh until these texture
+// descriptors are represented in the Java-side graphics descriptor layout.
+// Keep the normal texture samplers out of the vertex draw bindings
+// (0=SceneUniform, 4/5/6=SSBOs) so this shader is not internally
+// inconsistent while it remains validation/reference material.
+layout(binding = 7) uniform sampler2D blockModelAtlas;
+layout(binding = 8) uniform sampler2D depthTex;
 
 //#define DEBUG_RENDER
 
@@ -197,6 +202,3 @@ colour = textureGrad(blockModelAtlas, texPos, dx, dy);
 //#else
 //colour = texture(blockModelAtlas, texPos);
 //#endif
-
-//Undefine the depth stuff
-#import <voxy:util/depthutils.glsl>
