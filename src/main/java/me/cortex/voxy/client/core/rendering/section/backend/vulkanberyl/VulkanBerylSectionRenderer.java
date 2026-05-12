@@ -129,9 +129,9 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
                 + ", requestReadbackScheduled/completed=" + runtimeSmoke.requestReadbackScheduled() + "/" + runtimeSmoke.requestReadbackCompleted()
                 + ", drawCmdSamplePending/completed=" + this.lastOpaqueSamplePending + "/" + drawCommandSampleCompleted);
         // Smoke test quick-run:
-        // 1) set VOXY_VULKAN_BERYL_DEBUG_COLOUR=true
-        // 2) select/use Vulkan/Beryl backend
-        // 3) confirm this "Vulkan/Beryl smoke" line in the debug overlay/log
+        // 1) select/use Vulkan/Beryl backend (the draw pipeline currently forces draw_debug.fsh)
+        // 2) confirm this "Vulkan/Beryl smoke" line in the debug overlay/log
+        // Debug colour success only validates the bring-up fragment path, not the unwired normal textured draw path.
     }
 
     private String smokeFailReason(VulkanBerylRenderBackendRuntime.SmokeStatus runtimeSmoke, boolean drawSubmitted, boolean drawCommandSampleCompleted) {

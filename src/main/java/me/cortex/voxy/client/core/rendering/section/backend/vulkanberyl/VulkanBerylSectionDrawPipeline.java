@@ -227,6 +227,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", "false"));
     private static final boolean CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND", "false"));
     private static final boolean CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD", "false"));
+    private static final boolean FORCE_DEBUG_FRAGMENT_FOR_BRINGUP = true;
     private static final int SCREENSPACE_SMOKE_VERTEX_COUNT = 3;
     private static final int SCREENSPACE_SMOKE_INSTANCE_COUNT = 1;
     private static final int SCREENSPACE_SMOKE_FIRST_VERTEX = 0;
@@ -246,6 +247,10 @@ public final class VulkanBerylSectionDrawPipeline {
         return "VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE";
     }
 
+    private static boolean useDebugFragmentShader() {
+        return FORCE_DEBUG_FRAGMENT_FOR_BRINGUP || DEBUG_COLOUR_MODE;
+    }
+
     public void ensureDrawPipeline() {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
         if (this.graphicsPipeline != null) return;
@@ -263,14 +268,15 @@ public final class VulkanBerylSectionDrawPipeline {
         VertexFormat drawVertexFormat = resolveDummyVertexFormat();
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
-        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + DEBUG_COLOUR_MODE);
+        boolean debugFragmentShader = useDebugFragmentShader();
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false");
         try {
             builder.setUniforms(drawDescriptors, List.of());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to create manual section draw descriptor layout (config is validation-only and is not fed to Beryl parseBindings): " + DRAW_SHADER_CONFIG, e);
         }
-        String fragmentShaderName = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME;
-        String fragmentShaderResource = DEBUG_COLOUR_MODE ? DRAW_DEBUG_FRAGMENT_SHADER_RESOURCE : DRAW_FRAGMENT_SHADER_RESOURCE;
+        String fragmentShaderName = debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME;
+        String fragmentShaderResource = debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_RESOURCE : DRAW_FRAGMENT_SHADER_RESOURCE;
         var preprocessedShaders = VulkanBerylShaderImportPreprocessor.preprocessShaderSetToTemp(DRAW_SHADER_RESOURCE, fragmentShaderResource);
         applyDrawScreenspaceSmokeDefine(preprocessedShaders);
         String shaderCompileBase = preprocessedShaders.rootUrl() + DRAW_SHADER_NAME;
@@ -326,7 +332,7 @@ public final class VulkanBerylSectionDrawPipeline {
         try {
             builder.compileShaders(DRAW_SHADER_NAME, vertexSource, fragmentSource);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + DEBUG_COLOUR_MODE + ")"
+            throw new IllegalStateException("Failed to compile section draw shaders (vertex=" + DRAW_SHADER_NAME + ", fragment=" + fragmentShaderName + ", debugMode=" + debugFragmentShader + ")"
                     + "\ncompileShaders expected args: name + vertexSource + fragmentSource (GLSL text)"
                     + "\nProvided sources read from: " + expectedVertexTempPath + " and " + expectedFragmentTempPath
                     + "\nVertex first lines:\n" + vertexPreview
@@ -336,7 +342,7 @@ public final class VulkanBerylSectionDrawPipeline {
         try {
             pipeline = builder.createGraphicsPipeline();
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to create section draw graphics pipeline (config=" + DRAW_SHADER_CONFIG + ", debugMode=" + DEBUG_COLOUR_MODE + ")", e);
+            throw new IllegalStateException("Failed to create section draw graphics pipeline (config=" + DRAW_SHADER_CONFIG + ", debugMode=" + debugFragmentShader + ")", e);
         }
         if (pipeline == null) throw new IllegalStateException("Failed to create section draw graphics pipeline");
         this.graphicsPipeline = pipeline;
@@ -621,7 +627,7 @@ public final class VulkanBerylSectionDrawPipeline {
     public boolean isSceneUniformBound() { return this.sceneUniformBound; }
     public boolean isGraphicsPipelineCreated() { return this.graphicsPipelineCreated; }
     public boolean isCommandGenPipelineCreated() { return this.commandGenPipelineCreated; }
-    public boolean isDebugColourModeEnabled() { return DEBUG_COLOUR_MODE; }
+    public boolean isDebugColourModeEnabled() { return useDebugFragmentShader(); }
     public boolean isDepthSamplingEnabled() { return false; }
     public boolean isModelLightPathEnabled() { return false; }
     public boolean isDebugSamplePending() { return this.debugSamplePending; }
