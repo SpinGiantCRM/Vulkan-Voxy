@@ -36,17 +36,26 @@ jobs:
         with:
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
+      - name: Check diff whitespace
+        run: git diff --check
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 25
 
+      - name: Loom Cache
+        uses: actions/cache@v5
+        with:
+          path: "**/.gradle/loom-cache"
+          key: "${{ runner.os }}-gradle-${{ hashFiles('**/libs.versions.*', '**/*.gradle*', '**/gradle-wrapper.properties') }}"
+          restore-keys: "${{ runner.os }}-gradle-"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: false
-
 
       - name: Resolve release tag
         id: release_tag
@@ -78,7 +87,7 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # Release publishing only needs the final installable jar; PR CI remains the full build gate.
+      # Release publishing keeps the existing assemble-only jar builder. PR and push CI remain the full build gates.
       - name: Gradle assemble jar
         run: ./gradlew -I init.gradle -PmodVersion="${{ steps.mod_version.outputs.version }}" assemble
 

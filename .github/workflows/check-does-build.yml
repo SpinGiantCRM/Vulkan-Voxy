@@ -8,6 +8,19 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check diff whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            git diff --check "${{ github.sha }}^!"
+          else
+            git diff --check "${{ github.event.before }}...${{ github.sha }}"
+          fi
 
       - name: Setup Java
         uses: actions/setup-java@v5
