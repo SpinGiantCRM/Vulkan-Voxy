@@ -140,13 +140,13 @@ void enqueueSelfForRender(in UnpackedNode node) {
     if (frameId < 6u) {
         return;
     }
+    if (!isFullTraversalStage()) {
+        return;
+    }
     //printf("render %d@[%d,%d,%d]", node.lodLevel, node.pos.x, node.pos.y, node.pos.z);
     if (!isEmptyMesh(node)) {
         uint renderIndex;
         if (reserveRenderQueueSlot(renderIndex)) {
-            if (!isFullTraversalStage()) {
-                return;
-            }
             uint nodeId = getId(node);
             if (nodeId < maxNodeCount) {
                 lastRenderFrame[nodeId] = frameId;
