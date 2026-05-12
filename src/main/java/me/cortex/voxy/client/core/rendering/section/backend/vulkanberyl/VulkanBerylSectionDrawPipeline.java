@@ -1180,7 +1180,7 @@ public final class VulkanBerylSectionDrawPipeline {
             VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, "indirect_gate:" + indirectGateReason);
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "indirect_gate:" + indirectGateReason);
         }
-        int submittedDrawCount = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER ? javaDrawCountForNoDrawCountCmdgen.drawCount() : visibleCount;
+        int submittedDrawCount = CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER ? javaDrawCountForNoDrawCountCmdgen.drawCount() : Math.min(visibleCount, this.drawCommandCapacity);
         ControlledSmokeCommandValidation controlledSmokeCommandValidation = controlledSmokeCommandAlreadyObserved ? preScheduleControlledSmokeCommandValidation : validateControlledSmokeCommandReadback(controlledSmoke);
         boolean controlledSmokeGatingActive = controlledSmoke.enabled() && controlledSmoke.safe() && CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && ENABLE_INDIRECT_DRAW;
         if (controlledSmokeGatingActive) {
@@ -4252,8 +4252,9 @@ public final class VulkanBerylSectionDrawPipeline {
                 firstFirstVertex = firstVertex;
                 firstFirstInstance = firstInstance;
             }
-            boolean valid = vertexCount > 0 && (vertexCount & 3) == 0 && instanceCount == 1 && firstVertex >= 0 && (firstVertex & 3) == 0 && firstInstance == i && firstInstance < visibleCount;
-            if (valid && firstVertex >= 0 && geometryBufferBytes > 0L) {
+            boolean zeroNoop = vertexCount == 0 && instanceCount == 0 && firstVertex == 0 && firstInstance == 0;
+            boolean valid = zeroNoop || (vertexCount > 0 && (vertexCount & 3) == 0 && instanceCount == 1 && firstVertex >= 0 && (firstVertex & 3) == 0 && firstInstance == i && firstInstance < visibleCount);
+            if (!zeroNoop && valid && firstVertex >= 0 && geometryBufferBytes > 0L) {
                 long maxVertexExclusive = (geometryBufferBytes >>> 3) * 4L;
                 long firstVertexUnsigned = Integer.toUnsignedLong(firstVertex);
                 valid = firstVertexUnsigned < maxVertexExclusive

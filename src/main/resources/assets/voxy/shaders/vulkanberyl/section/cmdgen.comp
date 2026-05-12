@@ -68,6 +68,15 @@ uint extractOpaqueQuadCount(SectionMeta meta) {
         + ((counts.w >> 16u) & 0xFFFFu);
 }
 
+void writeZeroCommand(uint commandIndex) {
+    DrawCommand cmd;
+    cmd.vertexCount = 0u;
+    cmd.instanceCount = 0u;
+    cmd.firstVertex = 0u;
+    cmd.firstInstance = 0u;
+    commands[commandIndex] = cmd;
+}
+
 void main() {
     uint drawIndex = gl_GlobalInvocationID.x;
 
@@ -211,7 +220,7 @@ void main() {
         return;
     }
 
-    uint safeVisibleCount = min(visibleCount, renderListCapacity);
+    uint safeVisibleCount = min(min(visibleCount, renderListCapacity), drawCommandCapacity);
     if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ONLY) != 0u) {
         if (drawIndex == 0u && safeVisibleCount > 0u) {
             uint sectionIdSmoke = indirectLookup[0];
@@ -226,17 +235,16 @@ void main() {
         return;
     }
 
+    // The Java draw submission can consume every command slot below safeVisibleCount.
+    // Publish only the number of command slots this shader will initialise, and make
+    // invalid entries explicit no-op commands so stale data is never submitted.
+    if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+        drawCount = safeVisibleCount;
+    }
+
     uint sectionId = indirectLookup[drawIndex];
     if (sectionId >= metadataSectionCapacity) {
-        if (drawIndex == 0u) {
-            drawCount = 0u;
-        }
-        return;
-    }
-    if (drawIndex >= drawCommandCapacity) {
-        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
-            drawCount = 0u;
-        }
+        writeZeroCommand(drawIndex);
         return;
     }
 
@@ -265,9 +273,7 @@ void main() {
     uint opaqueQuadCount = extractOpaqueQuadCount(meta);
     uint opaqueQuadStart = extractQuadStart(meta) + translucentQuadCount;
     if (opaqueQuadCount == 0u || opaqueQuadStart > geometryCapacityQuads || opaqueQuadCount > geometryCapacityQuads - opaqueQuadStart) {
-        if (drawIndex == 0u && drawCountCapacityWords > 0u) {
-            drawCount = 0u;
-        }
+        writeZeroCommand(drawIndex);
         return;
     }
 
@@ -278,7 +284,4 @@ void main() {
     cmd.firstInstance = drawIndex;
     commands[drawIndex] = cmd;
 
-    if (drawIndex == 0u && drawCountCapacityWords > 0u) {
-        drawCount = safeVisibleCount;
-    }
 }
