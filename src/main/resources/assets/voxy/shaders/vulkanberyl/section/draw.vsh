@@ -31,6 +31,14 @@ layout(location = 0) out flat uvec4 interData;
 layout(location = 1) out vec2 uv;
 layout(location = 2) out flat uvec2 debugIds;
 
+uint drawExtractTranslucentQuadCount(SectionMeta meta) {
+    return meta.b.x & 0xFFFFu;
+}
+
+uint drawExtractOpaqueQuadStart(SectionMeta meta) {
+    return extractQuadStart(meta) + drawExtractTranslucentQuadCount(meta);
+}
+
 vec2 taaShift();
 
 void main() {
@@ -62,15 +70,22 @@ void main() {
     return;
 #endif
 
-    uint drawIndex = gl_InstanceIndex;
+    // For vkCmdDrawIndirect, Vulkan exposes firstInstance through BaseInstance and
+    // firstVertex through BaseVertex.  Use those draw-parameter built-ins to make
+    // SSBO indexing explicit instead of depending on whether gl_VertexIndex is
+    // already biased by firstVertex in this Beryl/Vulkan path.
+    uint drawIndex = uint(gl_BaseInstance);
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
 
-    uint quadIndex = (uint(gl_VertexIndex) >> 2u);
+    uint vertexIndex = uint(gl_VertexIndex);
+    uint baseVertex = uint(gl_BaseVertex);
+    uint localVertexIndex = vertexIndex >= baseVertex ? vertexIndex - baseVertex : vertexIndex;
+    uint quadIndex = drawExtractOpaqueQuadStart(meta) + (localVertexIndex >> 2u);
     QuadData quad;
     setupQuad(quad, quadData[quadIndex], extractRawPos(meta));
 
-    uint cornerId = uint(gl_VertexIndex) & 3u;
+    uint cornerId = localVertexIndex & 3u;
     gl_Position = getQuadCornerPos(quad, cornerId);
     uv = getCornerUV(quad, cornerId);
     interData = quad.attributeData;
