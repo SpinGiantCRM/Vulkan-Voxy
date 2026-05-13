@@ -36,7 +36,11 @@ void setupQuad(out QuadData quad, const in Quad rawQuad, uvec2 sPos) {
     quad.lodScale = lodScale;
     quad.axis = face >> 1u;
     quad.basePoint = (quadStart * lodScale) + vec3(baseSection << 5);
-    quad.quadSizeAddin = max(faceSpan - vec2(1.0), vec2(0.0));
+    // Quad sizes are encoded as block spans; a 1x1 face must still emit a
+    // non-degenerate unit quad.  Using size-1 here collapsed every 1x1
+    // diagnostic face to four identical clip-space corners, so real LOD draws
+    // could submit valid commands and geometry while rasterizing no pixels.
+    quad.quadSizeAddin = max(faceSpan, vec2(1.0));
     quad.uvCorner = vec2(0.0);
 }
 
