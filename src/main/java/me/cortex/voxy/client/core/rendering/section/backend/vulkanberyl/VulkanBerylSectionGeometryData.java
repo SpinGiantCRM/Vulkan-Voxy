@@ -3,6 +3,10 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 import me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData;
 import net.vulkanmod.vulkan.memory.MemoryTypes;
 import net.vulkanmod.vulkan.memory.buffer.Buffer;
+import org.lwjgl.system.MemoryUtil;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -22,6 +26,7 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
     private int sectionCount;
     private long usedGeometryBytes;
     private final int[] sectionMetadataMirror;
+    private final Map<Long, Long> geometryQuadMirror;
     private final boolean geometryCapacityCapped;
     private final long requestedGeometryCapacityBytes;
     private long geometrySyncGeneration;
@@ -49,6 +54,7 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         this.metadataBuffer = new Buffer("voxy_vulkanberyl_metadata", METADATA_BUFFER_USAGE_FLAGS, MemoryTypes.GPU_MEM);
         this.metadataBuffer.createBuffer(metadataCapacity);
         this.sectionMetadataMirror = new int[Math.multiplyExact(maxSectionCount, SECTION_METADATA_SIZE / Integer.BYTES)];
+        this.geometryQuadMirror = realLodVisibilityDiagnosticEnabled() ? new HashMap<>() : null;
     }
 
 
@@ -123,6 +129,10 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
         return this.usedGeometryBytes;
     }
 
+    private static boolean realLodVisibilityDiagnosticEnabled() {
+        return Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC", "false"));
+    }
+
     public void setUsedGeometryBytes(long usedGeometryBytes) {
         if (this.freed) {
             throw new IllegalStateException("Cannot update used geometry after free");
@@ -131,6 +141,10 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
             throw new IllegalArgumentException("usedGeometryBytes out of range: " + usedGeometryBytes);
         }
         this.usedGeometryBytes = usedGeometryBytes;
+        if (this.geometryQuadMirror != null) {
+            long usedQuads = usedGeometryBytes / Long.BYTES;
+            this.geometryQuadMirror.keySet().removeIf(quadIndex -> quadIndex >= usedQuads);
+        }
     }
 
     public void markGeometrySyncApplied() {
@@ -165,6 +179,43 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
             this.sectionMetadataMirror[intOffset + i] = org.lwjgl.system.MemoryUtil.memGetInt(sourceAddress + (long) i * Integer.BYTES);
         }
         this.sectionMetadataMirrorWriteCount++;
+    }
+
+    public void mirrorGeometryUpload(long destinationOffsetBytes, long sourceAddress, long copySizeBytes) {
+        if (this.geometryQuadMirror == null) {
+            return;
+        }
+        if ((destinationOffsetBytes & 7L) != 0L || (copySizeBytes & 7L) != 0L) {
+            throw new IllegalArgumentException("Geometry mirror writes must be quad-aligned");
+        }
+        long destinationEndBytes = Math.addExact(destinationOffsetBytes, copySizeBytes);
+        if (destinationOffsetBytes < 0L || destinationEndBytes > this.getGeometryCapacityBytes()) {
+            throw new IllegalArgumentException("Geometry mirror write out of bounds: offset=" + destinationOffsetBytes + ", size=" + copySizeBytes);
+        }
+        long quadOffset = destinationOffsetBytes / Long.BYTES;
+        int quadCount = Math.toIntExact(copySizeBytes / Long.BYTES);
+        for (int i = 0; i < quadCount; i++) {
+            this.geometryQuadMirror.put(quadOffset + i, MemoryUtil.memGetLong(sourceAddress + (long) i * Long.BYTES));
+        }
+    }
+
+    public boolean hasMirroredGeometryQuad(long quadIndex) {
+        return this.geometryQuadMirror != null && this.geometryQuadMirror.containsKey(quadIndex);
+    }
+
+    public long getMirroredGeometryQuad(long quadIndex) {
+        if (this.geometryQuadMirror == null) {
+            throw new IllegalStateException("Geometry mirror is disabled");
+        }
+        Long raw = this.geometryQuadMirror.get(quadIndex);
+        if (raw == null) {
+            throw new IllegalArgumentException("Mirrored geometry quad is unavailable: " + quadIndex);
+        }
+        return raw;
+    }
+
+    public int getMirroredGeometryQuadCount() {
+        return this.geometryQuadMirror == null ? 0 : this.geometryQuadMirror.size();
     }
 
     public int findFirstNonZeroSectionMetadata() {
