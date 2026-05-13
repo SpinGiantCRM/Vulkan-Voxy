@@ -308,7 +308,7 @@ public final class VulkanBerylSectionDrawPipeline {
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
         boolean debugFragmentShader = useDebugFragmentShader();
-        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false");
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false, shaderIndexingMode=baseInstance_drawIndex_metadataOpaqueBaseQuad_plus_localVertexFromBaseVertex, shaderDrawIndexBuiltin=gl_BaseInstance, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=gl_BaseVertex");
         try {
             builder.setUniforms(drawDescriptors, List.of());
         } catch (Exception e) {
