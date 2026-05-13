@@ -29,6 +29,10 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.security.MessageDigest;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +61,8 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private GraphicsPipeline graphicsPipeline;
+    private static final ThreadLocal<String> SECTION_DRAW_PASS_CONTEXT = ThreadLocal.withInitial(() -> "unknown");
+    private static long nextGraphicsPipelineGeneration;
     private ComputePipeline commandGenPipeline;
     private ComputePipeline commandGenNoopPipeline;
     private ComputePipeline commandGenMinimalTinySsboReadProbePipeline;
@@ -229,6 +235,10 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean sceneUniformBound;
     private String sectionDrawBinding0DescriptorKind = "unknown";
     private boolean graphicsPipelineCreated;
+    private long graphicsPipelineGeneration;
+    private String sectionDrawFragmentSourceHash = "uncompiled";
+    private boolean sectionDrawFragmentSourceContainsMagentaDefine;
+    private boolean sectionDrawFragmentSourceContainsMagentaBranch;
     private boolean commandGenPipelineCreated;
     private long lastCmdgenRenderListBufferId;
     private long lastCmdgenRenderListRangeBytes;
@@ -253,6 +263,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT");
     private static final boolean DRAW_WORLDSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT");
     private static final boolean REAL_LOD_VISIBILITY_DIAGNOSTIC = environmentFlag("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC");
+    private static final boolean SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE = environmentFlag("VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE");
     private static final boolean DISABLE_CONTROLLED_SMOKE_READBACK_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_READBACK_COPY", "false"));
     private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", "false"));
     private static final boolean CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND", "false"));
@@ -262,6 +273,18 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int SCREENSPACE_SMOKE_INSTANCE_COUNT = 1;
     private static final int SCREENSPACE_SMOKE_FIRST_VERTEX = 0;
     private static final int SCREENSPACE_SMOKE_FIRST_INSTANCE = 0;
+    private static final int SAME_PASS_SCREENSPACE_PROBE_VERTEX_COUNT = 3;
+    private static final int SAME_PASS_SCREENSPACE_PROBE_INSTANCE_COUNT = 1;
+    private static final int SAME_PASS_SCREENSPACE_PROBE_FIRST_VERTEX = 0;
+    private static final int SAME_PASS_SCREENSPACE_PROBE_FIRST_INSTANCE = 0x6D515A7A;
+
+    public static void setSectionDrawPassContext(String passContext) {
+        SECTION_DRAW_PASS_CONTEXT.set(passContext == null || passContext.isBlank() ? "unknown" : passContext);
+    }
+
+    public static void clearSectionDrawPassContext() {
+        SECTION_DRAW_PASS_CONTEXT.remove();
+    }
 
     private static boolean environmentFlag(String name) {
         String value = System.getenv(name);
@@ -277,7 +300,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private static boolean screenspaceSmokeShaderEnabled() {
-        return DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT;
+        return DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT || SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE;
     }
 
     private static boolean screenspaceSmokeDirectDrawEnabled() {
@@ -286,6 +309,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private static String screenspaceSmokeEnvName() {
         if (DRAW_SCREENSPACE_SMOKE_INDIRECT) return "VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT";
+        if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE) return "VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE";
         if (DRAW_WORLDSPACE_SMOKE_INDIRECT) return "VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT";
         return "VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE";
     }
@@ -361,6 +385,14 @@ public final class VulkanBerylSectionDrawPipeline {
         verifyNoUtf8BomAndLogPrefix("fragment", expectedFragmentTempPath, fragmentBytes);
         String vertexSource = new String(vertexBytes, StandardCharsets.UTF_8);
         String fragmentSource = new String(fragmentBytes, StandardCharsets.UTF_8);
+        this.sectionDrawFragmentSourceHash = shortSha256(fragmentSource);
+        this.sectionDrawFragmentSourceContainsMagentaDefine = fragmentSource.contains("#define VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC 1");
+        this.sectionDrawFragmentSourceContainsMagentaBranch = fragmentSource.contains("outColour = vec4(1.0, 0.0, 1.0, 1.0)");
+        VulkanBerylDebugLog.verboseOnce("section-draw-fragment-source-diagnostics", "Section draw fragment source diagnostics: sectionDrawFragmentSourceContainsMagentaDefine=" + this.sectionDrawFragmentSourceContainsMagentaDefine
+                + ", sectionDrawFragmentSourceContainsMagentaBranch=" + this.sectionDrawFragmentSourceContainsMagentaBranch
+                + ", sectionDrawFragmentSourceHash=" + this.sectionDrawFragmentSourceHash
+                + ", fragmentShaderName=" + fragmentShaderName
+                + ", fragmentTempPath=" + expectedFragmentTempPath);
         boolean declaresVertexInputs = declaresVertexInputs(vertexSource);
         VulkanBerylDebugLog.verboseOnce("section-draw-vertex-input-diagnostics", "Section draw vertex input diagnostics: vertexFormatSet=" + (drawVertexFormat != null)
                 + ", vertexFormatClass=" + (drawVertexFormat == null ? "<null>" : drawVertexFormat.getClass().getName())
@@ -389,6 +421,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         if (pipeline == null) throw new IllegalStateException("Failed to create section draw graphics pipeline");
         this.graphicsPipeline = pipeline;
+        this.graphicsPipelineGeneration = ++nextGraphicsPipelineGeneration;
         this.graphicsPipelineCreated = true;
     }
 
@@ -472,13 +505,21 @@ public final class VulkanBerylSectionDrawPipeline {
             if (firstLineEnd < 0) {
                 throw new IllegalStateException("Preprocessed section draw vertex shader has no #version line: " + vertexShader.shaderPath());
             }
-            String define = DRAW_WORLDSPACE_SMOKE_INDIRECT
-                ? "#define VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT 1\n"
-                : "#define VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE 1\n";
-            if (!source.contains(define)) {
-                Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+            StringBuilder defines = new StringBuilder();
+            if (DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT) {
+                defines.append("#define VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE 1\n");
             }
-            VulkanBerylDebugLog.once("section-draw-screenspace-smoke-enabled", "section draw smoke diagnostic enabled: env=" + screenspaceSmokeEnvName() + ", vertexShader=" + vertexShader.shaderPath());
+            if (DRAW_WORLDSPACE_SMOKE_INDIRECT) {
+                defines.append("#define VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT 1\n");
+            }
+            if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE) {
+                defines.append("#define VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE 1\n");
+            }
+            String defineBlock = defines.toString();
+            if (!defineBlock.isEmpty() && !source.contains(defineBlock)) {
+                Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + defineBlock + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+            }
+            VulkanBerylDebugLog.once("section-draw-screenspace-smoke-enabled", "section draw smoke diagnostic enabled: env=" + screenspaceSmokeEnvName() + ", samePassScreenspaceProbe=" + SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE + ", vertexShader=" + vertexShader.shaderPath());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to enable section draw screenspace smoke diagnostic", e);
         }
@@ -1414,9 +1455,20 @@ public final class VulkanBerylSectionDrawPipeline {
             DrawCommandDebugSample blockedSample = this.lastCompletedDebugSample;
             return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), -1L, 0, blockedSample.sampledCommandCount(), blockedSample.invalidSampledCommandCount(), blockedSample.sampledQuadCount(), this.debugSamplePending, this.controlledSmokeCommandDrawSubmitReason);
         }
+        logSectionDrawRenderTargetPathDiagnostics(renderer, viewport, commandBuffer, "before_indirect_draw", indirectDrawCommandBuffer, effectiveIndirectDrawCount);
         VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         this.anyVkCmdDrawIndirectRecordedThisFrame = true;
         this.drawRecordedReasonThisFrame = DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : "normal_indirect_draw");
+        if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE) {
+            VK10.vkCmdDraw(commandBuffer, SAME_PASS_SCREENSPACE_PROBE_VERTEX_COUNT, SAME_PASS_SCREENSPACE_PROBE_INSTANCE_COUNT, SAME_PASS_SCREENSPACE_PROBE_FIRST_VERTEX, SAME_PASS_SCREENSPACE_PROBE_FIRST_INSTANCE);
+            this.anyVkCmdDrawRecordedThisFrame = true;
+            VulkanBerylDebugLog.rateLimited("section-draw-same-pass-screenspace-probe-recorded", "Section draw same-pass screenspace probe recorded: sectionDrawSamePassScreenspaceProbe=true"
+                    + ", probeVertexCount=" + SAME_PASS_SCREENSPACE_PROBE_VERTEX_COUNT
+                    + ", probeInstanceCount=" + SAME_PASS_SCREENSPACE_PROBE_INSTANCE_COUNT
+                    + ", probeFirstInstance=0x" + Integer.toHexString(SAME_PASS_SCREENSPACE_PROBE_FIRST_INSTANCE)
+                    + ", samePassSamePipelineSameDescriptors=true"
+                    + ", expectedColour=" + (REAL_LOD_VISIBILITY_DIAGNOSTIC ? "magenta" : "debug_hash_colour"), 60);
+        }
         logScreenspaceSmokeSubmitDiagnostics(true, "submitted", controlledSmokeCommandValidation);
         logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, effectiveIndirectDrawCount, "submitted", noDrawCountFullCmdgen);
         logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
@@ -1470,7 +1522,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VRenderSystem.colorMask(true, true, true, true);
     }
 
-    private static void logSectionDrawGraphicsPipelineState(Renderer renderer, VulkanBerylViewport viewport, String stage) {
+    private void logSectionDrawGraphicsPipelineState(Renderer renderer, VulkanBerylViewport viewport, String stage) {
         Framebuffer framebuffer = renderer.getBoundFramebuffer();
         int assemblyRasterState = PipelineState.getAssemblyRasterState();
         int depthState = PipelineState.getDepthState();
@@ -1496,6 +1548,143 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", renderTargetDepthFormat=" + (framebuffer == null ? "unbound" : framebuffer.getDepthFormat())
                 + ", renderTargetExtent=" + (framebuffer == null ? "unbound" : framebuffer.getWidth() + "x" + framebuffer.getHeight())
                 + ", berylDynamicViewportScissor=true", 60);
+    }
+
+    private void logSectionDrawRenderTargetPathDiagnostics(Renderer renderer, VulkanBerylViewport viewport, VkCommandBuffer commandBuffer, String stage, Buffer indirectDrawCommandBuffer, int submittedDrawCount) {
+        Framebuffer framebuffer = renderer.getBoundFramebuffer();
+        String passContext = SECTION_DRAW_PASS_CONTEXT.get();
+        String dynamicRenderingActive = reflectBooleanState(renderer, "isDynamicRenderingActive", "dynamicRenderingActive", "inDynamicRendering");
+        String renderPassActive = reflectBooleanState(renderer, "isRenderPassActive", "renderPassActive", "inRenderPass", "isRendering");
+        if ("unknown".equals(renderPassActive) && framebuffer != null) {
+            renderPassActive = "bound_framebuffer_present_unknown_begin_state";
+        }
+        long framebufferId = reflectLong(framebuffer, "getId", "id", "framebuffer", "frameBuffer", "handle");
+        long colorImageId = reflectNestedLong(framebuffer, "image", "colorImage", "colorAttachment", "colorAttachmentImage", "mainColorImage");
+        long colorViewId = reflectNestedLong(framebuffer, "imageView", "view", "colorView", "colorAttachmentView", "mainColorView");
+        VulkanBerylDebugLog.rateLimited("section-draw-render-target-path-diagnostics", "Section draw render target/path diagnostics: stage=" + stage
+                + ", renderPassActiveForSectionDraw=" + renderPassActive
+                + ", dynamicRenderingActiveForSectionDraw=" + dynamicRenderingActive
+                + ", sectionDrawCommandBufferAddress=0x" + Long.toHexString(commandBuffer == null ? 0L : commandBuffer.address())
+                + ", sectionDrawRenderTargetImageId=" + formatHandle(colorImageId)
+                + ", sectionDrawRenderTargetViewId=" + formatHandle(colorViewId)
+                + ", sectionDrawFramebufferId=" + formatHandle(framebufferId)
+                + ", sectionDrawPassName=" + passContext
+                + ", sectionDrawStage=" + stage
+                + ", sectionDrawPipelineId=0x" + Integer.toHexString(System.identityHashCode(this.graphicsPipeline))
+                + ", sectionDrawPipelineHash=0x" + Integer.toHexString(Objects.hash(System.identityHashCode(this.graphicsPipeline), this.graphicsPipelineGeneration, this.sectionDrawFragmentSourceHash))
+                + ", sectionDrawPipelineGeneration=" + this.graphicsPipelineGeneration
+                + ", sectionDrawFragmentSourceContainsMagentaDefine=" + this.sectionDrawFragmentSourceContainsMagentaDefine
+                + ", sectionDrawFragmentSourceContainsMagentaBranch=" + this.sectionDrawFragmentSourceContainsMagentaBranch
+                + ", sectionDrawFragmentSourceHash=" + this.sectionDrawFragmentSourceHash
+                + ", sectionDrawRecordedAfterMainClear=" + inferRecordedAfterMainClear(passContext)
+                + ", sectionDrawMayBeOverwrittenByLaterPass=" + inferMayBeOverwrittenByLaterPass(passContext)
+                + ", sectionDrawSamePassScreenspaceProbeAvailable=" + SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE
+                + ", sectionDrawIndirectCommandBufferId=" + (indirectDrawCommandBuffer == null ? 0L : indirectDrawCommandBuffer.getId())
+                + ", submittedDrawCount=" + submittedDrawCount
+                + ", boundFramebufferFormat=" + (framebuffer == null ? "unbound" : framebuffer.getFormat())
+                + ", boundFramebufferExtent=" + (framebuffer == null ? "unbound" : framebuffer.getWidth() + "x" + framebuffer.getHeight()), 60);
+    }
+
+    private static String inferRecordedAfterMainClear(String passContext) {
+        if (passContext != null && passContext.contains("before_shader_end")) return "likely_true_sodium_terrain_pass_already_begun";
+        return "unknown";
+    }
+
+    private static String inferMayBeOverwrittenByLaterPass(String passContext) {
+        if (passContext != null && passContext.contains("cutout")) return "possible_later_translucent_weather_hand_sodium_passes";
+        return "unknown";
+    }
+
+    private static String shortSha256(String source) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < Math.min(8, digest.length); i++) {
+                out.append(String.format("%02x", digest[i] & 0xff));
+            }
+            return out.toString();
+        } catch (Exception e) {
+            return "hash_failed:" + e.getClass().getSimpleName();
+        }
+    }
+
+    private static String formatHandle(long handle) {
+        if (handle == Long.MIN_VALUE) return "unavailable";
+        if (handle == 0L) return "0";
+        return "0x" + Long.toHexString(handle);
+    }
+
+    private static String reflectBooleanState(Object target, String... names) {
+        if (target == null) return "unavailable";
+        for (String name : names) {
+            Object value = reflectValue(target, name);
+            if (value instanceof Boolean bool) return Boolean.toString(bool);
+        }
+        return "unknown";
+    }
+
+    private static long reflectLong(Object target, String... names) {
+        if (target == null) return 0L;
+        for (String name : names) {
+            Object value = reflectValue(target, name);
+            long handle = valueToHandle(value);
+            if (handle != Long.MIN_VALUE) return handle;
+        }
+        return Long.MIN_VALUE;
+    }
+
+    private static long reflectNestedLong(Object target, String... names) {
+        if (target == null) return 0L;
+        for (String name : names) {
+            Object value = reflectValue(target, name);
+            long direct = valueToHandle(value);
+            if (direct != Long.MIN_VALUE) return direct;
+            if (value != null && value.getClass().isArray() && Array.getLength(value) > 0) {
+                long nested = reflectLong(Array.get(value, 0), "getId", "id", "handle", "image", "view");
+                if (nested != Long.MIN_VALUE) return nested;
+            } else if (value != null) {
+                long nested = reflectLong(value, "getId", "id", "handle", "image", "view");
+                if (nested != Long.MIN_VALUE) return nested;
+            }
+        }
+        return Long.MIN_VALUE;
+    }
+
+    private static long valueToHandle(Object value) {
+        if (value instanceof Number number) return number.longValue();
+        if (value == null || value instanceof String || value instanceof Boolean) return Long.MIN_VALUE;
+        Object id = reflectValue(value, "getId");
+        if (id instanceof Number number) return number.longValue();
+        Object handle = reflectValue(value, "handle");
+        if (handle instanceof Number number) return number.longValue();
+        return Long.MIN_VALUE;
+    }
+
+    private static Object reflectValue(Object target, String name) {
+        if (target == null || name == null || name.isBlank()) return null;
+        Class<?> type = target instanceof Class<?> clazz ? clazz : target.getClass();
+        Object receiver = target instanceof Class<?> ? null : target;
+        try {
+            Method method = type.getMethod(name);
+            method.setAccessible(true);
+            return method.invoke(receiver);
+        } catch (Throwable ignored) {
+        }
+        try {
+            Method method = type.getDeclaredMethod(name);
+            method.setAccessible(true);
+            return method.invoke(receiver);
+        } catch (Throwable ignored) {
+        }
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            try {
+                Field field = c.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(receiver);
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
     }
 
     private static String vulkanCullModeName(int cullMode) {
