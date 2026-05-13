@@ -2357,6 +2357,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", controlledSmokeSelectionStrategy=" + controlledSmoke.selectionStrategy()
                 + ", controlledSmokeCandidateCount=" + controlledSmoke.candidateCount()
                 + ", controlledSmokeSelectedDistanceToBase=" + formatDouble(controlledSmoke.distanceToBase())
+                + ", visibilityCandidateCount=" + controlledSmoke.visibilityCandidateCount()
+                + ", visibilityCandidateTestedCount=" + controlledSmoke.visibilityCandidateTestedCount()
+                + ", selectedVisibilityCandidateSectionId=" + controlledSmoke.selectedVisibilityCandidateSectionId()
+                + ", selectedVisibilityCandidateQuadIndex=" + controlledSmoke.selectedVisibilityCandidateQuadIndex()
+                + ", selectedVisibilityCandidateClipLooksVisible=" + controlledSmoke.selectedVisibilityCandidateClipLooksVisible()
+                + ", selectedVisibilityCandidateRejectReason=" + controlledSmoke.selectedVisibilityCandidateRejectReason()
                 + ", voxyImportedSectionCount=unavailable"
                 + ", geometrySectionCount=" + Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount())
                 + ", usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
@@ -2434,7 +2440,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 this.geometryDiagnosticReadbackScheduled, this.geometryDiagnosticReadbackCompleted && this.geometryDiagnosticCompletedQuadIndex == quadIndex, rejectReason);
     }
 
-    private QuadSample sampleQuad(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
+    private QuadSample sampleQuadFromJavaDiagnostics(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
         if (quadIndex < 0L) return QuadSample.unavailable();
         long byteOffset = quadIndex * 8L;
         if (byteOffset < 0L || byteOffset + 8L > geometryData.getUsedGeometryBytes() || byteOffset + 8L > geometryData.getGeometryBuffer().getBufferSize()) {
@@ -2442,8 +2448,23 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         long ptr = geometryData.getGeometryBuffer().getDataPtr();
         if (ptr != 0L) {
-            long raw = MemoryUtil.memGetLong(ptr + byteOffset);
-            return QuadSample.of(raw);
+            return QuadSample.of(MemoryUtil.memGetLong(ptr + byteOffset));
+        }
+        if (geometryData.hasMirroredGeometryQuad(quadIndex)) {
+            return QuadSample.of(geometryData.getMirroredGeometryQuad(quadIndex));
+        }
+        return QuadSample.unavailable();
+    }
+
+    private QuadSample sampleQuad(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
+        if (quadIndex < 0L) return QuadSample.unavailable();
+        long byteOffset = quadIndex * 8L;
+        if (byteOffset < 0L || byteOffset + 8L > geometryData.getUsedGeometryBytes() || byteOffset + 8L > geometryData.getGeometryBuffer().getBufferSize()) {
+            return QuadSample.unavailable();
+        }
+        QuadSample javaDiagnosticSample = sampleQuadFromJavaDiagnostics(geometryData, quadIndex);
+        if (javaDiagnosticSample.available()) {
+            return javaDiagnosticSample;
         }
         if (this.geometryDiagnosticReadbackCompleted && this.geometryDiagnosticCompletedQuadIndex == quadIndex && this.geometryDiagnosticCompletedByteOffset == byteOffset) {
             return QuadSample.of(this.geometryDiagnosticCompletedRaw);
@@ -3742,6 +3763,7 @@ public final class VulkanBerylSectionDrawPipeline {
         int selectedQuadStart = 0;
         long selectedQuadCount = 0L;
         double selectedDistance = Double.POSITIVE_INFINITY;
+        VisibilityCandidateSelection visibilitySelection = VisibilityCandidateSelection.notRun();
         for (int sectionId = 0; sectionId < sectionCount; sectionId++) {
             if (!geometryData.hasNonZeroSectionMetadata(sectionId)) {
                 continue;
@@ -3778,14 +3800,77 @@ public final class VulkanBerylSectionDrawPipeline {
             }
         }
         if (selectedSectionId >= 0) {
+            if (REAL_LOD_VISIBILITY_DIAGNOSTIC) {
+                visibilitySelection = findClipVisibleCandidate(viewport, geometryData, sectionCount, usedGeometryBytes);
+                if (visibilitySelection.found()) {
+                    return ControlledRenderListSmoke.safe(visibilitySelection.sectionId(), visibilitySelection.sectionQuadStart(), visibilitySelection.sectionQuadCount(),
+                            "clip_visible_non_empty_section", candidateCount, visibilitySelection.distanceToBase(), visibilitySelection);
+                }
+            }
             return ControlledRenderListSmoke.safe(selectedSectionId, selectedQuadStart, selectedQuadCount,
                     candidateCount == 1 && selectedSectionId == 0 ? "first_section" : "nearest_non_empty_section",
-                    candidateCount, selectedDistance);
+                    candidateCount, selectedDistance, visibilitySelection);
         }
         if (!sawOpaqueQuads) {
             return ControlledRenderListSmoke.failed("opaque_quad_count_zero");
         }
         return ControlledRenderListSmoke.failed(firstOutOfBounds == null ? "quad_bounds_invalid" : firstOutOfBounds, candidateCount, selectedDistance);
+    }
+
+    private VisibilityCandidateSelection findClipVisibleCandidate(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, int sectionCount, long usedGeometryBytes) {
+        int candidateCount = 0;
+        int testedCount = 0;
+        int selectedSectionId = -1;
+        long selectedQuadIndex = -1L;
+        int selectedSectionQuadStart = 0;
+        long selectedSectionQuadCount = 0L;
+        double selectedDistance = Double.POSITIVE_INFINITY;
+        boolean selectedClipLooksVisible = false;
+        String rejectReason = "no_clip_visible_candidate";
+        for (int sectionId = 0; sectionId < sectionCount; sectionId++) {
+            if (!geometryData.hasNonZeroSectionMetadata(sectionId)) continue;
+            int quadStart = geometryData.getSectionMetadataInt(sectionId, 3);
+            long translucentQuadCount = extractTranslucentQuadCount(geometryData, sectionId);
+            long opaqueQuadCount = extractOpaqueQuadCount(geometryData, sectionId);
+            if (opaqueQuadCount <= 0L) continue;
+            long opaqueQuadStart = Integer.toUnsignedLong(quadStart) + translucentQuadCount;
+            long requiredBytes = Math.addExact(Math.multiplyExact(opaqueQuadStart, 8L), Math.multiplyExact(opaqueQuadCount, 8L));
+            if (requiredBytes > usedGeometryBytes || requiredBytes > geometryData.getGeometryCapacityBytes()) {
+                if ("no_clip_visible_candidate".equals(rejectReason)) rejectReason = "quad_bounds_invalid";
+                continue;
+            }
+            candidateCount++;
+            double distance = distanceSectionToBase(geometryData, sectionId, viewport);
+            for (long quadOffset = 0L; quadOffset < opaqueQuadCount; quadOffset++) {
+                long quadIndex = opaqueQuadStart + quadOffset;
+                QuadSample quad = sampleQuadFromJavaDiagnostics(geometryData, quadIndex);
+                if (!quad.available()) {
+                    if ("no_clip_visible_candidate".equals(rejectReason)) rejectReason = "geometry_quad_unavailable_to_java_diagnostics";
+                    continue;
+                }
+                testedCount++;
+                if (quad.empty()) {
+                    if ("no_clip_visible_candidate".equals(rejectReason)) rejectReason = "geometry_quad_decode_empty_quad";
+                    continue;
+                }
+                ClipDiagnostics clip = clipDiagnostics(viewport, geometryData.getSectionMetadataInt(sectionId, 0), geometryData.getSectionMetadataInt(sectionId, 1), quad);
+                if (!clip.looksVisible()) {
+                    if (clip.behindCamera()) rejectReason = "clip_depth_cull_behind_camera";
+                    else if ("no_clip_visible_candidate".equals(rejectReason) || "geometry_quad_unavailable_to_java_diagnostics".equals(rejectReason) || "geometry_quad_decode_empty_quad".equals(rejectReason)) rejectReason = "clip_depth_cull_offscreen_clip";
+                    continue;
+                }
+                if (selectedSectionId < 0 || distance < selectedDistance) {
+                    selectedSectionId = sectionId;
+                    selectedQuadIndex = quadIndex;
+                    selectedSectionQuadStart = (int) opaqueQuadStart;
+                    selectedSectionQuadCount = opaqueQuadCount;
+                    selectedDistance = distance;
+                    selectedClipLooksVisible = true;
+                    rejectReason = "none";
+                }
+            }
+        }
+        return new VisibilityCandidateSelection(candidateCount, testedCount, selectedSectionId, selectedQuadIndex, selectedSectionQuadStart, selectedSectionQuadCount, selectedClipLooksVisible, rejectReason, selectedDistance);
     }
 
     private void logControlledSmokeDiagnosticIfChanged(VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke smoke) {
@@ -3798,7 +3883,13 @@ public final class VulkanBerylSectionDrawPipeline {
                 + " blocker=" + smoke.reason()
                 + " controlledSmokeSelectionStrategy=" + smoke.selectionStrategy()
                 + " controlledSmokeCandidateCount=" + smoke.candidateCount()
-                + " controlledSmokeSelectedDistanceToBase=" + formatDouble(smoke.distanceToBase());
+                + " controlledSmokeSelectedDistanceToBase=" + formatDouble(smoke.distanceToBase())
+                + " visibilityCandidateCount=" + smoke.visibilityCandidateCount()
+                + " visibilityCandidateTestedCount=" + smoke.visibilityCandidateTestedCount()
+                + " selectedVisibilityCandidateSectionId=" + smoke.selectedVisibilityCandidateSectionId()
+                + " selectedVisibilityCandidateQuadIndex=" + smoke.selectedVisibilityCandidateQuadIndex()
+                + " selectedVisibilityCandidateClipLooksVisible=" + smoke.selectedVisibilityCandidateClipLooksVisible()
+                + " selectedVisibilityCandidateRejectReason=" + smoke.selectedVisibilityCandidateRejectReason();
         if (diagnostic.equals(this.lastControlledSmokeDiagnostic)) {
             return;
         }
@@ -3810,7 +3901,13 @@ public final class VulkanBerylSectionDrawPipeline {
                     + " quadCount=" + smoke.quadCount()
                     + " controlledSmokeSelectionStrategy=" + smoke.selectionStrategy()
                     + " controlledSmokeCandidateCount=" + smoke.candidateCount()
-                    + " controlledSmokeSelectedDistanceToBase=" + formatDouble(smoke.distanceToBase()));
+                    + " controlledSmokeSelectedDistanceToBase=" + formatDouble(smoke.distanceToBase())
+                    + " visibilityCandidateCount=" + smoke.visibilityCandidateCount()
+                    + " visibilityCandidateTestedCount=" + smoke.visibilityCandidateTestedCount()
+                    + " selectedVisibilityCandidateSectionId=" + smoke.selectedVisibilityCandidateSectionId()
+                    + " selectedVisibilityCandidateQuadIndex=" + smoke.selectedVisibilityCandidateQuadIndex()
+                    + " selectedVisibilityCandidateClipLooksVisible=" + smoke.selectedVisibilityCandidateClipLooksVisible()
+                    + " selectedVisibilityCandidateRejectReason=" + smoke.selectedVisibilityCandidateRejectReason());
         } else {
             VulkanBerylDebugLog.always("Controlled render-list smoke blocked: " + diagnostic);
         }
@@ -3868,11 +3965,22 @@ public final class VulkanBerylSectionDrawPipeline {
         return total;
     }
 
-    private record ControlledRenderListSmoke(boolean enabled, boolean safe, int sectionId, int quadStart, long quadCount, String reason, String selectionStrategy, int candidateCount, double distanceToBase) {
-        static ControlledRenderListSmoke disabled() { return new ControlledRenderListSmoke(false, false, -1, 0, 0L, "disabled", "fallback", 0, Double.NaN); }
+    private record VisibilityCandidateSelection(int candidateCount, int testedCount, int sectionId, long quadIndex, int sectionQuadStart, long sectionQuadCount, boolean clipLooksVisible, String rejectReason, double distanceToBase) {
+        static VisibilityCandidateSelection notRun() { return new VisibilityCandidateSelection(0, 0, -1, -1L, 0, 0L, false, REAL_LOD_VISIBILITY_DIAGNOSTIC ? "not_found" : "not_run", Double.NaN); }
+        boolean found() { return this.sectionId >= 0 && this.quadIndex >= 0L && this.clipLooksVisible; }
+    }
+
+    private record ControlledRenderListSmoke(boolean enabled, boolean safe, int sectionId, int quadStart, long quadCount, String reason, String selectionStrategy, int candidateCount, double distanceToBase, VisibilityCandidateSelection visibilitySelection) {
+        static ControlledRenderListSmoke disabled() { return new ControlledRenderListSmoke(false, false, -1, 0, 0L, "disabled", "fallback", 0, Double.NaN, VisibilityCandidateSelection.notRun()); }
         static ControlledRenderListSmoke failed(String reason) { return failed(reason, 0, Double.NaN); }
-        static ControlledRenderListSmoke failed(String reason, int candidateCount, double distanceToBase) { return new ControlledRenderListSmoke(true, false, -1, 0, 0L, reason, "fallback", candidateCount, distanceToBase); }
-        static ControlledRenderListSmoke safe(int sectionId, int quadStart, long quadCount, String selectionStrategy, int candidateCount, double distanceToBase) { return new ControlledRenderListSmoke(true, true, sectionId, quadStart, quadCount, "controlled_render_list_ready", selectionStrategy, candidateCount, distanceToBase); }
+        static ControlledRenderListSmoke failed(String reason, int candidateCount, double distanceToBase) { return new ControlledRenderListSmoke(true, false, -1, 0, 0L, reason, "fallback", candidateCount, distanceToBase, VisibilityCandidateSelection.notRun()); }
+        static ControlledRenderListSmoke safe(int sectionId, int quadStart, long quadCount, String selectionStrategy, int candidateCount, double distanceToBase, VisibilityCandidateSelection visibilitySelection) { return new ControlledRenderListSmoke(true, true, sectionId, quadStart, quadCount, "controlled_render_list_ready", selectionStrategy, candidateCount, distanceToBase, visibilitySelection); }
+        int visibilityCandidateCount() { return this.visibilitySelection.candidateCount(); }
+        int visibilityCandidateTestedCount() { return this.visibilitySelection.testedCount(); }
+        int selectedVisibilityCandidateSectionId() { return this.visibilitySelection.sectionId(); }
+        long selectedVisibilityCandidateQuadIndex() { return this.visibilitySelection.quadIndex(); }
+        boolean selectedVisibilityCandidateClipLooksVisible() { return this.visibilitySelection.clipLooksVisible(); }
+        String selectedVisibilityCandidateRejectReason() { return this.visibilitySelection.rejectReason(); }
     }
 
     public void free() {

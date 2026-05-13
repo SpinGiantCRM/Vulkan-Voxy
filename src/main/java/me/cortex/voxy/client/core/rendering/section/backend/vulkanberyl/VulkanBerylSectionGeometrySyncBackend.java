@@ -89,7 +89,9 @@ public final class VulkanBerylSectionGeometrySyncBackend implements SectionGeome
                 throw new IllegalStateException("Geometry upload destination range exceeds geometry capacity: end=" + destinationEndBytes + ", capacity=" + geometryCapacityBytes);
             }
 
-            uploader.upload(geometryBuffer, destinationOffsetBytes, scratchDataAddress + sourceOffsetBytes, copySizeBytes);
+            long sourceAddress = scratchDataAddress + sourceOffsetBytes;
+            uploader.upload(geometryBuffer, destinationOffsetBytes, sourceAddress, copySizeBytes);
+            vulkanGeometryData.mirrorGeometryUpload(destinationOffsetBytes, sourceAddress, copySizeBytes);
         });
         uploader.flush();
     }
