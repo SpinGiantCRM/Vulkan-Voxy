@@ -44,6 +44,20 @@ vec2 taaShift();
 void main() {
     taaOffset = taaShift();
 
+#ifdef VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE
+    if (uint(gl_InstanceIndex) == 0x6D515A7Au) {
+        uint probeVertex = uint(gl_VertexIndex) % 3u;
+        vec2 probePos = probeVertex == 0u
+                ? vec2(-0.95, -0.95)
+                : (probeVertex == 1u ? vec2(0.95, -0.95) : vec2(0.0, 0.95));
+        gl_Position = vec4(probePos, 0.0, 1.0);
+        uv = probePos * 0.5 + vec2(0.5);
+        interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
+        debugIds = uvec2(0x6D515A7Au, probeVertex);
+        return;
+    }
+#endif
+
 #ifdef VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE
     // Isolated graphics-pipeline smoke path: do not read section geometry, metadata,
     // render-list lookup entries, camera MVP, or depth-derived world positions.
