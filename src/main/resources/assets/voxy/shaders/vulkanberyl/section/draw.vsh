@@ -70,18 +70,20 @@ void main() {
     return;
 #endif
 
-    // For vkCmdDrawIndirect, Vulkan exposes firstInstance through BaseInstance and
-    // firstVertex through BaseVertex.  Use those draw-parameter built-ins to make
-    // SSBO indexing explicit instead of depending on whether gl_VertexIndex is
-    // already biased by firstVertex in this Beryl/Vulkan path.
-    uint drawIndex = uint(gl_BaseInstance);
+    // Beryl/VulkanMod compiles graphics roots as GLSL 450 through shaderc.
+    // gl_BaseInstance/gl_BaseVertex are not available in that runtime path, so
+    // recover the indirect draw parameters from built-ins that are available
+    // there.  In Vulkan, gl_InstanceIndex includes firstInstance and
+    // gl_VertexIndex includes firstVertex for non-indexed draws.
+    uint drawIndex = uint(gl_InstanceIndex);
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
 
+    uint opaqueQuadStart = drawExtractOpaqueQuadStart(meta);
+    uint opaqueBaseVertex = opaqueQuadStart << 2u;
     uint vertexIndex = uint(gl_VertexIndex);
-    uint baseVertex = uint(gl_BaseVertex);
-    uint localVertexIndex = vertexIndex >= baseVertex ? vertexIndex - baseVertex : vertexIndex;
-    uint quadIndex = drawExtractOpaqueQuadStart(meta) + (localVertexIndex >> 2u);
+    uint localVertexIndex = vertexIndex - opaqueBaseVertex;
+    uint quadIndex = opaqueQuadStart + (localVertexIndex >> 2u);
     QuadData quad;
     setupQuad(quad, quadData[quadIndex], extractRawPos(meta));
 
