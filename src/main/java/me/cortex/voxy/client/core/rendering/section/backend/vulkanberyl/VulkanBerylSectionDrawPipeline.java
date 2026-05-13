@@ -308,7 +308,7 @@ public final class VulkanBerylSectionDrawPipeline {
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
         boolean debugFragmentShader = useDebugFragmentShader();
-        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false, shaderIndexingMode=baseInstance_drawIndex_metadataOpaqueBaseQuad_plus_localVertexFromBaseVertex, shaderDrawIndexBuiltin=gl_BaseInstance, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=gl_BaseVertex");
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false, shaderIndexingMode=instanceIndex_drawIndex_metadataOpaqueBaseQuad_plus_vertexIndexMinusMetadataOpaqueBaseVertex, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=metadata_opaqueQuadStart_times_4, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
         try {
             builder.setUniforms(drawDescriptors, List.of());
         } catch (Exception e) {
@@ -1887,7 +1887,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", smokeDrawCommandMismatch=" + commandValidation.mismatch()
                 + ", diagnosticWaitReason=" + commandValidation.waitReason()
                 + ", smokeDrawInvisibleReason=" + invisibleReason
-                + ", drawShaderIndexing=drawIndex_gl_InstanceIndex_firstInstance_selects_indirectLookup_firstVertex_selects_quadData_gl_VertexIndex"
+                + ", drawShaderIndexing=drawIndex_gl_InstanceIndex_firstInstance_selects_indirectLookup_quadData_metadataOpaqueBase_plus_gl_VertexIndex_minus_metadataOpaqueBaseVertex"
                 + ", drawShaderVertexIndexSemantics=Vulkan_VertexIndex_includes_firstVertex_for_non_indexed_indirect_draws"
                 + ", screenspaceSmokeEnabled=" + screenspaceSmokeShaderEnabled()
                 + ", cmdgenSelectedShader=" + activeCmdgenShaderName()
@@ -2273,7 +2273,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", geometryDiagnosticReadbackScheduled=" + readbackScheduled
                     + ", geometryDiagnosticReadbackCompleted=" + readbackCompleted
                     + ", geometryDiagnosticRejectReason=" + rejectReason
-                    + ", drawShaderQuadIndexFormula=uint(gl_VertexIndex)>>2";
+                    + ", drawShaderQuadIndexFormula=opaqueQuadStart+((uint(gl_VertexIndex)-(opaqueQuadStart*4u))>>2)";
         }
     }
 
