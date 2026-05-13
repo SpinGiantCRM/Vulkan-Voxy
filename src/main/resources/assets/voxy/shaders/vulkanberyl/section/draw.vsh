@@ -96,6 +96,31 @@ void main() {
     uint opaqueQuadStart = drawExtractOpaqueQuadStart(meta);
     uint opaqueBaseVertex = opaqueQuadStart << 2u;
     uint vertexIndex = uint(gl_VertexIndex);
+
+#ifdef VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE
+    // Normal real-LOD indirect vertex-path probe: keep the actual
+    // gl_InstanceIndex -> render-list -> section metadata path and the actual
+    // gl_VertexIndex path, but remove quad decode/world transform from the
+    // equation.  If this fixed clip-space quad/triangle is visible, the real
+    // indirect vertex shader invocation is executing and the remaining bug is
+    // in geometry indexing/transform.  The left position indicates Vulkan-style
+    // gl_VertexIndex includes firstVertex; the right position indicates a
+    // local/zero-based value.
+    bool vertexIndexIncludesFirstVertex = vertexIndex >= opaqueBaseVertex;
+    uint localVertexIndex = vertexIndexIncludesFirstVertex ? (vertexIndex - opaqueBaseVertex) : vertexIndex;
+    uint cornerId = localVertexIndex & 3u;
+    vec2 probeCenter = vertexIndexIncludesFirstVertex ? vec2(-0.35, 0.0) : vec2(0.35, 0.0);
+    vec2 probeCorner = cornerId == 0u
+            ? vec2(-0.22, -0.22)
+            : (cornerId == 1u ? vec2(0.22, -0.22) : (cornerId == 2u ? vec2(-0.22, 0.22) : vec2(0.22, 0.22)));
+    vec2 probePos = probeCenter + probeCorner;
+    gl_Position = vec4(probePos, 0.0, 1.0);
+    uv = probeCorner * 0.5 + vec2(0.5);
+    interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
+    debugIds = uvec2(drawIndex, (vertexIndexIncludesFirstVertex ? 0xB4530001u : 0xB4530000u) | cornerId);
+    return;
+#endif
+
     uint localVertexIndex = vertexIndex - opaqueBaseVertex;
     uint quadIndex = opaqueQuadStart + (localVertexIndex >> 2u);
     QuadData quad;

@@ -263,6 +263,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT");
     private static final boolean DRAW_WORLDSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT");
     private static final boolean REAL_LOD_VISIBILITY_DIAGNOSTIC = environmentFlag("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC");
+    private static final boolean REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE = environmentFlag("VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE");
     private static final boolean SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE = environmentFlag("VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE");
     private static final boolean DISABLE_CONTROLLED_SMOKE_READBACK_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_READBACK_COPY", "false"));
     private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", "false"));
@@ -300,7 +301,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private static boolean screenspaceSmokeShaderEnabled() {
-        return DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT || SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE;
+        return DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT || (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE);
     }
 
     private static boolean screenspaceSmokeDirectDrawEnabled() {
@@ -309,6 +310,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private static String screenspaceSmokeEnvName() {
         if (DRAW_SCREENSPACE_SMOKE_INDIRECT) return "VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT";
+        if (REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return "VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE";
         if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE) return "VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE";
         if (DRAW_WORLDSPACE_SMOKE_INDIRECT) return "VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT";
         return "VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE";
@@ -490,6 +492,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private static void applyDrawVisibilityDiagnosticDefines(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         applyDrawScreenspaceSmokeDefine(preprocessedShaders);
+        applyRealLodVertexPathClipspaceProbeDefine(preprocessedShaders);
         applyRealLodVisibilityDiagnosticFragmentDefine(preprocessedShaders);
     }
 
@@ -512,21 +515,43 @@ public final class VulkanBerylSectionDrawPipeline {
             if (DRAW_WORLDSPACE_SMOKE_INDIRECT) {
                 defines.append("#define VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT 1\n");
             }
-            if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE) {
+            if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) {
                 defines.append("#define VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE 1\n");
             }
             String defineBlock = defines.toString();
             if (!defineBlock.isEmpty() && !source.contains(defineBlock)) {
                 Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + defineBlock + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
             }
-            VulkanBerylDebugLog.once("section-draw-screenspace-smoke-enabled", "section draw smoke diagnostic enabled: env=" + screenspaceSmokeEnvName() + ", samePassScreenspaceProbe=" + SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE + ", vertexShader=" + vertexShader.shaderPath());
+            VulkanBerylDebugLog.once("section-draw-screenspace-smoke-enabled", "section draw smoke diagnostic enabled: env=" + screenspaceSmokeEnvName() + ", samePassScreenspaceProbe=" + (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) + ", samePassSuppressedByRealLodVertexPathClipspaceProbe=" + (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) + ", vertexShader=" + vertexShader.shaderPath());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to enable section draw screenspace smoke diagnostic", e);
         }
     }
 
+    private static void applyRealLodVertexPathClipspaceProbeDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
+        if (!REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return;
+        VulkanBerylShaderImportPreprocessor.PreparedShader vertexShader = preprocessedShaders.shaders().stream()
+                .filter(shader -> DRAW_SHADER_NAME.equals(shader.shaderName()) && shader.tempShaderRelativePath().endsWith(".vsh"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing preprocessed section draw vertex shader for real LOD vertex path clip-space probe"));
+        try {
+            String source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
+            int firstLineEnd = source.indexOf('\n');
+            if (firstLineEnd < 0) {
+                throw new IllegalStateException("Preprocessed section draw vertex shader has no #version line: " + vertexShader.shaderPath());
+            }
+            String define = "#define VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE 1\n";
+            if (!source.contains(define)) {
+                Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+            }
+            VulkanBerylDebugLog.once("section-draw-real-lod-vertex-path-clipspace-probe-enabled", "section draw real LOD vertex path clip-space probe enabled: env=VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE, normalIndirectDrawPath=true, separateVkCmdDrawProbe=false, samePassScreenspaceProbeSuppressed=" + SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE + ", vertexShader=" + vertexShader.shaderPath());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to enable section draw real LOD vertex path clip-space probe", e);
+        }
+    }
+
     private static void applyRealLodVisibilityDiagnosticFragmentDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
-        if (!REAL_LOD_VISIBILITY_DIAGNOSTIC) return;
+        if (!REAL_LOD_VISIBILITY_DIAGNOSTIC && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return;
         VulkanBerylShaderImportPreprocessor.PreparedShader fragmentShader = preprocessedShaders.shaders().stream()
                 .filter(shader -> DRAW_DEBUG_FRAGMENT_SHADER_NAME.equals(shader.shaderName()) && shader.tempShaderRelativePath().endsWith(".fsh"))
                 .findFirst()
@@ -541,7 +566,7 @@ public final class VulkanBerylSectionDrawPipeline {
             if (!source.contains(define)) {
                 Files.writeString(fragmentShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
             }
-            VulkanBerylDebugLog.once("section-draw-real-lod-visibility-diagnostic-enabled", "section draw real LOD visibility diagnostic enabled: env=VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC, fragmentShader=" + fragmentShader.shaderPath() + ", forcedFragmentColour=magenta, depthCullOverride=true");
+            VulkanBerylDebugLog.once("section-draw-real-lod-visibility-diagnostic-enabled", "section draw real LOD visibility diagnostic enabled: env=" + (REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE ? "VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE" : "VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC") + ", fragmentShader=" + fragmentShader.shaderPath() + ", forcedFragmentColour=magenta, depthCullOverride=true");
         } catch (Exception e) {
             throw new IllegalStateException("Failed to enable section draw real LOD visibility diagnostic", e);
         }
@@ -1456,10 +1481,11 @@ public final class VulkanBerylSectionDrawPipeline {
             return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), -1L, 0, blockedSample.sampledCommandCount(), blockedSample.invalidSampledCommandCount(), blockedSample.sampledQuadCount(), this.debugSamplePending, this.controlledSmokeCommandDrawSubmitReason);
         }
         logSectionDrawRenderTargetPathDiagnostics(renderer, viewport, commandBuffer, "before_indirect_draw", indirectDrawCommandBuffer, effectiveIndirectDrawCount);
+        logRealLodVertexPathClipspaceProbeDiagnostic(controlledSmoke, effectiveIndirectDrawCount);
         VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         this.anyVkCmdDrawIndirectRecordedThisFrame = true;
         this.drawRecordedReasonThisFrame = DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : "normal_indirect_draw");
-        if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE) {
+        if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) {
             VK10.vkCmdDraw(commandBuffer, SAME_PASS_SCREENSPACE_PROBE_VERTEX_COUNT, SAME_PASS_SCREENSPACE_PROBE_INSTANCE_COUNT, SAME_PASS_SCREENSPACE_PROBE_FIRST_VERTEX, SAME_PASS_SCREENSPACE_PROBE_FIRST_INSTANCE);
             this.anyVkCmdDrawRecordedThisFrame = true;
             VulkanBerylDebugLog.rateLimited("section-draw-same-pass-screenspace-probe-recorded", "Section draw same-pass screenspace probe recorded: sectionDrawSamePassScreenspaceProbe=true"
@@ -1467,7 +1493,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", probeInstanceCount=" + SAME_PASS_SCREENSPACE_PROBE_INSTANCE_COUNT
                     + ", probeFirstInstance=0x" + Integer.toHexString(SAME_PASS_SCREENSPACE_PROBE_FIRST_INSTANCE)
                     + ", samePassSamePipelineSameDescriptors=true"
-                    + ", expectedColour=" + (REAL_LOD_VISIBILITY_DIAGNOSTIC ? "magenta" : "debug_hash_colour"), 60);
+                    + ", expectedColour=" + ((REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) ? "magenta" : "debug_hash_colour"), 60);
         }
         logScreenspaceSmokeSubmitDiagnostics(true, "submitted", controlledSmokeCommandValidation);
         logDrawSubmitHandoffDiagnostic(visibleCount, javaDrawCountForNoDrawCountCmdgen, cmdgenDispatchSubmitted, cmdgenDispatchGroupCount, indirectAllowed, true, effectiveIndirectDrawCount, "submitted", noDrawCountFullCmdgen);
@@ -1481,6 +1507,46 @@ public final class VulkanBerylSectionDrawPipeline {
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
         return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), submittedQuadCount, effectiveIndirectDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
     }
+
+    private void logRealLodVertexPathClipspaceProbeDiagnostic(ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
+        if (!REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return;
+        DrawCommandDebugSample sample = this.lastCompletedDebugSample;
+        boolean commandSampleAvailable = sample.sampledCommandCount() > 0;
+        long commandVertexCount = commandSampleAvailable ? Integer.toUnsignedLong(sample.firstVertexCount()) : -1L;
+        long commandFirstVertex = commandSampleAvailable ? Integer.toUnsignedLong(sample.firstFirstVertex()) : -1L;
+        long commandFirstInstance = commandSampleAvailable ? Integer.toUnsignedLong(sample.firstFirstInstance()) : -1L;
+        long expectedOpaqueBaseVertex = controlledSmoke.safe() ? Integer.toUnsignedLong(controlledSmoke.quadStart()) << 2 : -1L;
+        long expectedVertexCount = controlledSmoke.safe() ? controlledSmoke.quadCount() << 2 : -1L;
+        String vertexIndexSemanticsProbe = controlledSmoke.safe()
+                ? "visible_left_means_gl_VertexIndex_includes_firstVertex;visible_right_means_gl_VertexIndex_local_zero_based;no_magenta_means_real_lod_indirect_vertex_path_or_topology_or_builtin_semantics_still_not_producing_pixels"
+                : "controlled_render_list_not_safe";
+        String instanceIndexMapping = commandSampleAvailable && commandFirstInstance == 0L
+                ? "expected_render_list_entry0"
+                : (commandSampleAvailable ? "unexpected_firstInstance_" + commandFirstInstance : "command_sample_unavailable");
+        VulkanBerylDebugLog.rateLimited("section-draw-real-lod-vertex-path-clipspace-probe", "Section draw real LOD vertex path clip-space probe: enabled=true"
+                + ", normalIndirectDrawPath=true"
+                + ", separateVkCmdDrawProbe=false"
+                + ", samePassScreenspaceProbeRecorded=false"
+                + ", forcedClipspaceOutput=small_magenta_quad_or_triangle"
+                + ", expectedIfVisible=real_lod_vertex_shader_invocation_executed_remaining_bug_geometry_transform_or_indexing"
+                + ", expectedIfNotVisible=real_lod_indirect_vertex_path_primitive_topology_vertex_count_or_builtin_semantics_issue"
+                + ", glVertexIndexSemanticsVisualCue=" + vertexIndexSemanticsProbe
+                + ", glInstanceIndexMapping=" + instanceIndexMapping
+                + ", controlledSmokeSafe=" + controlledSmoke.safe()
+                + ", controlledSmokeSectionId=" + controlledSmoke.sectionId()
+                + ", controlledSmokeQuadStart=" + (controlledSmoke.safe() ? Integer.toUnsignedLong(controlledSmoke.quadStart()) : -1L)
+                + ", controlledSmokeQuadCount=" + controlledSmoke.quadCount()
+                + ", expectedOpaqueBaseVertex=" + expectedOpaqueBaseVertex
+                + ", expectedVertexCount=" + expectedVertexCount
+                + ", submittedDrawCount=" + effectiveIndirectDrawCount
+                + ", sampledCommandAvailable=" + commandSampleAvailable
+                + ", sampledCommand0.vertexCount=" + commandVertexCount
+                + ", sampledCommand0.firstVertex=" + commandFirstVertex
+                + ", sampledCommand0.firstInstance=" + commandFirstInstance
+                + ", sampledCommand0.firstVertexMatchesExpectedOpaqueBaseVertex=" + (commandSampleAvailable && expectedOpaqueBaseVertex >= 0L && commandFirstVertex == expectedOpaqueBaseVertex)
+                + ", sampledCommand0.firstInstanceExpectedRenderListEntry0=" + (commandSampleAvailable && commandFirstInstance == 0L), 60);
+    }
+
 
     private OpaqueDrawSubmission renderScreenspaceSmokeIndirectIsolated(Renderer renderer, VulkanBerylViewport viewport, VkCommandBuffer commandBuffer) {
         recordScreenspaceSmokeIndirectKnownCommand(viewport.frameId);
@@ -1515,7 +1581,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
 
     private static void applyRealLodVisibilityDiagnosticPipelineStateOverride() {
-        if (!REAL_LOD_VISIBILITY_DIAGNOSTIC) return;
+        if (!REAL_LOD_VISIBILITY_DIAGNOSTIC && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return;
         VRenderSystem.disableCull();
         VRenderSystem.disableDepthTest();
         VRenderSystem.depthMask(false);
@@ -1532,9 +1598,10 @@ public final class VulkanBerylSectionDrawPipeline {
         int depthCompareOp = PipelineState.DepthState.decodeDepthFun(depthState);
         VulkanBerylDebugLog.rateLimited("section-draw-graphics-pipeline-state", "Section draw graphics pipeline state: stage=" + stage
                 + ", realLodVisibilityDiagnostic=" + REAL_LOD_VISIBILITY_DIAGNOSTIC
+                + ", realLodVertexPathClipspaceProbe=" + REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE
                 + ", debugFragmentShaderUsed=" + useDebugFragmentShader()
                 + ", debugFragmentShaderResource=" + DRAW_DEBUG_FRAGMENT_SHADER_RESOURCE
-                + ", forcedFragmentColour=" + (REAL_LOD_VISIBILITY_DIAGNOSTIC ? "magenta" : "hash_from_draw_and_quad_id")
+                + ", forcedFragmentColour=" + ((REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) ? "magenta" : "hash_from_draw_and_quad_id")
                 + ", depthTestEnabled=" + PipelineState.DepthState.depthTest(depthState)
                 + ", depthWriteEnabled=" + PipelineState.DepthState.depthMask(depthState)
                 + ", depthCompareOp=" + vulkanCompareOpName(depthCompareOp) + "(" + depthCompareOp + ")"
