@@ -94,6 +94,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private Buffer cmdgenDrawCountScratchBuffer;
     private Buffer drawCommandDebugReadbackBuffer;
     private Buffer drawCountDebugReadbackBuffer;
+    private Buffer geometryQuadDebugReadbackBuffer;
     private Buffer cmdGenConfigBuffer;
     private Buffer cmdGenUnusedBinding2Buffer;
     private Buffer cmdGenBinding2ProbeBuffer;
@@ -117,6 +118,17 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean drawCountUsedScratchClearPathThisFrame;
     private int drawCommandDebugReadbackBufferUsageFlags;
     private int drawCountDebugReadbackBufferUsageFlags;
+    private int geometryQuadDebugReadbackBufferUsageFlags;
+    private boolean geometryDiagnosticReadbackScheduled;
+    private boolean geometryDiagnosticReadbackCompleted;
+    private long geometryDiagnosticPendingQuadIndex = -1L;
+    private long geometryDiagnosticPendingByteOffset = -1L;
+    private long geometryDiagnosticPendingFrameId = -1L;
+    private long geometryDiagnosticCompletedQuadIndex = -1L;
+    private long geometryDiagnosticCompletedByteOffset = -1L;
+    private long geometryDiagnosticCompletedFrameId = -1L;
+    private long geometryDiagnosticCompletedRaw;
+    private String geometryDiagnosticRejectReason = "not_scheduled";
     private int drawCommandCapacity;
     private int pendingDebugSampleCommandCount;
     private int pendingDebugSampleVisibleCount;
@@ -1209,7 +1221,10 @@ public final class VulkanBerylSectionDrawPipeline {
             logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), false, false, false);
             scheduledDebugReadback = new ScheduledDebugReadback(false, "log_only", 0L, 0L);
         } else {
-            scheduledDebugReadback = scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData.getGeometryBuffer().getBufferSize());
+            long geometryDiagnosticQuadIndex = currentCmdgenSnapshot.available() && currentCmdgenSnapshot.expectedFirstVertex() >= 0L
+                    ? currentCmdgenSnapshot.expectedFirstVertex() / 4L
+                    : -1L;
+            scheduledDebugReadback = scheduleDebugCommandReadback(commandBuffer, sampledCommandCount, visibleCount, geometryData, geometryDiagnosticQuadIndex);
         }
         if (scheduledDebugReadback.scheduled()) {
             recordCmdgenSampleSchedule(scheduledDebugReadback, viewport.frameId, currentCmdgenSnapshot);
@@ -1965,6 +1980,7 @@ public final class VulkanBerylSectionDrawPipeline {
         long renderListDiagnosticBufferId = renderList == null || renderList.getBuffer() == null ? 0L : renderList.getBuffer().getId();
         long metadataDiagnosticBufferId = geometryData.getMetadataBuffer() == null ? 0L : geometryData.getMetadataBuffer().getId();
         long sampledCommandBufferId = this.completedDebugSampleSourceBufferId;
+        GeometryQuadDiagnostics geometryQuadDiagnostics = geometryQuadDiagnostics(geometryData, sectionQuadStart);
         QuadSample quad0 = sampleQuad(geometryData, sectionQuadStart);
         QuadSample quad1 = sampleQuad(geometryData, sectionQuadStart + 1L);
         SceneDiagnostics scene = sceneDiagnostics(viewport);
@@ -2028,6 +2044,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", expectedVertexCount=" + expectedVertexCount
                 + ", commandMatchesRenderListEntry0=" + commandMatchesRenderListEntry0Diagnostic
                 + ", mismatchReason=" + mismatchReason
+                + geometryQuadDiagnostics.logFields()
                 + quadDiagnostic(0, quad0)
                 + quadDiagnostic(1, quad1)
                 + ", worldDrawSceneUniformMvpFinite=" + scene.finite()
@@ -2101,16 +2118,43 @@ public final class VulkanBerylSectionDrawPipeline {
         return nearest;
     }
 
-    private static QuadSample sampleQuad(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
+    private GeometryQuadDiagnostics geometryQuadDiagnostics(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
+        long byteOffset = quadIndex < 0L ? -1L : Math.multiplyExact(quadIndex, Long.BYTES);
+        long requiredBytes = byteOffset < 0L ? -1L : Math.addExact(byteOffset, Long.BYTES);
+        long bufferSizeBytes = geometryData.getGeometryBuffer().getBufferSize();
+        long usedBytes = geometryData.getUsedGeometryBytes();
+        boolean inUsedRange = byteOffset >= 0L && requiredBytes <= usedBytes && requiredBytes <= bufferSizeBytes;
+        String rejectReason;
+        if (quadIndex < 0L) {
+            rejectReason = "quad_index_negative";
+        } else if (!inUsedRange) {
+            rejectReason = "quad_out_of_used_range";
+        } else if (this.geometryDiagnosticReadbackCompleted && this.geometryDiagnosticCompletedQuadIndex == quadIndex) {
+            rejectReason = "none";
+        } else if (geometryData.getGeometryBuffer().getDataPtr() != 0L) {
+            rejectReason = "host_visible_geometry_buffer";
+        } else {
+            rejectReason = this.geometryDiagnosticRejectReason;
+        }
+        return new GeometryQuadDiagnostics(quadIndex, byteOffset, requiredBytes, bufferSizeBytes, usedBytes, inUsedRange,
+                this.geometryDiagnosticReadbackScheduled, this.geometryDiagnosticReadbackCompleted && this.geometryDiagnosticCompletedQuadIndex == quadIndex, rejectReason);
+    }
+
+    private QuadSample sampleQuad(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
         if (quadIndex < 0L) return QuadSample.unavailable();
         long byteOffset = quadIndex * 8L;
         if (byteOffset < 0L || byteOffset + 8L > geometryData.getUsedGeometryBytes() || byteOffset + 8L > geometryData.getGeometryBuffer().getBufferSize()) {
             return QuadSample.unavailable();
         }
         long ptr = geometryData.getGeometryBuffer().getDataPtr();
-        if (ptr == 0L) return QuadSample.unavailable();
-        long raw = MemoryUtil.memGetLong(ptr + byteOffset);
-        return QuadSample.of(raw);
+        if (ptr != 0L) {
+            long raw = MemoryUtil.memGetLong(ptr + byteOffset);
+            return QuadSample.of(raw);
+        }
+        if (this.geometryDiagnosticReadbackCompleted && this.geometryDiagnosticCompletedQuadIndex == quadIndex && this.geometryDiagnosticCompletedByteOffset == byteOffset) {
+            return QuadSample.of(this.geometryDiagnosticCompletedRaw);
+        }
+        return QuadSample.unavailable();
     }
 
     private static String quadDiagnostic(int index, QuadSample quad) {
@@ -2216,6 +2260,21 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private record ClipDiagnostics(String clip0, String clip1, String clip2, String clip3, boolean looksVisible, boolean behindCamera) {
         static ClipDiagnostics unavailable() { return new ClipDiagnostics("unavailable", "unavailable", "unavailable", "unavailable", false, false); }
+    }
+
+    private record GeometryQuadDiagnostics(long quadIndex, long byteOffset, long requiredBytes, long bufferSizeBytes, long usedBytes, boolean inUsedRange, boolean readbackScheduled, boolean readbackCompleted, String rejectReason) {
+        String logFields() {
+            return ", geometryDiagnosticQuadIndex=" + quadIndex
+                    + ", geometryDiagnosticByteOffset=" + byteOffset
+                    + ", geometryDiagnosticRequiredBytes=" + requiredBytes
+                    + ", geometryDiagnosticBufferSizeBytes=" + bufferSizeBytes
+                    + ", geometryDiagnosticUsedBytes=" + usedBytes
+                    + ", geometryDiagnosticInUsedRange=" + inUsedRange
+                    + ", geometryDiagnosticReadbackScheduled=" + readbackScheduled
+                    + ", geometryDiagnosticReadbackCompleted=" + readbackCompleted
+                    + ", geometryDiagnosticRejectReason=" + rejectReason
+                    + ", drawShaderQuadIndexFormula=uint(gl_VertexIndex)>>2";
+        }
     }
 
     private record QuadSample(boolean available, long raw, boolean empty, int face, int posX, int posY, int posZ, int sizeX, int sizeY, int stateId) {
@@ -3653,6 +3712,10 @@ public final class VulkanBerylSectionDrawPipeline {
             this.drawCountDebugReadbackBuffer.scheduleFree();
             this.drawCountDebugReadbackBuffer = null;
         }
+        if (this.geometryQuadDebugReadbackBuffer != null) {
+            this.geometryQuadDebugReadbackBuffer.scheduleFree();
+            this.geometryQuadDebugReadbackBuffer = null;
+        }
         this.resourcesBound = false;
     }
     private static long readTempFileSize(Path path) {
@@ -3709,6 +3772,13 @@ public final class VulkanBerylSectionDrawPipeline {
         this.drawCountDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         this.drawCountDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_count_readback", this.drawCountDebugReadbackBufferUsageFlags, MemoryTypes.HOST_MEM);
         this.drawCountDebugReadbackBuffer.createBuffer(Integer.BYTES);
+        if (this.geometryQuadDebugReadbackBuffer != null) this.geometryQuadDebugReadbackBuffer.scheduleFree();
+        this.geometryQuadDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        this.geometryQuadDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_geometry_quad_readback", this.geometryQuadDebugReadbackBufferUsageFlags, MemoryTypes.HOST_MEM);
+        this.geometryQuadDebugReadbackBuffer.createBuffer(Long.BYTES);
+        this.geometryDiagnosticReadbackScheduled = false;
+        this.geometryDiagnosticReadbackCompleted = false;
+        this.geometryDiagnosticRejectReason = "buffer_reallocated";
         this.drawCommandCapacity = maxEntryCount;
     }
 
@@ -4294,14 +4364,16 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", debugSamplePendingChanged=" + debugSamplePendingChanged);
     }
 
-    private ScheduledDebugReadback scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int requestedSampledCommandCount, int visibleCount, long geometryBufferBytes) {
+    private ScheduledDebugReadback scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int requestedSampledCommandCount, int visibleCount, VulkanBerylSectionGeometryData geometryData, long geometryDiagnosticQuadIndex) {
+        this.geometryDiagnosticReadbackScheduled = false;
+        this.geometryDiagnosticRejectReason = "not_scheduled";
         boolean debugSamplePendingBefore = this.debugSamplePending;
         if (CMDGEN_DEBUG_READBACK_SCHEDULE_ENTER_ONLY) {
             long intendedCommandCopyBytes = Math.max(0L, (long) requestedSampledCommandCount * DRAW_COMMAND_STRIDE_BYTES);
             VulkanBerylDebugLog.once("cmdgen-debug-readback-schedule-enter-only", "cmdgen debug readback schedule enter only: mode=" + debugReadbackCopyModeName()
                     + ", requestedSampleCount=" + requestedSampledCommandCount
                     + ", visibleCount=" + visibleCount
-                    + ", geometryBufferBytes=" + geometryBufferBytes
+                    + ", geometryBufferBytes=" + geometryData.getGeometryBuffer().getBufferSize()
                     + ", intendedDrawCommandCopyBytes=" + intendedCommandCopyBytes
                     + ", intendedDrawCountCopyBytes=" + Integer.BYTES);
             logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, false, this.debugSamplePending != debugSamplePendingBefore);
@@ -4348,6 +4420,9 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandDebugReadbackBuffer.getDataPtr() == 0L || this.drawCountDebugReadbackBuffer.getDataPtr() == 0L) {
             throw new IllegalStateException("cmdgen debug readback destination buffers must be host-readable/mapped");
         }
+        if (this.geometryQuadDebugReadbackBuffer == null || this.geometryQuadDebugReadbackBuffer.getDataPtr() == 0L) {
+            this.geometryDiagnosticRejectReason = "geometry_readback_buffer_unavailable";
+        }
 
         long drawCommandSourceBytes = Math.min(readbackDrawCommandSourceBuffer.getBufferSize(), readbackDrawCommandSourceBuffer == this.controlledSmokeKnownCommandBuffer ? DRAW_COMMAND_STRIDE_BYTES : (long) this.drawCommandCapacity * DRAW_COMMAND_STRIDE_BYTES);
         long drawCommandDestinationBytes = this.drawCommandDebugReadbackBuffer.getBufferSize();
@@ -4366,6 +4441,30 @@ public final class VulkanBerylSectionDrawPipeline {
             copyDrawCount = false;
         }
         long countCopyBytes = copyDrawCount ? Integer.BYTES : 0L;
+        long geometryDiagnosticByteOffset = geometryDiagnosticQuadIndex < 0L ? -1L : Math.multiplyExact(geometryDiagnosticQuadIndex, Long.BYTES);
+        long geometryDiagnosticRequiredBytes = geometryDiagnosticByteOffset < 0L ? -1L : Math.addExact(geometryDiagnosticByteOffset, Long.BYTES);
+        boolean copyGeometryQuad = this.geometryQuadDebugReadbackBuffer != null
+                && this.geometryQuadDebugReadbackBuffer.getDataPtr() != 0L
+                && geometryDiagnosticByteOffset >= 0L
+                && geometryDiagnosticRequiredBytes <= geometryData.getUsedGeometryBytes()
+                && geometryDiagnosticRequiredBytes <= geometryData.getGeometryBuffer().getBufferSize()
+                && (geometryData.getGeometryUsageFlags() & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0;
+        this.geometryDiagnosticRejectReason = copyGeometryQuad ? "scheduled"
+                : geometryDiagnosticQuadIndex < 0L ? "quad_index_negative"
+                : geometryDiagnosticRequiredBytes > geometryData.getUsedGeometryBytes() || geometryDiagnosticRequiredBytes > geometryData.getGeometryBuffer().getBufferSize() ? "quad_out_of_used_range"
+                : (geometryData.getGeometryUsageFlags() & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) == 0 ? "geometry_buffer_missing_transfer_src_usage"
+                : "geometry_readback_buffer_unavailable";
+        VulkanBerylDebugLog.once("geometry-quad-debug-readback-copy-mode", "geometry quad debug readback copy mode: quadIndex=" + geometryDiagnosticQuadIndex
+                + ", byteOffset=" + geometryDiagnosticByteOffset
+                + ", requiredBytes=" + geometryDiagnosticRequiredBytes
+                + ", usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
+                + ", geometryBufferSizeBytes=" + geometryData.getGeometryBuffer().getBufferSize()
+                + ", sourceBufferId=" + geometryData.getGeometryBuffer().getId()
+                + ", sourceUsage=" + bufferUsageString(geometryData.getGeometryUsageFlags())
+                + ", destinationBufferId=" + (this.geometryQuadDebugReadbackBuffer == null ? 0L : this.geometryQuadDebugReadbackBuffer.getId())
+                + ", destinationCapacityBytes=" + (this.geometryQuadDebugReadbackBuffer == null ? 0L : this.geometryQuadDebugReadbackBuffer.getBufferSize())
+                + ", copyEnabled=" + copyGeometryQuad
+                + ", rejectReason=" + this.geometryDiagnosticRejectReason);
         VulkanBerylDebugLog.once("cmdgen-debug-readback-copy-mode", "cmdgen debug readback copy mode: mode=" + debugReadbackCopyModeName()
                 + ", copyDrawCommands=" + copyDrawCommands
                 + ", copyDrawCount=" + copyDrawCount
@@ -4440,6 +4539,25 @@ public final class VulkanBerylSectionDrawPipeline {
                     this.controlledSmokeReadbackCopyRecordedThisFrame = true;
                 }
             }
+            if (copyGeometryQuad) {
+                VkMemoryBarrier.Buffer geometryUploadToTransferRead = VkMemoryBarrier.calloc(1, stack)
+                        .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                        .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                        .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT);
+                VK10.vkCmdPipelineBarrier(commandBuffer,
+                        VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        0, geometryUploadToTransferRead, null, null);
+                VkBufferCopy.Buffer geometryCopyRegion = VkBufferCopy.calloc(1, stack);
+                geometryCopyRegion.srcOffset(geometryDiagnosticByteOffset).dstOffset(0L).size(Long.BYTES);
+                VK10.vkCmdCopyBuffer(commandBuffer, geometryData.getGeometryBuffer().getId(), this.geometryQuadDebugReadbackBuffer.getId(), geometryCopyRegion);
+                this.geometryDiagnosticReadbackScheduled = true;
+                this.geometryDiagnosticReadbackCompleted = false;
+                this.geometryDiagnosticPendingQuadIndex = geometryDiagnosticQuadIndex;
+                this.geometryDiagnosticPendingByteOffset = geometryDiagnosticByteOffset;
+                this.geometryDiagnosticPendingFrameId = -1L;
+                this.geometryDiagnosticRejectReason = "pending";
+            }
 
             VkMemoryBarrier.Buffer transferToHost = VkMemoryBarrier.calloc(1, stack)
                     .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
@@ -4455,8 +4573,11 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         this.pendingDebugSampleCommandCount = copyDrawCommands ? sampledCommandCount : 0;
         this.pendingDebugSampleVisibleCount = visibleCount;
-        this.pendingDebugSampleGeometryBufferBytes = geometryBufferBytes;
+        this.pendingDebugSampleGeometryBufferBytes = geometryData.getGeometryBuffer().getBufferSize();
         this.debugSamplePending = true;
+        if (this.geometryDiagnosticReadbackScheduled) {
+            this.geometryDiagnosticPendingFrameId = -1L;
+        }
         logDebugReadbackIsolationDiagnostics(debugReadbackCopyModeName(), true, true, this.debugSamplePending != debugSamplePendingBefore);
         return new ScheduledDebugReadback(copyDrawCommands, copyDrawCommands ? "scheduled" : "command_copy_disabled", copyDrawCommands ? commandCopyBytes : 0L, countCopyBytes, false, false, "none", copyDrawCommands ? safeRendererFrameSlot() : -1, copyDrawCommands ? commandBuffer.address() : 0L, copyDrawCommands ? this.controlledSmokeCommandGeneration : -1L, copyDrawCommands ? readbackDrawCommandSourceBuffer.getId() : 0L);
     }
@@ -4500,6 +4621,9 @@ public final class VulkanBerylSectionDrawPipeline {
         this.pendingDebugSampleSnapshot = snapshot;
         this.pendingDebugSampleCompletionStrategy = "unknown";
         this.pendingDebugSampleGpuCompletionKnown = false;
+        if (this.geometryDiagnosticReadbackScheduled) {
+            this.geometryDiagnosticPendingFrameId = frameId;
+        }
     }
 
     private void consumePendingDebugCommandSampleIfReady(int currentFrameId) {
@@ -4526,6 +4650,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", cmdgenSampleGpuCompletionKnown=" + this.pendingDebugSampleGpuCompletionKnown, this.pendingDebugSampleFrameId + ":" + currentFrameId + ":" + currentRendererFrameSlot + ":" + this.pendingDebugSampleCompletionStrategy + ":" + this.pendingDebugSampleGpuCompletionKnown);
             if (!gpuCompletionKnown) return;
             this.lastCompletedDebugSample = readDebugCommandSample(this.pendingDebugSampleCommandCount, this.pendingDebugSampleVisibleCount, this.pendingDebugSampleGeometryBufferBytes);
+            consumePendingGeometryQuadReadback();
             this.completedDebugSampleSourceBufferId = this.pendingDebugSampleSourceBufferId;
             this.completedDebugSampleFrameId = this.pendingDebugSampleFrameId;
             this.completedDebugSampleSnapshot = this.pendingDebugSampleSnapshot;
@@ -4563,6 +4688,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", controlledSmokeCommandReadbackGpuCompletionKnown=" + this.controlledSmokeCommandReadbackGpuCompletionKnown, readbackFrameId + ":" + currentFrameId + ":" + currentRendererFrameSlot + ":" + this.controlledSmokeCommandReadbackCompletionStrategy + ":" + this.controlledSmokeCommandReadbackGpuCompletionKnown);
         if (!gpuCompletionKnown) return;
         this.lastCompletedDebugSample = readDebugCommandSample(this.pendingDebugSampleCommandCount, this.pendingDebugSampleVisibleCount, this.pendingDebugSampleGeometryBufferBytes);
+        consumePendingGeometryQuadReadback();
         this.completedDebugSampleSourceBufferId = this.pendingDebugSampleSourceBufferId;
         this.completedDebugSampleFrameId = this.pendingDebugSampleFrameId;
         this.completedDebugSampleSnapshot = this.pendingDebugSampleSnapshot;
@@ -4616,6 +4742,27 @@ public final class VulkanBerylSectionDrawPipeline {
         } catch (RuntimeException | Error ignored) {
             return 0L;
         }
+    }
+
+    private void consumePendingGeometryQuadReadback() {
+        if (!this.geometryDiagnosticReadbackScheduled || this.geometryDiagnosticReadbackCompleted) return;
+        long ptr = this.geometryQuadDebugReadbackBuffer == null ? 0L : this.geometryQuadDebugReadbackBuffer.getDataPtr();
+        if (ptr == 0L) {
+            this.geometryDiagnosticRejectReason = "geometry_readback_buffer_unavailable";
+            return;
+        }
+        this.geometryDiagnosticCompletedRaw = MemoryUtil.memGetLong(ptr);
+        this.geometryDiagnosticCompletedQuadIndex = this.geometryDiagnosticPendingQuadIndex;
+        this.geometryDiagnosticCompletedByteOffset = this.geometryDiagnosticPendingByteOffset;
+        this.geometryDiagnosticCompletedFrameId = this.geometryDiagnosticPendingFrameId;
+        this.geometryDiagnosticReadbackCompleted = true;
+        this.geometryDiagnosticRejectReason = "none";
+        VulkanBerylDebugLog.stateLimited("geometry-quad-debug-readback-observed", "geometry quad debug readback observed: geometryDiagnosticQuadIndex=" + this.geometryDiagnosticCompletedQuadIndex
+                + ", geometryDiagnosticByteOffset=" + this.geometryDiagnosticCompletedByteOffset
+                + ", geometryDiagnosticCompletedFrameId=" + this.geometryDiagnosticCompletedFrameId
+                + ", worldDrawQuad0Raw=" + Long.toUnsignedString(this.geometryDiagnosticCompletedRaw)
+                + ", worldDrawQuad0Empty=" + (this.geometryDiagnosticCompletedRaw == 0L),
+                this.geometryDiagnosticCompletedFrameId + ":" + this.geometryDiagnosticCompletedQuadIndex + ":" + this.geometryDiagnosticCompletedRaw);
     }
 
     private DrawCommandDebugSample readDebugCommandSample(int sampledCommandCount, int visibleCount, long geometryBufferBytes) {

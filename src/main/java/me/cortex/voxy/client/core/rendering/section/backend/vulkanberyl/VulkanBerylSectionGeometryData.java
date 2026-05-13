@@ -6,6 +6,7 @@ import net.vulkanmod.vulkan.memory.buffer.Buffer;
 
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 import static org.lwjgl.vulkan.VK10.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
 public final class VulkanBerylSectionGeometryData implements IGeometryData {
@@ -13,7 +14,7 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
     public static final long MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES = Integer.MAX_VALUE - 7L;
 
     private final int maxSectionCount;
-    private static final int GEOMETRY_BUFFER_USAGE_FLAGS = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    private static final int GEOMETRY_BUFFER_USAGE_FLAGS = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     private static final int METADATA_BUFFER_USAGE_FLAGS = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
     private final Buffer geometryBuffer;
@@ -96,6 +97,10 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
 
     public long getGeometryCapacityBytes() {
         return this.geometryBuffer.getBufferSize();
+    }
+
+    public int getGeometryUsageFlags() {
+        return GEOMETRY_BUFFER_USAGE_FLAGS;
     }
 
     public long getMetadataCapacityBytes() {
