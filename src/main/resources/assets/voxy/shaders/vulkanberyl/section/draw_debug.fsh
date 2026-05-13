@@ -13,6 +13,10 @@ uint mixHash(uint value) {
 }
 
 void main() {
+#ifdef VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC
+    outColour = vec4(1.0, 0.0, 1.0, 1.0);
+    return;
+#endif
     uint hash = mixHash(debugIds.x * 1664525u + debugIds.y * 1013904223u);
     outColour = vec4(
             float((hash >> 0u) & 255u) / 255.0,
