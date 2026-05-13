@@ -765,7 +765,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.lastRenderListCounterDiscarded = discarded;
         this.lastRenderListReadbackValid = !discarded;
         this.lastRenderListReadbackReason = discarded ? "counter_out_of_range" : "valid_gpu_readback";
-        renderList.setLastVisibleCount(acceptedCount);
+        renderList.setLastVisibleCount(acceptedCount, this.frameId);
         this.lastVisibleSectionCount = acceptedCount;
         this.lastVisibleSectionCapacity = maxEntryCount;
         VulkanBerylDebugLog.trace("render-list-counter-readback-status", "Render-list counter readback: rawRenderListCount=" + rawCount
