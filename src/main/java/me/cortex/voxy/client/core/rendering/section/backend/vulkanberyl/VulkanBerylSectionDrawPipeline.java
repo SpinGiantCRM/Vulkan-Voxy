@@ -1914,20 +1914,25 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private void logWorldDrawMappingDiagnostics(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke, int submittedDrawCount, long commandVertexCount, long commandFirstVertex, String priorInvisibleReason) {
         if (!controlledSmoke.enabled()) return;
-        int sectionId = controlledSmoke.sectionId();
-        int rawPosA = controlledSmoke.safe() ? geometryData.getSectionMetadataInt(sectionId, 0) : 0;
-        int rawPosB = controlledSmoke.safe() ? geometryData.getSectionMetadataInt(sectionId, 1) : 0;
+        RenderListEntry0Diagnostics renderListEntry0 = renderListEntry0Diagnostics(geometryData, controlledSmoke);
+        int sectionId = renderListEntry0.sectionId();
+        int rawPosA = renderListEntry0.valid() ? geometryData.getSectionMetadataInt(sectionId, 0) : 0;
+        int rawPosB = renderListEntry0.valid() ? geometryData.getSectionMetadataInt(sectionId, 1) : 0;
         int decodedLod = rawPosA >>> 28;
         int[] decodedPos = decodeLodPosition(rawPosA, rawPosB);
-        long sectionQuadStart = controlledSmoke.safe() ? Integer.toUnsignedLong(controlledSmoke.quadStart()) : -1L;
-        long sectionQuadCount = controlledSmoke.safe() ? controlledSmoke.quadCount() : -1L;
-        long expectedFirstVertex = sectionQuadStart < 0L ? -1L : sectionQuadStart * 4L;
-        boolean firstVertexMatches = commandFirstVertex == expectedFirstVertex;
+        long sectionQuadStart = renderListEntry0.opaqueQuadStart();
+        long sectionQuadCount = renderListEntry0.opaqueQuadCount();
+        long expectedFirstVertex = renderListEntry0.expectedFirstVertex();
+        boolean commandAvailable = commandVertexCount >= 0L && commandFirstVertex >= 0L;
+        boolean firstVertexMatches = commandAvailable && commandFirstVertex == expectedFirstVertex;
+        boolean commandMatchesRenderListEntry0 = commandAvailable
+                && commandVertexCount == renderListEntry0.expectedVertexCount()
+                && commandFirstVertex == expectedFirstVertex;
         QuadSample quad0 = sampleQuad(geometryData, sectionQuadStart);
         QuadSample quad1 = sampleQuad(geometryData, sectionQuadStart + 1L);
         SceneDiagnostics scene = sceneDiagnostics(viewport);
         ClipDiagnostics clip = clipDiagnostics(viewport, rawPosA, rawPosB, quad0);
-        String invisibleReason = worldInvisibleReason(firstVertexMatches, scene.finite(), quad0, clip, priorInvisibleReason);
+        String invisibleReason = worldInvisibleReason(commandAvailable, commandMatchesRenderListEntry0, scene.finite(), quad0, clip, priorInvisibleReason);
         double nearestDistance = nearestSectionDistanceToBase(geometryData, viewport);
         String diagnostic = "worldDrawSelectedSectionId=" + sectionId
                 + ", worldDrawSectionRawPosA=" + Integer.toUnsignedLong(rawPosA)
@@ -1940,6 +1945,15 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", worldDrawCommandFirstVertex=" + commandFirstVertex
                 + ", worldDrawExpectedFirstVertex=" + expectedFirstVertex
                 + ", worldDrawFirstVertexMatchesSectionQuadStart=" + firstVertexMatches
+                + ", renderListEntry0SectionId=" + renderListEntry0.sectionId()
+                + ", renderListEntry0QuadStart=" + renderListEntry0.quadStart()
+                + ", renderListEntry0TranslucentQuadCount=" + renderListEntry0.translucentQuadCount()
+                + ", renderListEntry0OpaqueQuadStart=" + renderListEntry0.opaqueQuadStart()
+                + ", renderListEntry0OpaqueQuadCount=" + renderListEntry0.opaqueQuadCount()
+                + ", renderListEntry0ExpectedFirstVertex=" + renderListEntry0.expectedFirstVertex()
+                + ", sampledCommand0.firstVertex=" + commandFirstVertex
+                + ", sampledCommand0.vertexCount=" + commandVertexCount
+                + ", commandMatchesRenderListEntry0=" + commandMatchesRenderListEntry0
                 + quadDiagnostic(0, quad0)
                 + quadDiagnostic(1, quad1)
                 + ", worldDrawSceneUniformMvpFinite=" + scene.finite()
@@ -1968,16 +1982,29 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.always("Controlled world draw mapping diagnostics: " + diagnostic);
     }
 
-    private static String worldInvisibleReason(boolean firstVertexMatches, boolean mvpFinite, QuadSample quad0, ClipDiagnostics clip, String priorInvisibleReason) {
-        if (!firstVertexMatches) return "firstVertex_mismatch";
+    private RenderListEntry0Diagnostics renderListEntry0Diagnostics(VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke) {
+        if (!controlledSmoke.safe()) {
+            return RenderListEntry0Diagnostics.unavailable(controlledSmoke.sectionId());
+        }
+        int sectionId = controlledSmoke.sectionId();
+        long quadStart = Integer.toUnsignedLong(geometryData.getSectionMetadataInt(sectionId, 3));
+        long translucentQuadCount = extractTranslucentQuadCount(geometryData, sectionId);
+        long opaqueQuadStart = quadStart + translucentQuadCount;
+        long opaqueQuadCount = extractOpaqueQuadCount(geometryData, sectionId);
+        return new RenderListEntry0Diagnostics(sectionId, quadStart, translucentQuadCount, opaqueQuadStart, opaqueQuadCount, true);
+    }
+
+    private static String worldInvisibleReason(boolean commandAvailable, boolean commandMatchesRenderListEntry0, boolean mvpFinite, QuadSample quad0, ClipDiagnostics clip, String priorInvisibleReason) {
+        if (commandAvailable && !commandMatchesRenderListEntry0) return "firstVertex_mismatch";
+        if (!commandAvailable) return "sampled_command_unavailable";
         if (!mvpFinite) return "bad_mvp";
-        if (!quad0.available()) return "unknown";
-        if (quad0.empty()) return "empty_quad";
-        if (quad0.sizeX() <= 0 || quad0.sizeY() <= 0) return "zero_quad";
-        if (clip.behindCamera()) return "behind_camera";
-        if (!clip.looksVisible()) return "offscreen_clip";
-        if (priorInvisibleReason != null && priorInvisibleReason.contains("baseSection")) return "bad_baseSectionPos";
-        return "unknown";
+        if (!quad0.available()) return "geometry_quad_decode";
+        if (quad0.empty()) return "geometry_quad_decode_empty_quad";
+        if (quad0.sizeX() <= 0 || quad0.sizeY() <= 0) return "geometry_quad_decode_zero_quad";
+        if (clip.behindCamera()) return "clip_depth_cull_behind_camera";
+        if (!clip.looksVisible()) return "clip_depth_cull_offscreen_clip";
+        if (priorInvisibleReason != null && priorInvisibleReason.contains("baseSection")) return "position_transform_bad_baseSectionPos";
+        return "shader_indexing_or_clip_depth_cull_or_geometry_quad_decode_or_position_transform_or_debug_fragment_pipeline_state";
     }
 
     private static double nearestSectionDistanceToBase(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewport viewport) {
@@ -2088,6 +2115,20 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private record SceneDiagnostics(boolean finite, String summary, org.joml.Matrix4f matrix) {}
+
+    private record RenderListEntry0Diagnostics(int sectionId, long quadStart, long translucentQuadCount, long opaqueQuadStart, long opaqueQuadCount, boolean valid) {
+        static RenderListEntry0Diagnostics unavailable(int sectionId) {
+            return new RenderListEntry0Diagnostics(sectionId, -1L, -1L, -1L, -1L, false);
+        }
+
+        long expectedFirstVertex() {
+            return this.valid ? this.opaqueQuadStart * 4L : -1L;
+        }
+
+        long expectedVertexCount() {
+            return this.valid ? this.opaqueQuadCount * 4L : -1L;
+        }
+    }
 
     private record ClipDiagnostics(String clip0, String clip1, String clip2, String clip3, boolean looksVisible, boolean behindCamera) {
         static ClipDiagnostics unavailable() { return new ClipDiagnostics("unavailable", "unavailable", "unavailable", "unavailable", false, false); }
