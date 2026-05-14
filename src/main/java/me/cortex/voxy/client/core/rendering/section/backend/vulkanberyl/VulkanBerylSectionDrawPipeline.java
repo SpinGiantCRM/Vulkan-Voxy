@@ -13,8 +13,10 @@ import net.vulkanmod.vulkan.framebuffer.Framebuffer;
 import net.vulkanmod.vulkan.shader.GraphicsPipeline;
 import net.vulkanmod.vulkan.shader.PipelineState;
 import net.vulkanmod.vulkan.shader.Pipeline;
+import net.vulkanmod.vulkan.shader.descriptor.ImageDescriptor;
 import net.vulkanmod.vulkan.shader.descriptor.ManualUBO;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
+import net.vulkanmod.vulkan.texture.VTextureSelector;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VK10;
@@ -269,7 +271,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", "false"));
     private static final boolean CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND", "false"));
     private static final boolean CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD", "false"));
-    private static final boolean FORCE_DEBUG_FRAGMENT_FOR_BRINGUP = true;
+    private static final boolean DRAW_DEBUG_FRAGMENT_DIAGNOSTIC = environmentFlag("VOXY_VULKAN_BERYL_DRAW_DEBUG_FRAGMENT");
+    private static final boolean DRAW_ENABLE_DEPTH_TEX = environmentFlag("VOXY_VULKAN_BERYL_SECTION_DRAW_ENABLE_DEPTH_TEX");
     private static final int SCREENSPACE_SMOKE_VERTEX_COUNT = 3;
     private static final int SCREENSPACE_SMOKE_INSTANCE_COUNT = 1;
     private static final int SCREENSPACE_SMOKE_FIRST_VERTEX = 0;
@@ -317,7 +320,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private static boolean useDebugFragmentShader() {
-        return FORCE_DEBUG_FRAGMENT_FOR_BRINGUP || DEBUG_COLOUR_MODE;
+        return DRAW_DEBUG_FRAGMENT_DIAGNOSTIC || DEBUG_COLOUR_MODE || REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE;
     }
 
     public void ensureDrawPipeline() {
@@ -339,9 +342,9 @@ public final class VulkanBerylSectionDrawPipeline {
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
         boolean debugFragmentShader = useDebugFragmentShader();
-        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false, shaderIndexingMode=instanceIndex_drawIndex_metadataOpaqueBaseQuad_plus_vertexIndex_div_6_triangle_list, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=unused_firstVertex_zero, primitiveTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6,7,8], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", debugFragmentRequested=" + DRAW_DEBUG_FRAGMENT_DIAGNOSTIC + ", depthTextureSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX + ", normalTexturedDrawWired=true, shaderIndexingMode=instanceIndex_drawIndex_metadataOpaqueBaseQuad_plus_vertexIndex_div_6_triangle_list, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=unused_firstVertex_zero, primitiveTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
         try {
-            builder.setUniforms(drawDescriptors, List.of());
+            builder.setUniforms(drawDescriptors, createManualDrawImageDescriptors());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to create manual section draw descriptor layout (config is validation-only and is not fed to Beryl parseBindings): " + DRAW_SHADER_CONFIG, e);
         }
@@ -495,6 +498,7 @@ public final class VulkanBerylSectionDrawPipeline {
         applyDrawScreenspaceSmokeDefine(preprocessedShaders);
         applyRealLodVertexPathClipspaceProbeDefine(preprocessedShaders);
         applyRealLodVisibilityDiagnosticFragmentDefine(preprocessedShaders);
+        applyDepthTextureSamplingDefine(preprocessedShaders);
     }
 
     private static void applyDrawScreenspaceSmokeDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
@@ -570,6 +574,29 @@ public final class VulkanBerylSectionDrawPipeline {
             VulkanBerylDebugLog.once("section-draw-real-lod-visibility-diagnostic-enabled", "section draw real LOD visibility diagnostic enabled: env=" + (REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE ? "VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE" : "VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC") + ", fragmentShader=" + fragmentShader.shaderPath() + ", forcedFragmentColour=magenta, depthCullOverride=true");
         } catch (Exception e) {
             throw new IllegalStateException("Failed to enable section draw real LOD visibility diagnostic", e);
+        }
+    }
+
+
+    private static void applyDepthTextureSamplingDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
+        if (!DRAW_ENABLE_DEPTH_TEX || useDebugFragmentShader()) return;
+        VulkanBerylShaderImportPreprocessor.PreparedShader fragmentShader = preprocessedShaders.shaders().stream()
+                .filter(shader -> DRAW_SHADER_NAME.equals(shader.shaderName()) && shader.tempShaderRelativePath().endsWith(".fsh"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing preprocessed section draw fragment shader for depth texture sampling define"));
+        try {
+            String source = Files.readString(fragmentShader.shaderPath(), StandardCharsets.UTF_8);
+            int firstLineEnd = source.indexOf('\n');
+            if (firstLineEnd < 0) {
+                throw new IllegalStateException("Preprocessed section draw fragment shader has no #version line: " + fragmentShader.shaderPath());
+            }
+            String define = "#define VOXY_ENABLE_DEPTH_TEX 1\n";
+            if (!source.contains(define)) {
+                Files.writeString(fragmentShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+            }
+            VulkanBerylDebugLog.once("section-draw-depth-texture-sampling-enabled", "section draw depth texture sampling enabled: env=VOXY_VULKAN_BERYL_SECTION_DRAW_ENABLE_DEPTH_TEX, fragmentShader=" + fragmentShader.shaderPath());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to enable section draw depth texture sampling", e);
         }
     }
 
@@ -765,8 +792,8 @@ public final class VulkanBerylSectionDrawPipeline {
     public boolean isGraphicsPipelineCreated() { return this.graphicsPipelineCreated; }
     public boolean isCommandGenPipelineCreated() { return this.commandGenPipelineCreated; }
     public boolean isDebugColourModeEnabled() { return useDebugFragmentShader(); }
-    public boolean isDepthSamplingEnabled() { return false; }
-    public boolean isModelLightPathEnabled() { return false; }
+    public boolean isDepthSamplingEnabled() { return DRAW_ENABLE_DEPTH_TEX && !useDebugFragmentShader(); }
+    public boolean isModelLightPathEnabled() { return !useDebugFragmentShader(); }
     public boolean isDebugSamplePending() { return this.debugSamplePending; }
 
     public record OpaqueDrawSubmission(int submittedVisibleCount, String drawMode, long submittedQuadCount, int submittedDrawCommandCount, int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, boolean samplePending, String skippedReason) {}
@@ -1422,6 +1449,7 @@ public final class VulkanBerylSectionDrawPipeline {
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(commandBuffer, viewport);
         logSectionDrawBindingState(screenspaceSmokeDirectDrawEnabled() ? "screenspace_smoke_direct_draw" : (DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "submitted")));
+        this.bindDrawTextureDescriptors();
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
         if (screenspaceSmokeDirectDrawEnabled()) {
             VK10.vkCmdDraw(commandBuffer, SCREENSPACE_SMOKE_VERTEX_COUNT, SCREENSPACE_SMOKE_INSTANCE_COUNT, SCREENSPACE_SMOKE_FIRST_VERTEX, SCREENSPACE_SMOKE_FIRST_INSTANCE);
@@ -1569,6 +1597,7 @@ public final class VulkanBerylSectionDrawPipeline {
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(commandBuffer, viewport);
         logSectionDrawBindingState("screenspace_smoke_indirect_draw");
+        this.bindDrawTextureDescriptors();
         this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
 
         int smokeSubmittedDrawCount = 1;
@@ -4237,6 +4266,28 @@ public final class VulkanBerylSectionDrawPipeline {
         descriptors.add(new ManualStorageBuffer(METADATA_BINDING, vertexStage, 1));
         descriptors.add(new ManualStorageBuffer(RENDER_LIST_BINDING, vertexStage, 1));
         return descriptors;
+    }
+
+    private static List<ImageDescriptor> createManualDrawImageDescriptors() {
+        return List.of(
+                new ImageDescriptor(7, "sampler2D", "blockModelAtlas", VTextureSelector.getTextureIdx("Sampler0")),
+                new ImageDescriptor(8, "sampler2D", "depthTex", VTextureSelector.getTextureIdx("Sampler7"))
+        );
+    }
+
+    private void bindDrawTextureDescriptors() {
+        VTextureSelector.bindShaderTextures(this.graphicsPipeline);
+        bindWhiteTextureFallback(0, "blockModelAtlas");
+        bindWhiteTextureFallback(7, "depthTex");
+    }
+
+    private static void bindWhiteTextureFallback(int textureIndex, String label) {
+        if (VTextureSelector.getImage(textureIndex) != null) return;
+        VTextureSelector.bindTexture(textureIndex, VTextureSelector.getWhiteTexture());
+        VulkanBerylDebugLog.warnRateLimited("section-draw-texture-fallback:" + label, "Section draw texture descriptor fallback: label=" + label
+                + ", textureIndex=" + textureIndex
+                + ", fallback=VTextureSelector.whiteTexture"
+                + ", depthSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX);
     }
 
     private void ensureCommandBuffers(int maxEntryCount) {

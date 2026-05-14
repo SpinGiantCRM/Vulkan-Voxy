@@ -24,5 +24,22 @@
       "type": "storageBuffer",
       "stages": ["vertex"]
     }
+  ],
+  "samplers": [
+    {
+      "name": "blockModelAtlas",
+      "binding": 7,
+      "type": "sampler2D",
+      "stages": ["fragment"],
+      "texture": "Sampler0"
+    },
+    {
+      "name": "depthTex",
+      "binding": 8,
+      "type": "sampler2D",
+      "stages": ["fragment"],
+      "texture": "Sampler7",
+      "depthSamplingDefine": "VOXY_ENABLE_DEPTH_TEX"
+    }
   ]
 }

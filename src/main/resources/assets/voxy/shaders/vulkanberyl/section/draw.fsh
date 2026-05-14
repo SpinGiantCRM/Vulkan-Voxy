@@ -9,11 +9,9 @@
 #extension GL_NV_fragment_shader_barycentric: require
 #endif
 
-// The Vulkan/Beryl bring-up path uses draw_debug.fsh until these texture
-// descriptors are represented in the Java-side graphics descriptor layout.
 // Keep the normal texture samplers out of the vertex draw bindings
-// (0=SceneUniform, 4/5/6=SSBOs) so this shader is not internally
-// inconsistent while it remains validation/reference material.
+// (0=SceneUniform, 4/5/6=SSBOs). Depth sampling remains gated by
+// VOXY_ENABLE_DEPTH_TEX until the depth descriptor is guaranteed valid.
 layout(binding = 7) uniform sampler2D blockModelAtlas;
 layout(binding = 8) uniform sampler2D depthTex;
 
