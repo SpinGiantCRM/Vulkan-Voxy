@@ -548,6 +548,10 @@ public final class VulkanBerylSectionDrawPipeline {
                 .filter(shader -> DRAW_SHADER_NAME.equals(shader.shaderName()) && shader.tempShaderRelativePath().endsWith(".vsh"))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Missing preprocessed section draw vertex shader for translucent define"));
+        VulkanBerylShaderImportPreprocessor.PreparedShader fragmentShader = preprocessedShaders.shaders().stream()
+                .filter(shader -> shader.tempShaderRelativePath().endsWith(".fsh"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing preprocessed section draw fragment shader for translucent define"));
         try {
             String source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
             int firstLineEnd = source.indexOf('\n');
@@ -559,6 +563,17 @@ public final class VulkanBerylSectionDrawPipeline {
                 Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
             }
             VulkanBerylDebugLog.once("section-draw-translucent-variant-enabled", "section draw translucent shader variant enabled: vertexShader=" + vertexShader.shaderPath());
+
+            source = Files.readString(fragmentShader.shaderPath(), StandardCharsets.UTF_8);
+            firstLineEnd = source.indexOf('\n');
+            if (firstLineEnd < 0) {
+                throw new IllegalStateException("Preprocessed section draw fragment shader has no #version line: " + fragmentShader.shaderPath());
+            }
+            define = "#define TRANSLUCENT 1\n";
+            if (!source.contains(define)) {
+                Files.writeString(fragmentShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+            }
+            VulkanBerylDebugLog.once("section-draw-translucent-fragment-variant-enabled", "section draw translucent fragment shader define injected: fragmentShader=" + fragmentShader.shaderPath());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to enable section draw translucent variant", e);
         }

@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 final class VulkanBerylEnvironment {
     private static final String PREFIX = "[Voxy][VulkanBeryl] ";
     private static final Set<String> LOGGED_FLAGS = ConcurrentHashMap.newKeySet();
+    private static final Set<String> LOGGED_INT_VALUES = ConcurrentHashMap.newKeySet();
 
     private VulkanBerylEnvironment() {
     }
@@ -43,6 +44,21 @@ final class VulkanBerylEnvironment {
         return new FlagValue(name, defaultValue, "default", null);
     }
 
+    static int intValue(String name, int defaultValue, int minValue, int maxValue) {
+        if (minValue > maxValue) {
+            throw new IllegalArgumentException("minValue must be <= maxValue for " + name + ": " + minValue + " > " + maxValue);
+        }
+        String envValue = System.getenv(name);
+        if (hasText(envValue)) {
+            return parseIntValue(name, defaultValue, minValue, maxValue, "environment", envValue);
+        }
+        String propertyValue = System.getProperty(name);
+        if (hasText(propertyValue)) {
+            return parseIntValue(name, defaultValue, minValue, maxValue, "system-property", propertyValue);
+        }
+        return defaultValue;
+    }
+
     private static FlagValue parse(String name, String source, String rawValue) {
         String normalized = rawValue.trim().toLowerCase(Locale.ROOT);
         boolean parsed = switch (normalized) {
@@ -51,6 +67,31 @@ final class VulkanBerylEnvironment {
             default -> false;
         };
         return new FlagValue(name, parsed, source, rawValue);
+    }
+
+    private static int parseIntValue(String name, int defaultValue, int minValue, int maxValue, String source, String rawValue) {
+        String normalized = rawValue.trim();
+        try {
+            int parsed = Integer.parseInt(normalized);
+            int clamped = Math.max(minValue, Math.min(maxValue, parsed));
+            if (LOGGED_INT_VALUES.add(name)) {
+                Logger.info(PREFIX + "integer flag " + name
+                        + " parsed=" + parsed
+                        + ", clamped=" + clamped
+                        + ", source=" + source
+                        + ", raw='" + rawValue + "'"
+                        + ", default=" + defaultValue
+                        + ", range=[" + minValue + "," + maxValue + "]");
+            }
+            return clamped;
+        } catch (NumberFormatException e) {
+            Logger.warn(PREFIX + "integer flag " + name
+                    + " invalid; source=" + source
+                    + ", raw='" + rawValue + "'"
+                    + ", default=" + defaultValue
+                    + ", range=[" + minValue + "," + maxValue + "]");
+            return defaultValue;
+        }
     }
 
     private static boolean hasText(String value) {

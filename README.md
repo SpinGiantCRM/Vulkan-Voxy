@@ -25,6 +25,10 @@ This fork is focused on adapting Voxy toward VulkanMod/Beryl/no-Sodium testing w
 - Rendering may crash or fail to display LoDs
 - Not suitable as a stable replacement for Voxy
 
+## Developer checks
+
+- Run `scripts/check_voxy_shader_contracts.sh` after touching shared LoD shader imports. It pins original Voxy shader contracts that must remain exact matches for the MDIC/OpenGL reference path, and checks compatibility guards for shared files that intentionally differ for Vulkan/Beryl.
+
 ## Support and updates
 
 This fork is experimental and may not receive future updates or support.

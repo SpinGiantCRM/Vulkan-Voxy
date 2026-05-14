@@ -47,7 +47,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final boolean ENABLE_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_TRAVERSAL_DISPATCH", true);
     private static final boolean ENABLE_INITIAL_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_INITIAL_TRAVERSAL_DISPATCH", true);
     private static final boolean ENABLE_INDIRECT_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_TRAVERSAL_DISPATCH", false);
-    private static final int TRAVERSAL_MAX_ITERATIONS = Math.max(1, Integer.parseInt(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_MAX_ITERATIONS", "1")));
+    private static final int TRAVERSAL_MAX_ITERATIONS = VulkanBerylEnvironment.intValue("VOXY_VULKAN_BERYL_TRAVERSAL_MAX_ITERATIONS", 1, 1, VulkanBerylTraversalResources.MAX_ITERATIONS);
     private static final boolean TRAVERSAL_SMOKE_NOOP = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_TRAVERSAL_SMOKE_NOOP", false);
     private static final boolean TRAVERSAL_SMOKE_WRITE_KNOWN = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_TRAVERSAL_SMOKE_WRITE_KNOWN", false);
     private static final boolean TRAVERSAL_SHADER_SMOKE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_TRAVERSAL_SHADER_SMOKE", false);

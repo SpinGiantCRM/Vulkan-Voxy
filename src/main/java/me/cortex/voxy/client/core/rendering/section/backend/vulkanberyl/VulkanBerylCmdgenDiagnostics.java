@@ -274,7 +274,7 @@ final class VulkanBerylCmdgenDiagnostics {
     static final boolean CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CMDGEN_SKIP_RENDER_DRAW_SUBMIT_AFTER_CMDGEN", false);
     static final boolean CMDGEN_WAIT_IDLE_AFTER_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CMDGEN_WAIT_IDLE_AFTER_DISPATCH", false);
     static final boolean RENDERLIST_SMOKE_ONE_ENTRY = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", false);
-    static final int TRAVERSAL_STAGE_LIMIT = Math.max(0, Math.min(7, Integer.parseInt(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRAVERSAL_STAGE_LIMIT", "0"))));
+    static final int TRAVERSAL_STAGE_LIMIT = VulkanBerylEnvironment.intValue("VOXY_VULKAN_BERYL_TRAVERSAL_STAGE_LIMIT", 0, 0, 7);
 
     static String traversalStageMeaning(int traversalStageLimit) {
         return switch (traversalStageLimit) {
