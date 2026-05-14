@@ -85,31 +85,31 @@ void main() {
 #endif
 
     // Beryl/VulkanMod compiles graphics roots as GLSL 450 through shaderc.
-    // gl_BaseInstance/gl_BaseVertex are not available in that runtime path, so
-    // recover the indirect draw parameters from built-ins that are available
-    // there.  In Vulkan, gl_InstanceIndex includes firstInstance and
-    // gl_VertexIndex includes firstVertex for non-indexed draws.
+    // gl_BaseInstance is not available in that runtime path, so recover the
+    // indirect draw index from gl_InstanceIndex, which includes firstInstance
+    // for these generated single-instance draws.  The production path keeps
+    // firstVertex at zero and decodes gl_VertexIndex as a virtual triangle-list
+    // vertex: six submitted vertices form the two triangles for each quad.
     uint drawIndex = uint(gl_InstanceIndex);
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
 
     uint opaqueQuadStart = drawExtractOpaqueQuadStart(meta);
-    uint opaqueBaseVertex = opaqueQuadStart << 2u;
-    uint vertexIndex = uint(gl_VertexIndex);
+    uint localVertexIndex = uint(gl_VertexIndex);
+    uint localQuadIndex = localVertexIndex / 6u;
+    uint triVertex = localVertexIndex % 6u;
+    uint cornerId = triVertex == 0u
+            ? 0u
+            : (triVertex == 1u ? 1u : (triVertex == 2u ? 2u : (triVertex == 3u ? 2u : (triVertex == 4u ? 1u : 3u))));
 
 #ifdef VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE
     // Normal real-LOD indirect vertex-path probe: keep the actual
     // gl_InstanceIndex -> render-list -> section metadata path and the actual
-    // gl_VertexIndex path, but remove quad decode/world transform from the
-    // equation.  If this fixed clip-space quad/triangle is visible, the real
-    // indirect vertex shader invocation is executing and the remaining bug is
-    // in geometry indexing/transform.  The left position indicates Vulkan-style
-    // gl_VertexIndex includes firstVertex; the right position indicates a
-    // local/zero-based value.
-    bool vertexIndexIncludesFirstVertex = vertexIndex >= opaqueBaseVertex;
-    uint localVertexIndex = vertexIndexIncludesFirstVertex ? (vertexIndex - opaqueBaseVertex) : vertexIndex;
-    uint cornerId = localVertexIndex & 3u;
-    vec2 probeCenter = vertexIndexIncludesFirstVertex ? vec2(-0.35, 0.0) : vec2(0.35, 0.0);
+    // triangle-list gl_VertexIndex path, but remove quad decode/world transform
+    // from the equation.  If this fixed clip-space quad is visible, the real
+    // indirect vertex shader invocation and triangle-list topology are executing
+    // and the remaining bug is in geometry indexing/transform.
+    vec2 probeCenter = vec2(0.0, 0.0);
     vec2 probeCorner = cornerId == 0u
             ? vec2(-0.22, -0.22)
             : (cornerId == 1u ? vec2(0.22, -0.22) : (cornerId == 2u ? vec2(-0.22, 0.22) : vec2(0.22, 0.22)));
@@ -117,16 +117,14 @@ void main() {
     gl_Position = vec4(probePos, 0.0, 1.0);
     uv = probeCorner * 0.5 + vec2(0.5);
     interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
-    debugIds = uvec2(drawIndex, (vertexIndexIncludesFirstVertex ? 0xB4530001u : 0xB4530000u) | cornerId);
+    debugIds = uvec2(drawIndex, 0xB4536000u | triVertex);
     return;
 #endif
 
-    uint localVertexIndex = vertexIndex - opaqueBaseVertex;
-    uint quadIndex = opaqueQuadStart + (localVertexIndex >> 2u);
+    uint quadIndex = opaqueQuadStart + localQuadIndex;
     QuadData quad;
     setupQuad(quad, quadData[quadIndex], extractRawPos(meta));
 
-    uint cornerId = localVertexIndex & 3u;
     gl_Position = getQuadCornerPos(quad, cornerId);
     uv = getCornerUV(quad, cornerId);
     interData = quad.attributeData;
