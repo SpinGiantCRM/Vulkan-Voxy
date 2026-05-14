@@ -42,7 +42,7 @@ public final class VulkanBerylTraversalExecutor {
     private static final String TRAVERSAL_UNUSED_HIZ_PADDING_LABEL = "UnusedHiZPaddingBerylDenseLayout";
     private static final String STATIC_IMPORT_LEVEL_ENV = "VOXY_VULKAN_BERYL_TRAVERSAL_STATIC_IMPORT_LEVEL";
     private static final int STATIC_IMPORT_LEVEL = parseTraversalStaticImportLevel();
-    private static final boolean FORCE_REAL_MAIN_RETURN = Boolean.parseBoolean(System.getenv().getOrDefault(FORCE_REAL_MAIN_RETURN_DEFINE, "false")) || STATIC_IMPORT_LEVEL >= 0;
+    private static final boolean FORCE_REAL_MAIN_RETURN = VulkanBerylEnvironment.flag(FORCE_REAL_MAIN_RETURN_DEFINE, false) || STATIC_IMPORT_LEVEL >= 0;
 
     public static final int HIZ_BINDING = 0;
     public static final int SCENE_UNIFORM_BINDING = 1;

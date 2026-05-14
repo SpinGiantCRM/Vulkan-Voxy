@@ -261,18 +261,18 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean freed;
     private int rawVisibleCountForTestStatus = -1;
 
-    private static final boolean DRAW_SCREENSPACE_SMOKE = environmentFlag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE");
-    private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT");
-    private static final boolean DRAW_WORLDSPACE_SMOKE_INDIRECT = environmentFlag("VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT");
-    private static final boolean REAL_LOD_VISIBILITY_DIAGNOSTIC = environmentFlag("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC");
-    private static final boolean REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE = environmentFlag("VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE");
-    private static final boolean SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE = environmentFlag("VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE");
-    private static final boolean DISABLE_CONTROLLED_SMOKE_READBACK_COPY = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_READBACK_COPY", "false"));
-    private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", "false"));
-    private static final boolean CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND", "false"));
-    private static final boolean CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD", "false"));
-    private static final boolean DRAW_DEBUG_FRAGMENT_DIAGNOSTIC = environmentFlag("VOXY_VULKAN_BERYL_DRAW_DEBUG_FRAGMENT");
-    private static final boolean DRAW_ENABLE_DEPTH_TEX = environmentFlag("VOXY_VULKAN_BERYL_SECTION_DRAW_ENABLE_DEPTH_TEX");
+    private static final boolean DRAW_SCREENSPACE_SMOKE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE");
+    private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT");
+    private static final boolean DRAW_WORLDSPACE_SMOKE_INDIRECT = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_DRAW_WORLDSPACE_SMOKE_INDIRECT");
+    private static final boolean REAL_LOD_VISIBILITY_DIAGNOSTIC = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC");
+    private static final boolean REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE");
+    private static final boolean SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE");
+    private static final boolean DISABLE_CONTROLLED_SMOKE_READBACK_COPY = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_READBACK_COPY", false);
+    private static final boolean DISABLE_CONTROLLED_SMOKE_KNOWN_COMMAND_UPLOAD = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_KNOWN_COMMAND_UPLOAD", false);
+    private static final boolean CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND", false);
+    private static final boolean CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_MAIN_BUFFER_SKIP_KNOWN_COMMAND_UPLOAD", false);
+    private static final boolean DRAW_DEBUG_FRAGMENT_DIAGNOSTIC = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_DRAW_DEBUG_FRAGMENT");
+    private static final boolean DRAW_ENABLE_DEPTH_TEX = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_SECTION_DRAW_ENABLE_DEPTH_TEX");
     private static final int SCREENSPACE_SMOKE_VERTEX_COUNT = 3;
     private static final int SCREENSPACE_SMOKE_INSTANCE_COUNT = 1;
     private static final int SCREENSPACE_SMOKE_FIRST_VERTEX = 0;
@@ -290,18 +290,6 @@ public final class VulkanBerylSectionDrawPipeline {
         SECTION_DRAW_PASS_CONTEXT.remove();
     }
 
-    private static boolean environmentFlag(String name) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) {
-            value = System.getProperty(name);
-        }
-        if (value == null) return false;
-        String normalized = value.trim();
-        return "true".equalsIgnoreCase(normalized)
-                || "1".equals(normalized)
-                || "yes".equalsIgnoreCase(normalized)
-                || "on".equalsIgnoreCase(normalized);
-    }
 
     private static boolean screenspaceSmokeShaderEnabled() {
         return DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT || (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE);
