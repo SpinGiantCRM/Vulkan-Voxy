@@ -1,9 +1,13 @@
 #define SENTINAL_OUT_OF_BOUNDS uint(-1)
 
 
+#ifdef VOXY_VULKAN_BERYL_QUEUE_INDEX_SSBO
 layout(binding = NODE_QUEUE_INDEX_BINDING, std430) restrict readonly buffer NodeQueueIndex {
     uint queueIdx;
 };
+#else
+layout(location = NODE_QUEUE_INDEX_BINDING) uniform uint queueIdx;
+#endif
 
 layout(binding = NODE_QUEUE_META_BINDING, std430) restrict buffer NodeQueueMeta {
     uvec4 nodeQueueMetadata[MAX_ITERATIONS];

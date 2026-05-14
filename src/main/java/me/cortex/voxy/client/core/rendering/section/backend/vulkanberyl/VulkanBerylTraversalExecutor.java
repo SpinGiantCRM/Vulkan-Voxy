@@ -425,6 +425,7 @@ public final class VulkanBerylTraversalExecutor {
         out.append("// Diagnostic traversal static import bisection source generated from real traversal.comp.\n");
         out.append("#define VOXY_VULKAN_BERYL_TRAVERSAL_STATIC_IMPORT_LEVEL ").append(level).append('\n');
         out.append("#define VOXY_VULKAN_BERYL_DISABLE_HIZ 1\n");
+        out.append("#define VOXY_VULKAN_BERYL_QUEUE_INDEX_SSBO 1\n");
         out.append("#define MAX_ITERATIONS 17\n");
         out.append("#define LOCAL_SIZE_BITS 5\n");
         out.append("#define MAX_REQUEST_QUEUE_SIZE 50\n");
