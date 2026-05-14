@@ -21,6 +21,16 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     private long lastSampledOpaqueQuadCount = -1L;
     private boolean lastOpaqueSamplePending;
     private String lastOpaqueSkippedReason = "not_drawn";
+    private int lastSubmittedTranslucentVisibleCount;
+    private String lastTranslucentDrawMode = "none";
+    private long lastSubmittedTranslucentQuadCount;
+    private int lastSubmittedTranslucentDrawCommandCount;
+    private int lastSampledTranslucentCommandCount;
+    private int lastInvalidSampledTranslucentCommandCount;
+    private long lastSampledTranslucentQuadCount = -1L;
+    private boolean lastTranslucentSamplePending;
+    private String lastTranslucentSkippedReason = "not_drawn";
+    private String lastTemporalSkippedReason = "not_required_for_vulkanberyl_current_backend";
 
     public VulkanBerylSectionRenderer(SectionRenderPipeline pipeline, ModelStore modelStore, VulkanBerylSectionGeometryData geometryData) {
         super(pipeline.getRenderProperties(), modelStore, geometryData);
@@ -67,13 +77,37 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
     @Override
     public void renderTemporal(VulkanBerylViewport viewport) {
         this.requireActive();
-        this.requireRenderList(viewport);
+        VulkanBerylViewportRenderList renderList = this.requireRenderList(viewport);
+        this.validateRenderListLayout(renderList);
+        // Upstream MDIC keeps a temporal opaque replay for its OpenGL culling path.
+        // The Vulkan/Beryl backend currently builds one fresh visible render list per frame
+        // and does not need an extra visual replay, so record an explicit skipped reason
+        // instead of silently no-oping.
+        this.lastTemporalSkippedReason = "not_required_for_vulkanberyl_current_backend";
     }
 
     @Override
     public void renderTranslucent(VulkanBerylViewport viewport) {
         this.requireActive();
-        this.requireRenderList(viewport);
+        VulkanBerylViewportRenderList renderList = this.requireRenderList(viewport);
+        this.validateRenderListLayout(renderList);
+        this.ensureDrawResources(renderList);
+
+        Renderer renderer = Renderer.getInstance();
+        if (renderer == null) {
+            throw new IllegalStateException("VULKANMOD_BERYL renderer is not initialized");
+        }
+
+        VulkanBerylSectionDrawPipeline.OpaqueDrawSubmission submission = this.drawPipeline.renderTranslucent(renderer, viewport, this.geometryManager, renderList);
+        this.lastSubmittedTranslucentVisibleCount = submission.submittedVisibleCount();
+        this.lastTranslucentDrawMode = submission.drawMode();
+        this.lastSubmittedTranslucentQuadCount = submission.submittedQuadCount();
+        this.lastSubmittedTranslucentDrawCommandCount = submission.submittedDrawCommandCount();
+        this.lastSampledTranslucentCommandCount = submission.sampledCommandCount();
+        this.lastInvalidSampledTranslucentCommandCount = submission.invalidSampledCommandCount();
+        this.lastSampledTranslucentQuadCount = submission.sampledQuadCount();
+        this.lastTranslucentSamplePending = submission.samplePending();
+        this.lastTranslucentSkippedReason = submission.skippedReason() == null ? "none" : submission.skippedReason();
     }
 
     @Override
@@ -103,6 +137,17 @@ public final class VulkanBerylSectionRenderer extends AbstractSectionRenderer<Vu
         lines.add("Vulkan/Beryl last opaque submitted quad count: " + this.lastSubmittedOpaqueQuadCount);
         lines.add("Vulkan/Beryl last opaque sampled quad count: " + this.lastSampledOpaqueQuadCount);
         lines.add("Vulkan/Beryl last opaque skipped reason: " + this.lastOpaqueSkippedReason);
+        lines.add("Vulkan/Beryl translucent draw submission active: true");
+        lines.add("Vulkan/Beryl last translucent draw mode: " + this.lastTranslucentDrawMode);
+        lines.add("Vulkan/Beryl last translucent submitted visible count: " + this.lastSubmittedTranslucentVisibleCount);
+        lines.add("Vulkan/Beryl last translucent submitted draw command count: " + this.lastSubmittedTranslucentDrawCommandCount);
+        lines.add("Vulkan/Beryl last translucent sampled command count: " + this.lastSampledTranslucentCommandCount);
+        lines.add("Vulkan/Beryl last translucent invalid sampled commands: " + this.lastInvalidSampledTranslucentCommandCount);
+        lines.add("Vulkan/Beryl last translucent sampled command pending: " + this.lastTranslucentSamplePending);
+        lines.add("Vulkan/Beryl last translucent submitted quad count: " + this.lastSubmittedTranslucentQuadCount);
+        lines.add("Vulkan/Beryl last translucent sampled quad count: " + this.lastSampledTranslucentQuadCount);
+        lines.add("Vulkan/Beryl last translucent skipped reason: " + this.lastTranslucentSkippedReason);
+        lines.add("Vulkan/Beryl temporal pass skipped reason: " + this.lastTemporalSkippedReason);
         VulkanBerylRenderBackendRuntime.SmokeStatus runtimeSmoke = VulkanBerylRenderBackendRuntime.getLastSmokeStatus();
         boolean drawSubmitted = this.lastSubmittedOpaqueDrawCommandCount > 0;
         boolean drawCommandSampleCompleted = !this.lastOpaqueSamplePending && this.lastSampledOpaqueCommandCount > 0;

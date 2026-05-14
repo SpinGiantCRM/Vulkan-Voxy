@@ -56,6 +56,7 @@ const uint CMDGEN_FLAG_READ_BINDING1_ONLY = 1u << 10u;
 const uint CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1u << 11u;
 const uint CMDGEN_FLAG_READ_CONFIG_ONLY = 1u << 12u;
 const uint CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE = 1u << 13u;
+const uint CMDGEN_FLAG_TRANSLUCENT_PASS = 1u << 14u;
 
 
 uint extractTranslucentQuadCount(SectionMeta meta) {
@@ -275,15 +276,17 @@ void main() {
         }
         return;
     }
+    bool translucentPass = (flags & CMDGEN_FLAG_TRANSLUCENT_PASS) != 0u;
     uint translucentQuadCount = extractTranslucentQuadCount(meta);
     uint opaqueQuadCount = extractOpaqueQuadCount(meta);
-    uint opaqueQuadStart = extractQuadStart(meta) + translucentQuadCount;
-    if (opaqueQuadCount == 0u) {
+    uint passQuadStart = extractQuadStart(meta) + (translucentPass ? 0u : translucentQuadCount);
+    uint passQuadCount = translucentPass ? translucentQuadCount : opaqueQuadCount;
+    if (passQuadCount == 0u) {
         if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
-        if (drawCountCapacityWords > 5u) atomicAdd(zeroOpaqueCount, 1u);
+        if (!translucentPass && drawCountCapacityWords > 5u) atomicAdd(zeroOpaqueCount, 1u);
         return;
     }
-    if (opaqueQuadStart > geometryCapacityQuads || opaqueQuadCount > geometryCapacityQuads - opaqueQuadStart) {
+    if (passQuadStart > geometryCapacityQuads || passQuadCount > geometryCapacityQuads - passQuadStart) {
         if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
         return;
     }
@@ -295,7 +298,7 @@ void main() {
     }
 
     DrawCommand cmd;
-    cmd.vertexCount = opaqueQuadCount * 6u;
+    cmd.vertexCount = passQuadCount * 6u;
     cmd.instanceCount = 1u;
     cmd.firstVertex = 0u;
     cmd.firstInstance = drawIndex;

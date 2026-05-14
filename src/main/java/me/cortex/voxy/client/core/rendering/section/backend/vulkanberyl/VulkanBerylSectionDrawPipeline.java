@@ -64,8 +64,15 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private GraphicsPipeline graphicsPipeline;
+    private GraphicsPipeline translucentGraphicsPipeline;
+    private DrawPass activeDrawPass = DrawPass.OPAQUE;
     private static final ThreadLocal<String> SECTION_DRAW_PASS_CONTEXT = ThreadLocal.withInitial(() -> "unknown");
     private static long nextGraphicsPipelineGeneration;
+
+    private enum DrawPass {
+        OPAQUE,
+        TRANSLUCENT
+    }
     private ComputePipeline commandGenPipeline;
     private ComputePipeline commandGenNoopPipeline;
     private ComputePipeline commandGenMinimalTinySsboReadProbePipeline;
@@ -315,6 +322,18 @@ public final class VulkanBerylSectionDrawPipeline {
     public void ensureDrawPipeline() {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
         if (this.graphicsPipeline != null) return;
+        this.graphicsPipeline = this.createDrawPipeline(false);
+        this.graphicsPipelineGeneration = ++nextGraphicsPipelineGeneration;
+        this.graphicsPipelineCreated = true;
+    }
+
+    private void ensureTranslucentDrawPipeline() {
+        if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
+        if (this.translucentGraphicsPipeline != null) return;
+        this.translucentGraphicsPipeline = this.createDrawPipeline(true);
+    }
+
+    private GraphicsPipeline createDrawPipeline(boolean translucent) {
 
         URL configUrl = VulkanBerylSectionDrawPipeline.class.getResource(DRAW_SHADER_CONFIG);
         if (configUrl == null) throw new IllegalStateException("Missing section draw shader config: " + DRAW_SHADER_CONFIG);
@@ -331,7 +350,8 @@ public final class VulkanBerylSectionDrawPipeline {
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
         boolean debugFragmentShader = useDebugFragmentShader();
-        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6,7,8], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", debugFragmentRequested=" + DRAW_DEBUG_FRAGMENT_DIAGNOSTIC + ", depthTextureSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX + ", normalTexturedDrawWired=true, shaderIndexingMode=instanceIndex_drawIndex_metadataOpaqueBaseQuad_plus_vertexIndex_div_6_triangle_list, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=unused_firstVertex_zero, primitiveTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
+        String drawPassName = translucent ? "translucent" : "opaque";
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout:" + drawPassName, "Section draw descriptor mode=manual_dense, pass=" + drawPassName + ", bindings=[0,1,2,3,4,5,6,7,8], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", debugFragmentRequested=" + DRAW_DEBUG_FRAGMENT_DIAGNOSTIC + ", depthTextureSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX + ", normalTexturedDrawWired=true, shaderIndexingMode=instanceIndex_drawIndex_metadataPassBaseQuad_plus_vertexIndex_div_6_triangle_list, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=unused_firstVertex_zero, primitiveTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
         try {
             builder.setUniforms(drawDescriptors, createManualDrawImageDescriptors());
         } catch (Exception e) {
@@ -341,6 +361,9 @@ public final class VulkanBerylSectionDrawPipeline {
         String fragmentShaderResource = debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_RESOURCE : DRAW_FRAGMENT_SHADER_RESOURCE;
         var preprocessedShaders = VulkanBerylShaderImportPreprocessor.preprocessShaderSetToTemp(DRAW_SHADER_RESOURCE, fragmentShaderResource);
         applyDrawVisibilityDiagnosticDefines(preprocessedShaders);
+        if (translucent) {
+            applyTranslucentDrawDefine(preprocessedShaders);
+        }
         String shaderCompileBase = preprocessedShaders.rootUrl() + DRAW_SHADER_NAME;
         String vertexClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(DRAW_SHADER_RESOURCE));
         String fragmentClasspathPath = VulkanBerylShaderImportPreprocessor.classpathShaderAssetPath(net.minecraft.resources.Identifier.parse(fragmentShaderResource));
@@ -415,9 +438,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to create section draw graphics pipeline (config=" + DRAW_SHADER_CONFIG + ", debugMode=" + debugFragmentShader + ")", e);
         }
         if (pipeline == null) throw new IllegalStateException("Failed to create section draw graphics pipeline");
-        this.graphicsPipeline = pipeline;
-        this.graphicsPipelineGeneration = ++nextGraphicsPipelineGeneration;
-        this.graphicsPipelineCreated = true;
+        return pipeline;
     }
 
     private static VertexFormat resolveDummyVertexFormat() {
@@ -519,6 +540,27 @@ public final class VulkanBerylSectionDrawPipeline {
             VulkanBerylDebugLog.once("section-draw-screenspace-smoke-enabled", "section draw smoke diagnostic enabled: env=" + screenspaceSmokeEnvName() + ", samePassScreenspaceProbe=" + (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) + ", samePassSuppressedByRealLodVertexPathClipspaceProbe=" + (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) + ", vertexShader=" + vertexShader.shaderPath());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to enable section draw screenspace smoke diagnostic", e);
+        }
+    }
+
+    private static void applyTranslucentDrawDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
+        VulkanBerylShaderImportPreprocessor.PreparedShader vertexShader = preprocessedShaders.shaders().stream()
+                .filter(shader -> DRAW_SHADER_NAME.equals(shader.shaderName()) && shader.tempShaderRelativePath().endsWith(".vsh"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing preprocessed section draw vertex shader for translucent define"));
+        try {
+            String source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
+            int firstLineEnd = source.indexOf('\n');
+            if (firstLineEnd < 0) {
+                throw new IllegalStateException("Preprocessed section draw vertex shader has no #version line: " + vertexShader.shaderPath());
+            }
+            String define = "#define VOXY_VULKAN_BERYL_TRANSLUCENT_PASS 1\n";
+            if (!source.contains(define)) {
+                Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+            }
+            VulkanBerylDebugLog.once("section-draw-translucent-variant-enabled", "section draw translucent shader variant enabled: vertexShader=" + vertexShader.shaderPath());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to enable section draw translucent variant", e);
         }
     }
 
@@ -795,6 +837,44 @@ public final class VulkanBerylSectionDrawPipeline {
                             VulkanBerylViewport viewport,
                             VulkanBerylSectionGeometryData geometryData,
                             VulkanBerylViewportRenderList renderList) {
+        this.activeDrawPass = DrawPass.OPAQUE;
+        applyOpaquePipelineState();
+        return this.renderSectionPass(renderer, viewport, geometryData, renderList);
+    }
+
+    public OpaqueDrawSubmission renderTranslucent(Renderer renderer,
+                            VulkanBerylViewport viewport,
+                            VulkanBerylSectionGeometryData geometryData,
+                            VulkanBerylViewportRenderList renderList) {
+        this.ensureTranslucentDrawPipeline();
+        GraphicsPipeline opaquePipeline = this.graphicsPipeline;
+        this.graphicsPipeline = this.translucentGraphicsPipeline;
+        try {
+            this.ensureDrawResourcesBound(geometryData, renderList);
+            this.activeDrawPass = DrawPass.TRANSLUCENT;
+            applyTranslucentPipelineState();
+            OpaqueDrawSubmission submission = this.renderSectionPass(renderer, viewport, geometryData, renderList);
+            return new OpaqueDrawSubmission(
+                    submission.submittedVisibleCount(),
+                    "translucent_" + submission.drawMode(),
+                    submission.submittedQuadCount(),
+                    submission.submittedDrawCommandCount(),
+                    submission.sampledCommandCount(),
+                    submission.invalidSampledCommandCount(),
+                    submission.sampledQuadCount(),
+                    submission.samplePending(),
+                    submission.skippedReason());
+        } finally {
+            this.activeDrawPass = DrawPass.OPAQUE;
+            this.graphicsPipeline = opaquePipeline;
+            applyOpaquePipelineState();
+        }
+    }
+
+    private OpaqueDrawSubmission renderSectionPass(Renderer renderer,
+                            VulkanBerylViewport viewport,
+                            VulkanBerylSectionGeometryData geometryData,
+                            VulkanBerylViewportRenderList renderList) {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
         if (renderer == null) throw new IllegalArgumentException("renderer must not be null");
         if (viewport == null) throw new IllegalArgumentException("viewport must not be null");
@@ -1022,6 +1102,9 @@ public final class VulkanBerylSectionDrawPipeline {
         } else {
             validateDrawCommandBuffer(visibleCount);
             int cmdgenFlags = isolationStage == null ? (noOpCmdgenSmoke ? CMDGEN_FLAG_NOOP_SMOKE : 0) : isolationStage.shaderFlag();
+            if (this.activeDrawPass == DrawPass.TRANSLUCENT && isolationStage == null && !noOpCmdgenSmoke) {
+                cmdgenFlags |= CMDGEN_FLAG_TRANSLUCENT_PASS;
+            }
             boolean useAltRenderListBuffer = CMDGEN_RENDERLIST_ALT_BUFFER_PROBE && (isolationStage != null || CMDGEN_MINIMAL_RENDERLIST_MANUALUBO_READ_PROBE || CMDGEN_HARDCODED_READ_BINDING0_ONLY);
             if (useAltRenderListBuffer) {
                 ensureAndBindCmdgenRenderListAltProbeBuffer();
@@ -1530,6 +1613,23 @@ public final class VulkanBerylSectionDrawPipeline {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
         return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), submittedQuadCount, effectiveIndirectDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
+    }
+
+    private static void applyOpaquePipelineState() {
+        VRenderSystem.disableBlend();
+        VRenderSystem.disableCull();
+        VRenderSystem.enableDepthTest();
+        VRenderSystem.depthMask(true);
+        VRenderSystem.depthFunc(515);
+    }
+
+    private static void applyTranslucentPipelineState() {
+        VRenderSystem.enableBlend();
+        VRenderSystem.blendFuncSeparate(770, 771, 1, 771);
+        VRenderSystem.disableCull();
+        VRenderSystem.enableDepthTest();
+        VRenderSystem.depthMask(false);
+        VRenderSystem.depthFunc(515);
     }
 
     private void logRealLodVertexPathClipspaceProbeDiagnostic(ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
@@ -4112,6 +4212,10 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.graphicsPipeline != null) {
             this.graphicsPipeline.cleanUp();
             this.graphicsPipeline = null;
+        }
+        if (this.translucentGraphicsPipeline != null) {
+            this.translucentGraphicsPipeline.cleanUp();
+            this.translucentGraphicsPipeline = null;
         }
         if (this.commandGenPipeline != null) {
             this.commandGenPipeline.cleanUp();

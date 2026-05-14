@@ -35,8 +35,12 @@ uint drawExtractTranslucentQuadCount(SectionMeta meta) {
     return meta.b.x & 0xFFFFu;
 }
 
-uint drawExtractOpaqueQuadStart(SectionMeta meta) {
+uint drawExtractPassQuadStart(SectionMeta meta) {
+#ifdef VOXY_VULKAN_BERYL_TRANSLUCENT_PASS
+    return extractQuadStart(meta);
+#else
     return extractQuadStart(meta) + drawExtractTranslucentQuadCount(meta);
+#endif
 }
 
 vec2 taaShift();
@@ -94,7 +98,7 @@ void main() {
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
 
-    uint opaqueQuadStart = drawExtractOpaqueQuadStart(meta);
+    uint passQuadStart = drawExtractPassQuadStart(meta);
     uint localVertexIndex = uint(gl_VertexIndex);
     uint localQuadIndex = localVertexIndex / 6u;
     uint triVertex = localVertexIndex % 6u;
@@ -121,7 +125,7 @@ void main() {
     return;
 #endif
 
-    uint quadIndex = opaqueQuadStart + localQuadIndex;
+    uint quadIndex = passQuadStart + localQuadIndex;
     QuadData quad;
     setupQuad(quad, quadData[quadIndex], extractRawPos(meta));
 
