@@ -588,6 +588,10 @@ public class AsyncNodeManager {
         return this.currentMaxNodeId;
     }
 
+    public IGeometryData getGeometryData() {
+        return this.geometryData;
+    }
+
     private long usedGeometryAmount = 0;
     public long getUsedGeometryCapacity() {
         return this.usedGeometryAmount;

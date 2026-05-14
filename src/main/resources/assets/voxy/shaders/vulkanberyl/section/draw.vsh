@@ -88,12 +88,11 @@ void main() {
     return;
 #endif
 
-    // Beryl/VulkanMod compiles graphics roots as GLSL 450 through shaderc.
-    // gl_BaseInstance is not available in that runtime path, so recover the
-    // indirect draw index from gl_InstanceIndex, which includes firstInstance
-    // for these generated single-instance draws.  The production path keeps
-    // firstVertex at zero and decodes gl_VertexIndex as a virtual triangle-list
-    // vertex: six submitted vertices form the two triangles for each quad.
+    // Vulkan/Beryl section draw contract: cmdgen emits one triangle-list
+    // command per visible render-list entry with firstVertex = 0 and
+    // firstInstance = render-list draw index. Beryl's GLSL path does not expose
+    // gl_BaseInstance, but gl_InstanceIndex includes firstInstance for these
+    // single-instance indirect draws, so use it to resolve indirectLookup.
     uint drawIndex = uint(gl_InstanceIndex);
     uint sectionId = indirectLookup[drawIndex];
     SectionMeta meta = sectionData[sectionId];
@@ -106,7 +105,7 @@ void main() {
             ? 0u
             : (triVertex == 1u ? 1u : (triVertex == 2u ? 2u : (triVertex == 3u ? 2u : (triVertex == 4u ? 1u : 3u))));
 
-#ifdef VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE
+#if defined(VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) && !defined(VOXY_VULKAN_BERYL_REAL_QUAD_READ_CLIPSPACE_PROBE)
     // Normal real-LOD indirect vertex-path probe: keep the actual
     // gl_InstanceIndex -> render-list -> section metadata path and the actual
     // triangle-list gl_VertexIndex path, but remove quad decode/world transform
@@ -126,8 +125,33 @@ void main() {
 #endif
 
     uint quadIndex = passQuadStart + localQuadIndex;
+    Quad rawQuad = quadData[quadIndex];
     QuadData quad;
-    setupQuad(quad, quadData[quadIndex], extractRawPos(meta));
+    setupQuad(quad, rawQuad, extractRawPos(meta));
+
+#ifdef VOXY_VULKAN_BERYL_REAL_QUAD_READ_CLIPSPACE_PROBE
+    // Real quad-read clip-space probe: keep the submitted indirect draw,
+    // render-list section lookup, pass quad start, quadData indexing, and
+    // setupQuad decode live, then replace only the final world/MVP projection.
+    uint decodedHash = uint(quad.axis)
+            ^ (uint(quad.basePoint.x) << 1u)
+            ^ (uint(quad.basePoint.y) << 5u)
+            ^ (uint(quad.basePoint.z) << 9u)
+            ^ (uint(quad.quadSizeAddin.x) << 13u)
+            ^ (uint(quad.quadSizeAddin.y) << 17u)
+            ^ uint(rawQuad & uint64_t(0xffffffffu));
+    vec2 probeCenter = vec2(
+            (float(int(decodedHash & 3u)) - 1.5) * 0.08,
+            (float(int((decodedHash >> 2u) & 3u)) - 1.5) * 0.08);
+    vec2 probeCorner = cornerId == 0u
+            ? vec2(-0.20, -0.20)
+            : (cornerId == 1u ? vec2(0.20, -0.20) : (cornerId == 2u ? vec2(-0.20, 0.20) : vec2(0.20, 0.20)));
+    gl_Position = vec4(probeCenter + probeCorner, float((decodedHash >> 4u) & 7u) * 0.005, 1.0);
+    uv = getCornerUV(quad, cornerId);
+    interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
+    debugIds = uvec2(drawIndex, 0x51554144u ^ uint(quadIndex));
+    return;
+#endif
 
     gl_Position = getQuadCornerPos(quad, cornerId);
     uv = getCornerUV(quad, cornerId);
