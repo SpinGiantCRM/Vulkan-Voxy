@@ -130,7 +130,7 @@ public final class VulkanBerylSectionGeometryData implements IGeometryData {
     }
 
     private static boolean realLodVisibilityDiagnosticEnabled() {
-        return Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC", "false"));
+        return VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC", false);
     }
 
     public void setUsedGeometryBytes(long usedGeometryBytes) {

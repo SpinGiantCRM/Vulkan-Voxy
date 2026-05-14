@@ -13,8 +13,8 @@ import java.util.concurrent.ConcurrentMap;
  * while frame/bind traces are disabled unless VOXY_VULKAN_BERYL_TRACE_LOGS=true.</p>
  */
 final class VulkanBerylDebugLog {
-    static final boolean VERBOSE_LOGS = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_VERBOSE_LOGS", "false"));
-    static final boolean TRACE_LOGS = Boolean.parseBoolean(System.getenv().getOrDefault("VOXY_VULKAN_BERYL_TRACE_LOGS", "false"));
+    static final boolean VERBOSE_LOGS = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_VERBOSE_LOGS", false);
+    static final boolean TRACE_LOGS = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_TRACE_LOGS", false);
 
     private static final String PREFIX = "[Voxy][VulkanBeryl] ";
     private static final int DEFAULT_WARN_INTERVAL_FRAMES = 300;
