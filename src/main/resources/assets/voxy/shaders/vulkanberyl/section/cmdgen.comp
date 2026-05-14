@@ -27,6 +27,11 @@ layout(binding = 3, std430) writeonly buffer DrawCommandsBuffer {
 };
 layout(binding = 4, std430) buffer DrawCountBuffer {
     uint drawCount;
+    uint safeVisibleCountDiagnostic;
+    uint validCommandCount;
+    uint zeroCommandCount;
+    uint invalidMetadataCount;
+    uint zeroOpaqueCount;
 };
 layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
     uint metadataSectionCapacity;
@@ -66,15 +71,6 @@ uint extractOpaqueQuadCount(SectionMeta meta) {
         + ((counts.z >> 16u) & 0xFFFFu)
         + (counts.w & 0xFFFFu)
         + ((counts.w >> 16u) & 0xFFFFu);
-}
-
-void writeZeroCommand(uint commandIndex) {
-    DrawCommand cmd;
-    cmd.vertexCount = 0u;
-    cmd.instanceCount = 0u;
-    cmd.firstVertex = 0u;
-    cmd.firstInstance = 0u;
-    commands[commandIndex] = cmd;
 }
 
 void main() {
@@ -221,6 +217,22 @@ void main() {
     }
 
     uint safeVisibleCount = min(min(visibleCount, renderListCapacity), drawCommandCapacity);
+    bool singleWorkgroupGeneration = safeVisibleCount <= gl_WorkGroupSize.x;
+    if (drawIndex == 0u && drawCountCapacityWords > 0u) {
+        // Java clears the counter buffer before every production cmdgen dispatch
+        // and inserts a transfer->compute barrier.  Only repeat the shader-side
+        // zero for a single-workgroup dispatch, where barrier() gives every
+        // invocation an execution dependency before any atomicAdd.
+        if (singleWorkgroupGeneration) drawCount = 0u;
+        if (drawCountCapacityWords > 1u) safeVisibleCountDiagnostic = safeVisibleCount;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 2u) validCommandCount = 0u;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 3u) zeroCommandCount = 0u;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 4u) invalidMetadataCount = 0u;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 5u) zeroOpaqueCount = 0u;
+    }
+    if (singleWorkgroupGeneration) {
+        barrier();
+    }
     if ((flags & CMDGEN_FLAG_READ_RENDERLIST_ONLY) != 0u) {
         if (drawIndex == 0u && safeVisibleCount > 0u) {
             uint sectionIdSmoke = indirectLookup[0];
@@ -235,16 +247,10 @@ void main() {
         return;
     }
 
-    // The Java draw submission can consume every command slot below safeVisibleCount.
-    // Publish only the number of command slots this shader will initialise, and make
-    // invalid entries explicit no-op commands so stale data is never submitted.
-    if (drawIndex == 0u && drawCountCapacityWords > 0u) {
-        drawCount = safeVisibleCount;
-    }
-
     uint sectionId = indirectLookup[drawIndex];
     if (sectionId >= metadataSectionCapacity) {
-        writeZeroCommand(drawIndex);
+        if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
+        if (drawCountCapacityWords > 4u) atomicAdd(invalidMetadataCount, 1u);
         return;
     }
 
@@ -272,8 +278,19 @@ void main() {
     uint translucentQuadCount = extractTranslucentQuadCount(meta);
     uint opaqueQuadCount = extractOpaqueQuadCount(meta);
     uint opaqueQuadStart = extractQuadStart(meta) + translucentQuadCount;
-    if (opaqueQuadCount == 0u || opaqueQuadStart > geometryCapacityQuads || opaqueQuadCount > geometryCapacityQuads - opaqueQuadStart) {
-        writeZeroCommand(drawIndex);
+    if (opaqueQuadCount == 0u) {
+        if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
+        if (drawCountCapacityWords > 5u) atomicAdd(zeroOpaqueCount, 1u);
+        return;
+    }
+    if (opaqueQuadStart > geometryCapacityQuads || opaqueQuadCount > geometryCapacityQuads - opaqueQuadStart) {
+        if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
+        return;
+    }
+
+    uint outIndex = atomicAdd(drawCount, 1u);
+    if (drawCountCapacityWords > 2u) atomicAdd(validCommandCount, 1u);
+    if (outIndex >= drawCommandCapacity) {
         return;
     }
 
@@ -282,6 +299,6 @@ void main() {
     cmd.instanceCount = 1u;
     cmd.firstVertex = 0u;
     cmd.firstInstance = drawIndex;
-    commands[drawIndex] = cmd;
+    commands[outIndex] = cmd;
 
 }

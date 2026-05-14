@@ -20,6 +20,7 @@ import net.vulkanmod.vulkan.texture.VTextureSelector;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VK10;
+import org.lwjgl.vulkan.VK12;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkBufferCopy;
 import org.lwjgl.vulkan.VkBufferMemoryBarrier;
@@ -1456,6 +1457,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return new OpaqueDrawSubmission(visibleCount, "screenspace_smoke_direct_draw", -1L, SCREENSPACE_SMOKE_INSTANCE_COUNT, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
         }
         Buffer indirectDrawCommandBuffer = DRAW_SCREENSPACE_SMOKE_INDIRECT ? this.controlledSmokeKnownCommandBuffer : controlledSmokeDrawCommandBuffer(controlledSmoke);
+        boolean gpuCountedIndirectDraw = !DRAW_SCREENSPACE_SMOKE_INDIRECT && !DRAW_WORLDSPACE_SMOKE_INDIRECT && !CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
         int effectiveIndirectDrawCount = DRAW_SCREENSPACE_SMOKE_INDIRECT ? 1 : submittedDrawCount;
         if (!DRAW_SCREENSPACE_SMOKE_INDIRECT && controlledSmoke.safe() && CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && RENDERLIST_SMOKE_ONE_ENTRY) {
             boolean readbackGenMatches = controlledSmokeCommandReadbackMatchesCurrentGeneration();
@@ -1498,11 +1500,15 @@ public final class VulkanBerylSectionDrawPipeline {
             DrawCommandDebugSample blockedSample = this.lastCompletedDebugSample;
             return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), -1L, 0, blockedSample.sampledCommandCount(), blockedSample.invalidSampledCommandCount(), blockedSample.sampledQuadCount(), this.debugSamplePending, this.controlledSmokeCommandDrawSubmitReason);
         }
-        logSectionDrawRenderTargetPathDiagnostics(renderer, viewport, commandBuffer, "before_indirect_draw", indirectDrawCommandBuffer, effectiveIndirectDrawCount);
+        logSectionDrawRenderTargetPathDiagnostics(renderer, viewport, commandBuffer, gpuCountedIndirectDraw ? "before_indirect_draw_count" : "before_indirect_draw", indirectDrawCommandBuffer, effectiveIndirectDrawCount);
         logRealLodVertexPathClipspaceProbeDiagnostic(controlledSmoke, effectiveIndirectDrawCount);
-        VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
+        if (gpuCountedIndirectDraw) {
+            VK12.vkCmdDrawIndirectCount(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, this.drawCountBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
+        } else {
+            VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
+        }
         this.anyVkCmdDrawIndirectRecordedThisFrame = true;
-        this.drawRecordedReasonThisFrame = DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : "normal_indirect_draw");
+        this.drawRecordedReasonThisFrame = DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : (gpuCountedIndirectDraw ? "normal_indirect_count_draw" : "normal_indirect_draw"));
         if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) {
             VK10.vkCmdDraw(commandBuffer, SAME_PASS_SCREENSPACE_PROBE_VERTEX_COUNT, SAME_PASS_SCREENSPACE_PROBE_INSTANCE_COUNT, SAME_PASS_SCREENSPACE_PROBE_FIRST_VERTEX, SAME_PASS_SCREENSPACE_PROBE_FIRST_INSTANCE);
             this.anyVkCmdDrawRecordedThisFrame = true;
@@ -3191,6 +3197,11 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sampledCommand0.firstVertex=" + (sample.sampledCommandCount() > 0 ? Integer.toUnsignedLong(sample.firstFirstVertex()) : -1L)
                 + ", sampledCommand0.firstInstance=" + (sample.sampledCommandCount() > 0 ? Integer.toUnsignedLong(sample.firstFirstInstance()) : -1L)
                 + ", sampledDrawCount=" + (sample.sampledDrawCount() < 0 ? sample.sampledDrawCount() : Integer.toUnsignedLong(sample.sampledDrawCount()))
+                + ", safeVisibleCount=" + (sample.safeVisibleCount() < 0 ? sample.safeVisibleCount() : Integer.toUnsignedLong(sample.safeVisibleCount()))
+                + ", validCommandCount=" + (sample.validCommandCount() < 0 ? sample.validCommandCount() : Integer.toUnsignedLong(sample.validCommandCount()))
+                + ", zeroCommandCount=" + (sample.zeroCommandCount() < 0 ? sample.zeroCommandCount() : Integer.toUnsignedLong(sample.zeroCommandCount()))
+                + ", invalidMetadataCount=" + (sample.invalidMetadataCount() < 0 ? sample.invalidMetadataCount() : Integer.toUnsignedLong(sample.invalidMetadataCount()))
+                + ", zeroOpaqueCount=" + (sample.zeroOpaqueCount() < 0 ? sample.zeroOpaqueCount() : Integer.toUnsignedLong(sample.zeroOpaqueCount()))
                 + ", indirectDrawGateReason=" + (indirectDrawRecorded ? "ready" : (drawSubmitReason == null ? "unknown" : drawSubmitReason)), 30);
         logControlledSmokeCommandRecordingDiagnostics(renderListVisibleCountForDraw, indirectDrawRecorded, drawSubmitReason);
     }
@@ -4307,7 +4318,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCountDebugReadbackBuffer != null) this.drawCountDebugReadbackBuffer.scheduleFree();
         this.drawCountDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         this.drawCountDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_opaque_draw_count_readback", this.drawCountDebugReadbackBufferUsageFlags, MemoryTypes.HOST_MEM);
-        this.drawCountDebugReadbackBuffer.createBuffer(Integer.BYTES);
+        this.drawCountDebugReadbackBuffer.createBuffer(CMDGEN_DRAWCOUNT_DIAGNOSTIC_BYTES);
         if (this.geometryQuadDebugReadbackBuffer != null) this.geometryQuadDebugReadbackBuffer.scheduleFree();
         this.geometryQuadDebugReadbackBufferUsageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         this.geometryQuadDebugReadbackBuffer = new Buffer("voxy_vulkanberyl_geometry_quad_readback", this.geometryQuadDebugReadbackBufferUsageFlags, MemoryTypes.HOST_MEM);
@@ -4397,11 +4408,8 @@ public final class VulkanBerylSectionDrawPipeline {
             return;
         }
         boolean scratchStyle = useScratchAllocationForRealDrawCountActive();
-        long drawCountBytes = scratchStyle || largeDrawCountBufferActive() ? CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES : Integer.BYTES;
-        this.drawCountBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        if (scratchStyle || drawCountWithIndirectUsageActive()) {
-            this.drawCountBufferUsageFlags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-        }
+        long drawCountBytes = scratchStyle || largeDrawCountBufferActive() ? CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES : CMDGEN_DRAWCOUNT_DIAGNOSTIC_BYTES;
+        this.drawCountBufferUsageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
         this.drawCountBuffer = new Buffer(scratchStyle ? "voxy_vulkanberyl_cmdgen_drawcount_scratch_real" : "voxy_vulkanberyl_opaque_draw_count", this.drawCountBufferUsageFlags, MemoryTypes.GPU_MEM);
         this.drawCountBuffer.createBuffer(drawCountBytes);
         this.drawCountAllocationGeneration++;
@@ -4593,7 +4601,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", clearBytes=" + clearBytes);
             logDrawCountBarrierDiagnostic("after_clear", false, 0, 0, 0, 0);
         } else {
-            long drawCountClearBytes = useScratchAllocationForRealDrawCountActive() ? alignedFillBytes(this.drawCountBuffer.getBufferSize()) : 4L;
+            long drawCountClearBytes = useScratchAllocationForRealDrawCountActive() ? alignedFillBytes(this.drawCountBuffer.getBufferSize()) : CMDGEN_DRAWCOUNT_DIAGNOSTIC_BYTES;
             VK10.vkCmdFillBuffer(commandBuffer, this.drawCountBuffer.getId(), 0L, drawCountClearBytes, 0);
             this.drawCountClearCommandRecordedThisFrame = true;
             this.drawCountUsedRealClearPathThisFrame = true;
@@ -4794,8 +4802,8 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer.getBufferSize() < Math.multiplyExact((long) visibleCount, DRAW_COMMAND_STRIDE_BYTES)) {
             return "draw_command_capacity_exceeded: visibleCount=" + visibleCount + " bufferBytes=" + this.drawCommandBuffer.getBufferSize();
         }
-        if (this.drawCountBuffer.getBufferSize() < Integer.BYTES) {
-            return "draw_count_capacity_zero: bufferBytes=" + this.drawCountBuffer.getBufferSize();
+        if (this.drawCountBuffer.getBufferSize() < CMDGEN_DRAWCOUNT_DIAGNOSTIC_BYTES) {
+            return "draw_count_capacity_too_small: bufferBytes=" + this.drawCountBuffer.getBufferSize() + " required=" + CMDGEN_DRAWCOUNT_DIAGNOSTIC_BYTES;
         }
         if (this.cmdGenConfigBuffer.getBufferSize() < CMDGEN_CONFIG_SIZE_BYTES) {
             return "cmdgen_config_capacity_too_small: bufferBytes=" + this.cmdGenConfigBuffer.getBufferSize() + " required=" + CMDGEN_CONFIG_SIZE_BYTES;
@@ -4976,7 +4984,7 @@ public final class VulkanBerylSectionDrawPipeline {
         } else if (CMDGEN_DEBUG_READBACK_DRAW_COMMANDS_ONLY) {
             copyDrawCount = false;
         }
-        long countCopyBytes = copyDrawCount ? Integer.BYTES : 0L;
+        long countCopyBytes = copyDrawCount ? Math.min((long) CMDGEN_DRAWCOUNT_DIAGNOSTIC_BYTES, Math.min(this.drawCountBuffer.getBufferSize(), this.drawCountDebugReadbackBuffer.getBufferSize())) : 0L;
         long geometryDiagnosticByteOffset = geometryDiagnosticQuadIndex < 0L ? -1L : Math.multiplyExact(geometryDiagnosticQuadIndex, Long.BYTES);
         long geometryDiagnosticRequiredBytes = geometryDiagnosticByteOffset < 0L ? -1L : Math.addExact(geometryDiagnosticByteOffset, Long.BYTES);
         boolean copyGeometryQuad = this.geometryQuadDebugReadbackBuffer != null
@@ -5067,9 +5075,9 @@ public final class VulkanBerylSectionDrawPipeline {
                     this.controlledSmokeReadbackCopyRecordedThisFrame = true;
                 }
             }
-            if (countCopyBytes == Integer.BYTES) {
+            if (countCopyBytes >= Integer.BYTES) {
                 VkBufferCopy.Buffer countCopyRegion = VkBufferCopy.calloc(1, stack);
-                countCopyRegion.srcOffset(0L).dstOffset(0L).size(Integer.BYTES);
+                countCopyRegion.srcOffset(0L).dstOffset(0L).size(countCopyBytes);
                 VK10.vkCmdCopyBuffer(commandBuffer, this.drawCountBuffer.getId(), this.drawCountDebugReadbackBuffer.getId(), countCopyRegion);
                 if (isControlledSmokeReadback) {
                     this.controlledSmokeReadbackCopyRecordedThisFrame = true;
@@ -5312,6 +5320,11 @@ public final class VulkanBerylSectionDrawPipeline {
         int firstFirstVertex = 0;
         int firstFirstInstance = 0;
         int sampledDrawCount = drawCountReadbackPtr == 0L ? -1 : MemoryUtil.memGetInt(drawCountReadbackPtr);
+        int safeVisibleCount = drawCountReadbackPtr == 0L || this.drawCountDebugReadbackBuffer.getBufferSize() < 2L * Integer.BYTES ? -1 : MemoryUtil.memGetInt(drawCountReadbackPtr + 4L);
+        int validCommandCount = drawCountReadbackPtr == 0L || this.drawCountDebugReadbackBuffer.getBufferSize() < 3L * Integer.BYTES ? -1 : MemoryUtil.memGetInt(drawCountReadbackPtr + 8L);
+        int zeroCommandCount = drawCountReadbackPtr == 0L || this.drawCountDebugReadbackBuffer.getBufferSize() < 4L * Integer.BYTES ? -1 : MemoryUtil.memGetInt(drawCountReadbackPtr + 12L);
+        int invalidMetadataCount = drawCountReadbackPtr == 0L || this.drawCountDebugReadbackBuffer.getBufferSize() < 5L * Integer.BYTES ? -1 : MemoryUtil.memGetInt(drawCountReadbackPtr + 16L);
+        int zeroOpaqueCount = drawCountReadbackPtr == 0L || this.drawCountDebugReadbackBuffer.getBufferSize() < 6L * Integer.BYTES ? -1 : MemoryUtil.memGetInt(drawCountReadbackPtr + 20L);
         String rejectReason = "none";
         long sampledDrawCountUnsigned = sampledDrawCount < 0 ? -1L : Integer.toUnsignedLong(sampledDrawCount);
         if (drawCountReadbackPtr == 0L) {
@@ -5320,6 +5333,8 @@ public final class VulkanBerylSectionDrawPipeline {
             rejectReason = "draw_count_zero";
         } else if (sampledDrawCountUnsigned > visibleCount || sampledDrawCountUnsigned > this.drawCommandCapacity) {
             rejectReason = "draw_count_out_of_range";
+        } else if (validCommandCount >= 0 && validCommandCount != sampledDrawCount) {
+            rejectReason = "valid_command_count_mismatch";
         }
         for (int i = 0; i < sampledCommandCount; i++) {
             long base = readbackPtr + (long) i * DRAW_COMMAND_STRIDE_BYTES;
@@ -5334,12 +5349,11 @@ public final class VulkanBerylSectionDrawPipeline {
                 firstFirstInstance = firstInstance;
             }
             boolean zeroNoop = vertexCount == 0 && instanceCount == 0 && firstVertex == 0 && firstInstance == 0;
-            boolean valid = zeroNoop || (vertexCount > 0 && (vertexCount & 3) == 0 && instanceCount == 1 && firstVertex >= 0 && (firstVertex & 3) == 0 && firstInstance == i && firstInstance < visibleCount);
-            if (!zeroNoop && valid && firstVertex >= 0 && geometryBufferBytes > 0L) {
+            long firstInstanceUnsigned = Integer.toUnsignedLong(firstInstance);
+            boolean valid = zeroNoop || (vertexCount > 0 && vertexCount % 6 == 0 && instanceCount == 1 && firstVertex == 0 && firstInstanceUnsigned < Integer.toUnsignedLong(visibleCount));
+            if (!zeroNoop && valid && geometryBufferBytes > 0L) {
                 long maxVertexExclusive = (geometryBufferBytes >>> 3) * 4L;
-                long firstVertexUnsigned = Integer.toUnsignedLong(firstVertex);
-                valid = firstVertexUnsigned < maxVertexExclusive
-                        && firstVertexUnsigned + Integer.toUnsignedLong(vertexCount) <= maxVertexExclusive;
+                valid = Integer.toUnsignedLong(vertexCount) <= maxVertexExclusive;
             }
             if (!valid) {
                 invalid++;
@@ -5350,9 +5364,9 @@ public final class VulkanBerylSectionDrawPipeline {
                             + ":firstInstance=" + Integer.toUnsignedLong(firstInstance);
                 }
             }
-            if ((vertexCount & 3) == 0 && vertexCount >= 0) quadCount += (vertexCount >>> 2);
+            if (vertexCount > 0 && vertexCount % 6 == 0) quadCount += Integer.toUnsignedLong(vertexCount) / 6L;
         }
-        return new DrawCommandDebugSample(sampledCommandCount, invalid, quadCount, firstVertexCount, firstInstanceCount, firstFirstVertex, firstFirstInstance, sampledDrawCount, rejectReason);
+        return new DrawCommandDebugSample(sampledCommandCount, invalid, quadCount, firstVertexCount, firstInstanceCount, firstFirstVertex, firstFirstInstance, sampledDrawCount, safeVisibleCount, validCommandCount, zeroCommandCount, invalidMetadataCount, zeroOpaqueCount, rejectReason);
     }
 
     private CmdgenCommandSnapshot cmdgenCommandSnapshot(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke) {
@@ -5385,10 +5399,15 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private boolean sampleMatchesSnapshot(DrawCommandDebugSample sample, CmdgenCommandSnapshot snapshot) {
         if (sample.sampledCommandCount() <= 0 || !snapshot.available()) return false;
+        long sampledFirstInstance = Integer.toUnsignedLong(sample.firstFirstInstance());
+        if (sampledFirstInstance != snapshot.expectedFirstInstance()) {
+            long safeVisibleCount = sample.safeVisibleCount() < 0 ? Long.MAX_VALUE : Integer.toUnsignedLong(sample.safeVisibleCount());
+            return sampledFirstInstance < safeVisibleCount;
+        }
         return Integer.toUnsignedLong(sample.firstVertexCount()) == snapshot.expectedVertexCount()
                 && Integer.toUnsignedLong(sample.firstInstanceCount()) == snapshot.expectedInstanceCount()
-                && Integer.toUnsignedLong(sample.firstFirstVertex()) == snapshot.expectedFirstVertex()
-                && Integer.toUnsignedLong(sample.firstFirstInstance()) == snapshot.expectedFirstInstance();
+                && Integer.toUnsignedLong(sample.firstFirstVertex()) == 0L
+                && sampledFirstInstance == snapshot.expectedFirstInstance();
     }
 
     private boolean completedCmdgenSampleSnapshotMatches(CmdgenCommandSnapshot currentSnapshot) {
@@ -5471,8 +5490,8 @@ public final class VulkanBerylSectionDrawPipeline {
         return "invalid_sample";
     }
 
-    private record DrawCommandDebugSample(int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, int firstVertexCount, int firstInstanceCount, int firstFirstVertex, int firstFirstInstance, int sampledDrawCount, String rejectReason) {
-        static DrawCommandDebugSample empty() { return new DrawCommandDebugSample(0, 0, -1L, 0, 0, 0, 0, -1, "not_sampled"); }
+    private record DrawCommandDebugSample(int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, int firstVertexCount, int firstInstanceCount, int firstFirstVertex, int firstFirstInstance, int sampledDrawCount, int safeVisibleCount, int validCommandCount, int zeroCommandCount, int invalidMetadataCount, int zeroOpaqueCount, String rejectReason) {
+        static DrawCommandDebugSample empty() { return new DrawCommandDebugSample(0, 0, -1L, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, "not_sampled"); }
     }
 
     private record CmdgenCommandSnapshot(int scheduledRenderListEntry0SectionId, long expectedFirstVertex, long expectedVertexCount, long expectedInstanceCount, long expectedFirstInstance, long drawCommandBufferId, long commandBufferGeneration, long renderListBufferId, long metadataBufferId, boolean available) {
