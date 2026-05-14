@@ -165,6 +165,7 @@ final class VulkanBerylCmdgenDiagnostics {
     static final int CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE = 1 << 11;
     static final int CMDGEN_FLAG_READ_CONFIG_ONLY = 1 << 12;
     static final int CMDGEN_FLAG_READ_RENDERLIST_METADATA_NO_WRITE = 1 << 13;
+    static final int CMDGEN_FLAG_TRANSLUCENT_PASS = 1 << 14;
     static final int DRAW_COMMAND_DEBUG_SAMPLE_LIMIT = 16;
     static final boolean DEBUG_COLOUR_MODE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_DEBUG_COLOUR", false);
     static final boolean ENABLE_CMDGEN_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", false);
