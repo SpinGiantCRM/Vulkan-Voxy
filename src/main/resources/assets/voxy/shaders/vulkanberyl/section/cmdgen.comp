@@ -278,9 +278,9 @@ void main() {
     }
 
     DrawCommand cmd;
-    cmd.vertexCount = opaqueQuadCount * 4u;
+    cmd.vertexCount = opaqueQuadCount * 6u;
     cmd.instanceCount = 1u;
-    cmd.firstVertex = opaqueQuadStart * 4u;
+    cmd.firstVertex = 0u;
     cmd.firstInstance = drawIndex;
     commands[drawIndex] = cmd;
 

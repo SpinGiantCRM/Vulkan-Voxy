@@ -335,10 +335,11 @@ public final class VulkanBerylSectionDrawPipeline {
         }
 
         VertexFormat drawVertexFormat = resolveDummyVertexFormat();
+        configureSectionDrawPrimitiveTopologyTriangleList("pipeline_creation");
         Pipeline.Builder builder = new Pipeline.Builder(drawVertexFormat);
         List<UBO> drawDescriptors = createManualDrawDescriptors();
         boolean debugFragmentShader = useDebugFragmentShader();
-        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false, shaderIndexingMode=instanceIndex_drawIndex_metadataOpaqueBaseQuad_plus_vertexIndexMinusMetadataOpaqueBaseVertex, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=metadata_opaqueQuadStart_times_4, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout", "Section draw descriptor mode=manual_dense, bindings=[0,1,2,3,4,5,6], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", forceDebugFragmentForBringup=" + FORCE_DEBUG_FRAGMENT_FOR_BRINGUP + ", normalTexturedDrawWired=false, shaderIndexingMode=instanceIndex_drawIndex_metadataOpaqueBaseQuad_plus_vertexIndex_div_6_triangle_list, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=unused_firstVertex_zero, primitiveTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
         try {
             builder.setUniforms(drawDescriptors, List.of());
         } catch (Exception e) {
@@ -1416,6 +1417,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return new OpaqueDrawSubmission(visibleCount, "screenspace_smoke_indirect_draw", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, submitReason);
         }
         applyRealLodVisibilityDiagnosticPipelineStateOverride();
+        configureSectionDrawPrimitiveTopologyTriangleList("draw_submit");
         logSectionDrawGraphicsPipelineState(renderer, viewport, screenspaceSmokeDirectDrawEnabled() ? "screenspace_smoke_direct_draw" : (DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "submitted")));
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(commandBuffer, viewport);
@@ -1562,6 +1564,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
 
         applyRealLodVisibilityDiagnosticPipelineStateOverride();
+        configureSectionDrawPrimitiveTopologyTriangleList("screenspace_smoke_indirect_draw");
         logSectionDrawGraphicsPipelineState(renderer, viewport, "screenspace_smoke_indirect_draw");
         renderer.bindGraphicsPipeline(this.graphicsPipeline);
         this.bindSceneUniform(commandBuffer, viewport);
@@ -1579,6 +1582,13 @@ public final class VulkanBerylSectionDrawPipeline {
         return new OpaqueDrawSubmission(0, "screenspace_smoke_indirect_draw", -1L, smokeSubmittedDrawCount, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, null);
     }
 
+    private static void configureSectionDrawPrimitiveTopologyTriangleList(String stage) {
+        int previousTopology = VRenderSystem.topology;
+        VRenderSystem.topology = VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VulkanBerylDebugLog.verboseOnce("section-draw-primitive-topology", "Section draw primitive topology configured: stage=" + stage
+                + ", previousTopology=" + vulkanPrimitiveTopologyName(previousTopology) + "(" + previousTopology + ")"
+                + ", currentTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST(" + VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST + ")");
+    }
 
     private static void applyRealLodVisibilityDiagnosticPipelineStateOverride() {
         if (!REAL_LOD_VISIBILITY_DIAGNOSTIC && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return;
@@ -1606,6 +1616,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", depthWriteEnabled=" + PipelineState.DepthState.depthMask(depthState)
                 + ", depthCompareOp=" + vulkanCompareOpName(depthCompareOp) + "(" + depthCompareOp + ")"
                 + ", cullMode=" + vulkanCullModeName(cullMode) + "(" + cullMode + ")"
+                + ", primitiveTopology=" + vulkanPrimitiveTopologyName(PipelineState.AssemblyRasterState.decodeTopology(assemblyRasterState)) + "(" + PipelineState.AssemblyRasterState.decodeTopology(assemblyRasterState) + ")"
                 + ", frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE(0)"
                 + ", colorWriteMask=" + colorMaskName(colorMask) + "(" + colorMask + ")"
                 + ", blendEnabled=" + PipelineState.BlendState.enable(blendState)
@@ -1752,6 +1763,23 @@ public final class VulkanBerylSectionDrawPipeline {
             }
         }
         return null;
+    }
+
+    private static String vulkanPrimitiveTopologyName(int topology) {
+        return switch (topology) {
+            case VK10.VK_PRIMITIVE_TOPOLOGY_POINT_LIST -> "VK_PRIMITIVE_TOPOLOGY_POINT_LIST";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_LINE_LIST -> "VK_PRIMITIVE_TOPOLOGY_LINE_LIST";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_LINE_STRIP -> "VK_PRIMITIVE_TOPOLOGY_LINE_STRIP";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST -> "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP -> "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN -> "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY -> "VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY -> "VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY -> "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY -> "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY";
+            case VK10.VK_PRIMITIVE_TOPOLOGY_PATCH_LIST -> "VK_PRIMITIVE_TOPOLOGY_PATCH_LIST";
+            default -> "unknown";
+        };
     }
 
     private static String vulkanCullModeName(int cullMode) {
