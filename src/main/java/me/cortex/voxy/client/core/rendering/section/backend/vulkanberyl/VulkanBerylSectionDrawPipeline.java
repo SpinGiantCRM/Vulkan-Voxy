@@ -4287,7 +4287,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.warnRateLimited("section-draw-texture-fallback:" + label, "Section draw texture descriptor fallback: label=" + label
                 + ", textureIndex=" + textureIndex
                 + ", fallback=VTextureSelector.whiteTexture"
-                + ", depthSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX, 60);
+                + ", depthSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX);
     }
 
     private void ensureCommandBuffers(int maxEntryCount) {
