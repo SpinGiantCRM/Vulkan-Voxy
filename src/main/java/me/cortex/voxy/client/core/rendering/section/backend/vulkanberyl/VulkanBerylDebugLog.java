@@ -63,6 +63,12 @@ final class VulkanBerylDebugLog {
         }
     }
 
+    static void rateLimited(String key, String message, int intervalFrames, long intervalNanos) {
+        if (shouldPrint(key, Math.max(1, intervalFrames), Math.max(1L, intervalNanos))) {
+            info(withSuppressedCount(key, message));
+        }
+    }
+
     static void warnRateLimited(String key, String message) {
         if (shouldPrint(key, DEFAULT_WARN_INTERVAL_FRAMES, DEFAULT_WARN_INTERVAL_NANOS)) {
             Logger.warn(withSuppressedCount(key, prefixed(message)));
@@ -85,6 +91,12 @@ final class VulkanBerylDebugLog {
 
     static void alwaysRaw(String message) {
         Logger.info(message);
+    }
+
+    static void rateLimitedRaw(String key, String message, int intervalFrames, long intervalNanos) {
+        if (shouldPrint(key, Math.max(1, intervalFrames), Math.max(1L, intervalNanos))) {
+            Logger.info(withSuppressedCount(key, message));
+        }
     }
 
     private static void info(String message) {

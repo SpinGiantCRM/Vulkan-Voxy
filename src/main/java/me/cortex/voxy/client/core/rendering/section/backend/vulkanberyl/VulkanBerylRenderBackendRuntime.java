@@ -44,6 +44,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     private static volatile SmokeStatus LAST_SMOKE_STATUS = new SmokeStatus(false, false, false, false, false, 0, false, false, -1, 0);
     private static volatile FrameSafetyState LAST_FRAME_SAFETY_STATE = new FrameSafetyState(false, false, "waiting_for_valid_render_list_readback");
+    private static volatile double LAST_GEOMETRY_UPDATE_CPU_MS;
     private static final boolean ENABLE_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_TRAVERSAL_DISPATCH", true);
     private static final boolean ENABLE_INITIAL_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_INITIAL_TRAVERSAL_DISPATCH", true);
     private static final boolean ENABLE_INDIRECT_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_TRAVERSAL_DISPATCH", false);
@@ -153,9 +154,11 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.submitPendingRenderListCounterReadback();
         this.submitPendingRenderListSampleReadback();
 
+        long geometryUpdateStartNanos = System.nanoTime();
         do {
             this.nodeManager.tick(this.nodeMetadataStore, this.nodeCleanupSink);
         } while (frexStillHasWork.getAsBoolean());
+        LAST_GEOMETRY_UPDATE_CPU_MS = (System.nanoTime() - geometryUpdateStartNanos) / 1_000_000.0;
 
         int topNodeCount = this.topLevelNodeStore.getTopNodeCount();
         VkCommandBuffer commandBuffer = vulkanWorkContext.frame().renderer().getCommandBuffer();
@@ -1069,6 +1072,10 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     static SmokeStatus getLastSmokeStatus() {
         return LAST_SMOKE_STATUS;
+    }
+
+    static double getLastGeometryUpdateCpuMs() {
+        return LAST_GEOMETRY_UPDATE_CPU_MS;
     }
 
     private void publishSmokeStatus() {

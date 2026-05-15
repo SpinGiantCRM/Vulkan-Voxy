@@ -62,6 +62,20 @@ void main() {
     }
 #endif
 
+#ifdef VOXY_VULKAN_BERYL_SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER
+    if (uint(gl_InstanceIndex) == 0x464D4152u) {
+        uint markerVertex = uint(gl_VertexIndex) % 3u;
+        vec2 markerPos = markerVertex == 0u
+                ? vec2(0.55, 0.55)
+                : (markerVertex == 1u ? vec2(0.95, 0.55) : vec2(0.95, 0.95));
+        gl_Position = vec4(markerPos, 0.0, 1.0);
+        uv = markerPos * 0.5 + vec2(0.5);
+        interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
+        debugIds = uvec2(0x464D4152u, markerVertex);
+        return;
+    }
+#endif
+
 #ifdef VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE
     // Isolated graphics-pipeline smoke path: do not read section geometry, metadata,
     // render-list lookup entries, camera MVP, or depth-derived world positions.
@@ -104,6 +118,16 @@ void main() {
     uint cornerId = triVertex == 0u
             ? 0u
             : (triVertex == 1u ? 1u : (triVertex == 2u ? 2u : (triVertex == 3u ? 2u : (triVertex == 4u ? 1u : 3u))));
+
+#ifdef VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE
+    if (localQuadIndex != 0u) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        uv = vec2(0.0);
+        interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
+        debugIds = uvec2(drawIndex, 0x51444153u);
+        return;
+    }
+#endif
 
 #if defined(VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) && !defined(VOXY_VULKAN_BERYL_REAL_QUAD_READ_CLIPSPACE_PROBE)
     // Normal real-LOD indirect vertex-path probe: keep the actual
