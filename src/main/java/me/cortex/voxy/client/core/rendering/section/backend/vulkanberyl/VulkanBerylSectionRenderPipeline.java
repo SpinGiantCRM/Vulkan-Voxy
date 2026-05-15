@@ -22,6 +22,8 @@ import java.util.function.BooleanSupplier;
 public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipeline {
     private static final float[] RENDER_SCALING_FACTOR = new float[] {1.0f, 1.0f};
     private static final boolean FORCE_SYNC_ONLY_SECTION_PIPELINE = Boolean.getBoolean("voxy.vulkanberyl.forceSyncOnlySectionPipeline");
+    private static final boolean CPU_CLEAR_RENDER_LIST_COUNTER = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CPU_CLEAR_RENDER_LIST_COUNTER", false);
+    private static final long TIMING_LOG_INTERVAL_NANOS = 1_000_000_000L;
 
     private final RenderProperties properties;
     private final SectionRenderBackendRuntime backendRuntime;
@@ -35,6 +37,11 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
     private long renderOpaqueAttemptedCount;
     private String lastRenderPhaseReached = "none";
     private String lastRenderFailure = "none";
+    private double lastTraversalCpuMs;
+    private double lastRenderListCpuMs;
+    private double lastSectionDrawCpuMs;
+    private double lastDiagnosticCpuMs;
+    private double lastGeometryUpdateCpuMs;
 
     public VulkanBerylSectionRenderPipeline(RenderProperties properties, SectionRenderBackendRuntime backendRuntime, BooleanSupplier frexSupplier) {
         this.properties = properties;
@@ -162,30 +169,61 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         this.requireValidExtent(extent);
         this.requireCompatibleViewport(vulkanViewport, extent.width(), extent.height());
         VulkanBerylViewportRenderList renderList = VulkanBerylViewportRenderList.require(vulkanViewport.getRenderList());
-        renderList.clearCounter();
+        long renderListStartNanos = System.nanoTime();
+        if (CPU_CLEAR_RENDER_LIST_COUNTER) {
+            renderList.clearCounter();
+        } else {
+            VulkanBerylDebugLog.once("render-list-cpu-clear-disabled",
+                    "Vulkan/Beryl CPU render-list counter clear disabled: env=VOXY_VULKAN_BERYL_CPU_CLEAR_RENDER_LIST_COUNTER=false, traversal command buffer clear remains active");
+        }
+        long renderListEndNanos = System.nanoTime();
         this.lastRenderPhaseReached = "renderList_cleared";
 
         try {
+            long traversalStartNanos = System.nanoTime();
             this.backendRuntime.doPrimaryWork(vulkanViewport, new VulkanBerylPrimaryRenderWorkContext(vulkanFrame), this.frexSupplier);
+            long traversalEndNanos = System.nanoTime();
             this.doPrimaryWorkCompletedCount++;
             this.lastRenderPhaseReached = "doPrimaryWork_completed";
 
+            long buildStartNanos = traversalEndNanos;
+            long buildEndNanos = buildStartNanos;
+            long opaqueStartNanos = buildEndNanos;
+            long opaqueEndNanos = opaqueStartNanos;
+            long translucentStartNanos = opaqueEndNanos;
+            long translucentEndNanos = translucentStartNanos;
+            long temporalStartNanos = translucentEndNanos;
+            long temporalEndNanos = temporalStartNanos;
             if (!FORCE_SYNC_ONLY_SECTION_PIPELINE) {
                 @SuppressWarnings("unchecked")
                 AbstractSectionRenderer<VulkanBerylViewport, ?> activeSectionRenderer = (AbstractSectionRenderer<VulkanBerylViewport, ?>) this.sectionRenderer;
                 this.buildDrawCallsAttemptedCount++;
+                buildStartNanos = System.nanoTime();
                 activeSectionRenderer.buildDrawCalls(vulkanViewport);
+                buildEndNanos = System.nanoTime();
                 this.lastRenderPhaseReached = "buildDrawCalls_completed";
                 this.renderOpaqueAttemptedCount++;
+                opaqueStartNanos = System.nanoTime();
                 activeSectionRenderer.renderOpaque(vulkanViewport);
+                opaqueEndNanos = System.nanoTime();
                 this.lastRenderPhaseReached = "renderOpaque_completed";
+                translucentStartNanos = System.nanoTime();
                 activeSectionRenderer.renderTranslucent(vulkanViewport);
+                translucentEndNanos = System.nanoTime();
                 this.lastRenderPhaseReached = "renderTranslucent_completed";
+                temporalStartNanos = System.nanoTime();
                 activeSectionRenderer.renderTemporal(vulkanViewport);
+                temporalEndNanos = System.nanoTime();
                 this.lastRenderPhaseReached = "renderTemporal_completed";
             } else {
                 this.lastRenderPhaseReached = "syncOnly_forced";
             }
+            this.lastRenderListCpuMs = nanosToMillis((renderListEndNanos - renderListStartNanos) + (buildEndNanos - buildStartNanos));
+            this.lastTraversalCpuMs = nanosToMillis(traversalEndNanos - traversalStartNanos);
+            this.lastSectionDrawCpuMs = nanosToMillis((opaqueEndNanos - opaqueStartNanos) + (translucentEndNanos - translucentStartNanos) + (temporalEndNanos - temporalStartNanos));
+            this.lastDiagnosticCpuMs = VulkanBerylSectionDrawPipeline.getLastDiagnosticCpuMs();
+            this.lastGeometryUpdateCpuMs = VulkanBerylRenderBackendRuntime.getLastGeometryUpdateCpuMs();
+            logFrameTimings();
         } catch (RuntimeException | Error ex) {
             this.lastRenderFailure = this.lastRenderPhaseReached + ": " + ex.getClass().getSimpleName() + ": " + ex.getMessage();
             this.lastRenderPhaseReached = "failed";
@@ -202,6 +240,11 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
         debug.add("Vulkan/Beryl renderOpaque attempted count: " + this.renderOpaqueAttemptedCount);
         debug.add("Vulkan/Beryl last render phase reached: " + this.lastRenderPhaseReached);
         debug.add("Vulkan/Beryl last render exception/failure: " + this.lastRenderFailure);
+        debug.add("Vulkan/Beryl CPU timings ms: traversal=" + formatMs(this.lastTraversalCpuMs)
+                + ", renderList=" + formatMs(this.lastRenderListCpuMs)
+                + ", sectionDraw=" + formatMs(this.lastSectionDrawCpuMs)
+                + ", diagnostic=" + formatMs(this.lastDiagnosticCpuMs)
+                + ", geometryUpdate=" + formatMs(this.lastGeometryUpdateCpuMs));
         if (FORCE_SYNC_ONLY_SECTION_PIPELINE) {
             debug.add("Vulkan/Beryl section pipeline: sync-only fallback forced via -Dvoxy.vulkanberyl.forceSyncOnlySectionPipeline=true");
         } else {
@@ -258,5 +301,25 @@ public final class VulkanBerylSectionRenderPipeline implements SectionRenderPipe
             throw new IllegalStateException("VULKANMOD_BERYL viewport/swapchain extent mismatch: viewport=" +
                     viewport.width + "x" + viewport.height + ", swapchain=" + width + "x" + height);
         }
+    }
+
+    private void logFrameTimings() {
+        VulkanBerylDebugLog.rateLimited("vulkanberyl-frame-cpu-timings",
+                "Vulkan/Beryl CPU timings: traversalCpuMs=" + formatMs(this.lastTraversalCpuMs)
+                        + ", renderListCpuMs=" + formatMs(this.lastRenderListCpuMs)
+                        + ", sectionDrawCpuMs=" + formatMs(this.lastSectionDrawCpuMs)
+                        + ", diagnosticCpuMs=" + formatMs(this.lastDiagnosticCpuMs)
+                        + ", geometryUpdateCpuMs=" + formatMs(this.lastGeometryUpdateCpuMs)
+                        + ", cpuRenderListClearEnabled=" + CPU_CLEAR_RENDER_LIST_COUNTER
+                        + ", forceSyncOnlySectionPipeline=" + FORCE_SYNC_ONLY_SECTION_PIPELINE,
+                20, TIMING_LOG_INTERVAL_NANOS);
+    }
+
+    private static double nanosToMillis(long nanos) {
+        return Math.max(0L, nanos) / 1_000_000.0;
+    }
+
+    private static String formatMs(double value) {
+        return String.format(java.util.Locale.ROOT, "%.3f", value);
     }
 }

@@ -44,6 +44,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     private static volatile SmokeStatus LAST_SMOKE_STATUS = new SmokeStatus(false, false, false, false, false, 0, false, false, -1, 0);
     private static volatile FrameSafetyState LAST_FRAME_SAFETY_STATE = new FrameSafetyState(false, false, "waiting_for_valid_render_list_readback");
+    private static volatile double LAST_GEOMETRY_UPDATE_CPU_MS;
     private static final boolean ENABLE_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_TRAVERSAL_DISPATCH", true);
     private static final boolean ENABLE_INITIAL_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_INITIAL_TRAVERSAL_DISPATCH", true);
     private static final boolean ENABLE_INDIRECT_TRAVERSAL_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_TRAVERSAL_DISPATCH", false);
@@ -153,9 +154,11 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.submitPendingRenderListCounterReadback();
         this.submitPendingRenderListSampleReadback();
 
+        long geometryUpdateStartNanos = System.nanoTime();
         do {
             this.nodeManager.tick(this.nodeMetadataStore, this.nodeCleanupSink);
         } while (frexStillHasWork.getAsBoolean());
+        LAST_GEOMETRY_UPDATE_CPU_MS = (System.nanoTime() - geometryUpdateStartNanos) / 1_000_000.0;
 
         int topNodeCount = this.topLevelNodeStore.getTopNodeCount();
         VkCommandBuffer commandBuffer = vulkanWorkContext.frame().renderer().getCommandBuffer();
@@ -840,7 +843,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                     0, toHost, null, null);
         }
         this.pendingRenderListSampleSource = renderList;
-        this.pendingRenderListSampleGeometry = null;
+        this.pendingRenderListSampleGeometry = this.nodeManager.getGeometryData() instanceof VulkanBerylSectionGeometryData geometryData ? geometryData : null;
         this.renderListSampleReadbackPending = true;
     }
 
@@ -876,12 +879,14 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         int sampledCount = Math.min(visibleCount, RENDER_LIST_SAMPLE_LIMIT);
         int invalidCount = 0;
         int[] firstIds = new int[Math.min(sampledCount, RENDER_LIST_DEBUG_FIRST_IDS)];
+        VulkanBerylSectionGeometryData geometryData = this.pendingRenderListSampleGeometry;
+        int metadataSectionCapacity = geometryData == null ? renderList.getMaxEntryCount() : geometryData.getMaxSectionCount();
         for (int i = 0; i < sampledCount; i++) {
             int sectionId = MemoryUtil.memGetInt(readbackPtr + Integer.BYTES + (long) i * Integer.BYTES);
             if (i < firstIds.length) {
                 firstIds[i] = sectionId;
             }
-            boolean valid = sectionId >= 0 && sectionId < renderList.getMaxEntryCount();
+            boolean valid = sectionId >= 0 && sectionId < metadataSectionCapacity;
             if (!valid) {
                 invalidCount++;
             }
@@ -893,13 +898,48 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         this.lastSampledRenderListFirstEntries = java.util.Arrays.toString(firstIds);
         if (invalidCount > 0) {
             VulkanBerylDebugLog.warnRateLimited("invalid-render-list-sample-entries", "Vulkan/Beryl render-list sample validation found invalid entries: " + invalidCount + "/" + sampledCount +
-                    " (visible=" + visibleCount + ", renderListCapacity=" + maxEntryCount + ")");
+                    " (visible=" + visibleCount + ", metadataSectionCapacity=" + metadataSectionCapacity + ", renderListCapacity=" + maxEntryCount + ")");
         }
+        logFirstRenderListEntryMetadataSample(firstIds, geometryData, visibleCount, sampledCount, metadataSectionCapacity);
 
         this.renderListSampleReadbackPending = false;
         this.pendingRenderListSampleSource = null;
         this.pendingRenderListSampleGeometry = null;
         this.lastRenderListSampleDiscarded = invalidCount > 0;
+    }
+
+    private void logFirstRenderListEntryMetadataSample(int[] firstIds, VulkanBerylSectionGeometryData geometryData, int visibleCount, int sampledCount, int metadataSectionCapacity) {
+        if (firstIds.length == 0 || geometryData == null) {
+            return;
+        }
+        int sectionId = firstIds[0];
+        boolean inBounds = sectionId >= 0 && sectionId < metadataSectionCapacity;
+        boolean mirrorNonZero = inBounds && geometryData.hasNonZeroSectionMetadata(sectionId);
+        int a0 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 0) : 0;
+        int a1 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 1) : 0;
+        int a2 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 2) : 0;
+        int a3 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 3) : 0;
+        int b0 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 4) : 0;
+        int b1 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 5) : 0;
+        int b2 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 6) : 0;
+        int b3 = inBounds ? geometryData.getSectionMetadataInt(sectionId, 7) : 0;
+        long translucentQuadCount = b0 & 0xFFFFL;
+        long opaqueQuadCount = ((b0 >>> 16) & 0xFFFFL)
+                + (b1 & 0xFFFFL) + ((b1 >>> 16) & 0xFFFFL)
+                + (b2 & 0xFFFFL) + ((b2 >>> 16) & 0xFFFFL)
+                + (b3 & 0xFFFFL) + ((b3 >>> 16) & 0xFFFFL);
+        VulkanBerylDebugLog.rateLimited("render-list-entry0-metadata-contract", "render-list entry0 metadata contract: visibleCount=" + visibleCount
+                + ", sampledCount=" + sampledCount
+                + ", entry0SectionId=" + sectionId
+                + ", metadataSectionCapacity=" + metadataSectionCapacity
+                + ", inBounds=" + inBounds
+                + ", metadataMirrorNonZero=" + mirrorNonZero
+                + ", meta.a=[" + Integer.toUnsignedLong(a0) + "," + Integer.toUnsignedLong(a1) + "," + Integer.toUnsignedLong(a2) + "," + Integer.toUnsignedLong(a3) + "]"
+                + ", meta.b=[" + Integer.toUnsignedLong(b0) + "," + Integer.toUnsignedLong(b1) + "," + Integer.toUnsignedLong(b2) + "," + Integer.toUnsignedLong(b3) + "]"
+                + ", decodedQuadStart=" + Integer.toUnsignedLong(a3)
+                + ", decodedTranslucentQuadCount=" + translucentQuadCount
+                + ", javaDecodedOpaqueQuadCount=" + opaqueQuadCount
+                + ", firstInstanceConvention=render_list_draw_index", 120);
     }
 
     static FrameSafetyState getLastFrameSafetyState() {
@@ -1032,6 +1072,10 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
     static SmokeStatus getLastSmokeStatus() {
         return LAST_SMOKE_STATUS;
+    }
+
+    static double getLastGeometryUpdateCpuMs() {
+        return LAST_GEOMETRY_UPDATE_CPU_MS;
     }
 
     private void publishSmokeStatus() {

@@ -32,6 +32,10 @@ layout(binding = 4, std430) buffer DrawCountBuffer {
     uint zeroCommandCount;
     uint invalidMetadataCount;
     uint zeroOpaqueCount;
+    uint passQuadCountZeroCount;
+    uint passQuadRangeOutOfBoundsCount;
+    uint invalidMetadataDetailedCount;
+    uint commandCapacityExceededCount;
 };
 layout(binding = 5, std430) readonly buffer CmdGenConfigBuffer {
     uint metadataSectionCapacity;
@@ -64,6 +68,11 @@ uint extractTranslucentQuadCount(SectionMeta meta) {
 }
 
 uint extractOpaqueQuadCount(SectionMeta meta) {
+    // Vulkan/Beryl bring-up contract: emit one opaque draw per visible section.
+    // The render-list entry is a SectionMeta index; firstInstance remains the
+    // render-list draw index so draw.vsh can resolve indirectLookup[drawIndex].
+    // Count all opaque ranges directly and do not apply the GL face visibility
+    // command-splitting mask here.
     uvec4 counts = meta.b;
     return ((counts.x >> 16u) & 0xFFFFu)
         + (counts.y & 0xFFFFu)
@@ -230,6 +239,10 @@ void main() {
         if (singleWorkgroupGeneration && drawCountCapacityWords > 3u) zeroCommandCount = 0u;
         if (singleWorkgroupGeneration && drawCountCapacityWords > 4u) invalidMetadataCount = 0u;
         if (singleWorkgroupGeneration && drawCountCapacityWords > 5u) zeroOpaqueCount = 0u;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 6u) passQuadCountZeroCount = 0u;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 7u) passQuadRangeOutOfBoundsCount = 0u;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 8u) invalidMetadataDetailedCount = 0u;
+        if (singleWorkgroupGeneration && drawCountCapacityWords > 9u) commandCapacityExceededCount = 0u;
     }
     if (singleWorkgroupGeneration) {
         barrier();
@@ -252,6 +265,7 @@ void main() {
     if (sectionId >= metadataSectionCapacity) {
         if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
         if (drawCountCapacityWords > 4u) atomicAdd(invalidMetadataCount, 1u);
+        if (drawCountCapacityWords > 8u) atomicAdd(invalidMetadataDetailedCount, 1u);
         return;
     }
 
@@ -284,18 +298,21 @@ void main() {
     if (passQuadCount == 0u) {
         if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
         if (!translucentPass && drawCountCapacityWords > 5u) atomicAdd(zeroOpaqueCount, 1u);
+        if (drawCountCapacityWords > 6u) atomicAdd(passQuadCountZeroCount, 1u);
         return;
     }
     if (passQuadStart > geometryCapacityQuads || passQuadCount > geometryCapacityQuads - passQuadStart) {
         if (drawCountCapacityWords > 3u) atomicAdd(zeroCommandCount, 1u);
+        if (drawCountCapacityWords > 7u) atomicAdd(passQuadRangeOutOfBoundsCount, 1u);
         return;
     }
 
     uint outIndex = atomicAdd(drawCount, 1u);
-    if (drawCountCapacityWords > 2u) atomicAdd(validCommandCount, 1u);
     if (outIndex >= drawCommandCapacity) {
+        if (drawCountCapacityWords > 9u) atomicAdd(commandCapacityExceededCount, 1u);
         return;
     }
+    if (drawCountCapacityWords > 2u) atomicAdd(validCommandCount, 1u);
 
     DrawCommand cmd;
     cmd.vertexCount = passQuadCount * 6u;

@@ -146,7 +146,7 @@ final class VulkanBerylCmdgenDiagnostics {
     static final int DRAW_COMMAND_STRIDE_BYTES = 16;
     static final int CMDGEN_CONFIG_SIZE_BYTES = 24;
     static final int CMDGEN_UNUSED_BINDING2_SIZE_BYTES = 32;
-    static final int CMDGEN_DRAWCOUNT_DIAGNOSTIC_WORDS = 6;
+    static final int CMDGEN_DRAWCOUNT_DIAGNOSTIC_WORDS = 10;
     static final int CMDGEN_DRAWCOUNT_DIAGNOSTIC_BYTES = CMDGEN_DRAWCOUNT_DIAGNOSTIC_WORDS * Integer.BYTES;
     static final int CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES = 256;
     static final int CMDGEN_BINDING2_PROBE_SIZE_BYTES = VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE;
