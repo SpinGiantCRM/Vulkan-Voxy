@@ -66,9 +66,9 @@ void main() {
     if (uint(gl_InstanceIndex) == 0x464D4152u) {
         uint markerVertex = uint(gl_VertexIndex) % 3u;
         vec2 markerPos = markerVertex == 0u
-                ? vec2(0.55, 0.55)
-                : (markerVertex == 1u ? vec2(0.95, 0.55) : vec2(0.95, 0.95));
-        gl_Position = vec4(markerPos, 0.0, 1.0);
+                ? vec2(-0.9, -0.9)
+                : (markerVertex == 1u ? vec2(0.9, -0.9) : vec2(0.0, 0.9));
+        gl_Position = vec4(markerPos, 0.5, 1.0);
         uv = markerPos * 0.5 + vec2(0.5);
         interData = uvec4(0u, 0xffffffffu, 0xffffffffu, 0u);
         debugIds = uvec2(0x464D4152u, markerVertex);
@@ -136,7 +136,9 @@ void main() {
     // from the equation.  If this fixed clip-space quad is visible, the real
     // indirect vertex shader invocation and triangle-list topology are executing
     // and the remaining bug is in geometry indexing/transform.
-    vec2 probeCenter = vec2(0.0, 0.0);
+    // The center varies by drawIndex so multi-command captures can distinguish
+    // whether gl_InstanceIndex includes indirect firstInstance or is stuck at 0.
+    vec2 probeCenter = vec2((float(int(drawIndex & 7u)) - 3.5) * 0.12, 0.0);
     vec2 probeCorner = cornerId == 0u
             ? vec2(-0.22, -0.22)
             : (cornerId == 1u ? vec2(0.22, -0.22) : (cornerId == 2u ? vec2(-0.22, 0.22) : vec2(0.22, 0.22)));

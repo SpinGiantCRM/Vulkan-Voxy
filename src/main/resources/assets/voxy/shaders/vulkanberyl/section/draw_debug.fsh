@@ -13,6 +13,12 @@ uint mixHash(uint value) {
 }
 
 void main() {
+#ifdef VOXY_VULKAN_BERYL_SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER
+    if (debugIds.x == 0x464D4152u) {
+        outColour = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+#endif
 #ifdef VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC
     outColour = vec4(1.0, 0.0, 1.0, 1.0);
     return;
