@@ -57,7 +57,14 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final String DRAW_SHADER_NAME = "vulkanberyl/section/draw";
     private static final String DRAW_DEBUG_FRAGMENT_SHADER_NAME = "vulkanberyl/section/draw_debug";
     private static final String DRAW_SHADER_CONFIG = "/assets/voxy/shaders/vulkanberyl/section/draw.json";
-    private static final int SCENE_UNIFORM_SIZE_BYTES = 96;
+    private static final int SCENE_UNIFORM_SIZE_BYTES = 240;
+    private static final int SCENE_UNIFORM_REAL_LOD_PROBE_DATA_OFFSET_BYTES = 96;
+    private static final int SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_CLIP_OFFSET_BYTES = 112;
+    private static final int SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_WORLD_OFFSET_BYTES = 176;
+    private static final int REAL_LOD_GPU_DECODE_PARITY_BINDING = 9;
+    private static final int REAL_LOD_GPU_DECODE_PARITY_WORDS = 50;
+    private static final int REAL_LOD_GPU_DECODE_PARITY_BYTES = REAL_LOD_GPU_DECODE_PARITY_WORDS * Integer.BYTES;
+    private static final int REAL_LOD_GPU_DECODE_PARITY_MAGIC = 0x47504450;
 
     static {
         VulkanBerylCmdgenDiagnostics.ensureLoaded();
@@ -114,6 +121,8 @@ public final class VulkanBerylSectionDrawPipeline {
     private Buffer drawCommandDebugReadbackBuffer;
     private Buffer drawCountDebugReadbackBuffer;
     private Buffer geometryQuadDebugReadbackBuffer;
+    private Buffer realLodGpuDecodeParityBuffer;
+    private Buffer realLodGpuDecodeParityReadbackBuffer;
     private Buffer cmdGenConfigBuffer;
     private Buffer cmdGenUnusedBinding2Buffer;
     private Buffer cmdGenBinding2ProbeBuffer;
@@ -313,6 +322,51 @@ public final class VulkanBerylSectionDrawPipeline {
     private boolean freed;
     private int rawVisibleCountForTestStatus = -1;
     private long diagnosticCpuNanosThisPass;
+    private int realLodProbeSceneUniformForcedQuadIndex;
+    private long realLodProbeCpuSelectedQuadIndex = -1L;
+    private int realLodProbeCpuSelectedSectionId = -1;
+    private long realLodProbeSelectedSectionPassQuadStart = -1L;
+    private boolean realLodProbeReplayCpuClipAvailable;
+    private final float[] realLodProbeReplayCpuClip = new float[16];
+    private String realLodProbeReplayCpuClip0 = "unavailable";
+    private String realLodProbeReplayCpuClip1 = "unavailable";
+    private String realLodProbeReplayCpuClip2 = "unavailable";
+    private String realLodProbeReplayCpuClip3 = "unavailable";
+    private String realLodProbeReplayCpuClipUnavailableReason = "not_requested";
+    private boolean realLodProbeReplayCpuWorldAvailable;
+    private final float[] realLodProbeReplayCpuWorld = new float[16];
+    private String realLodProbeReplayCpuWorld0 = "unavailable";
+    private String realLodProbeReplayCpuWorld1 = "unavailable";
+    private String realLodProbeReplayCpuWorld2 = "unavailable";
+    private String realLodProbeReplayCpuWorld3 = "unavailable";
+    private String realLodProbeReplayCpuWorldUnavailableReason = "not_requested";
+    private String realLodProbeReplayCpuWorldCoordinateSpace = "unavailable";
+    private boolean realLodGpuDecodeParityPending;
+    private boolean realLodGpuDecodeParityCompleted;
+    private boolean realLodGpuDecodeParityCopyRecorded;
+    private long realLodGpuDecodeParityPendingFrameId = -1L;
+    private int realLodGpuDecodeParityPendingRendererFrameSlot = -1;
+    private int realLodGpuDecodeParityPendingSectionId = -1;
+    private long realLodGpuDecodeParityPendingQuadIndex = -1L;
+    private CpuDecodeParitySnapshot realLodGpuDecodeParityCurrentCpuSnapshot = CpuDecodeParitySnapshot.unavailable("not_scheduled");
+    private CpuDecodeParitySnapshot realLodGpuDecodeParityPendingCpuSnapshot = CpuDecodeParitySnapshot.unavailable("not_scheduled");
+    private GpuDecodeParitySnapshot realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("not_scheduled");
+    private boolean realLodProbeBoundMetadataReadbackAvailable;
+    private int realLodProbeBoundMetadataSectionMetaA0;
+    private int realLodProbeBoundMetadataSectionMetaA1;
+    private int realLodProbeBoundMetadataSectionMetaA2;
+    private int realLodProbeBoundMetadataSectionMetaA3;
+    private int realLodProbeBoundMetadataSectionMetaB0;
+    private int realLodProbeBoundMetadataSectionMetaB1;
+    private int realLodProbeBoundMetadataSectionMetaB2;
+    private int realLodProbeBoundMetadataSectionMetaB3;
+    private boolean realLodProbeBoundGeometryReadbackAvailable;
+    private long realLodProbeBoundGeometryRawQuadData;
+    private String realLodProbeBoundMetadataMatchesCpuSnapshot = "unknown";
+    private String realLodProbeShaderMetadataMatchesBoundMetadata = "unknown";
+    private String realLodProbeBoundGeometryRawQuadMatchesCpuSnapshot = "unknown";
+    private String realLodProbeShaderRawQuadMatchesBoundGeometry = "unknown";
+    private String realLodProbeBufferContentMismatchReason = "not_computed";
 
     private static final boolean DRAW_SCREENSPACE_SMOKE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE");
     private static final boolean DRAW_SCREENSPACE_SMOKE_INDIRECT = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT");
@@ -322,6 +376,11 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean ENABLE_EXPENSIVE_WORLD_DRAW_DIAGNOSTICS = VulkanBerylEnvironment.flag(EXPENSIVE_WORLD_DRAW_DIAGNOSTICS_ENV, false);
     private static final boolean REAL_QUAD_READ_CLIPSPACE_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_QUAD_READ_CLIPSPACE_PROBE");
     private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE");
+    private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE = REAL_LOD_SINGLE_QUAD_WORLD_PROBE && VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE");
+    private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP = REAL_LOD_SINGLE_QUAD_WORLD_PROBE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP");
+    private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD = REAL_LOD_SINGLE_QUAD_WORLD_PROBE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD");
+    private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD = REAL_LOD_SINGLE_QUAD_WORLD_PROBE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD && VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD");
+    private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD = REAL_LOD_SINGLE_QUAD_WORLD_PROBE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD && VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD");
     private static final boolean SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE");
     private static final boolean SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER", false);
     private static final boolean DISABLE_CONTROLLED_SMOKE_READBACK_COPY = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_CONTROLLED_SMOKE_DISABLE_READBACK_COPY", false);
@@ -343,6 +402,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final int FINAL_PASS_SCREENSPACE_MARKER_FIRST_VERTEX = 0;
     private static final int FINAL_PASS_SCREENSPACE_MARKER_FIRST_INSTANCE = 0x464D4152;
     private boolean finalPassScreenspaceMarkerRecorded;
+    private long finalPassScreenspaceMarkerFrameCounter;
 
     public static void setSectionDrawPassContext(String passContext) {
         SECTION_DRAW_PASS_CONTEXT.set(passContext == null || passContext.isBlank() ? "unknown" : passContext);
@@ -382,6 +442,15 @@ public final class VulkanBerylSectionDrawPipeline {
 
     private static boolean realLodMagentaDiagnosticEnabled() {
         return REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE || REAL_QUAD_READ_CLIPSPACE_PROBE || REAL_LOD_SINGLE_QUAD_WORLD_PROBE;
+    }
+
+    private static String realLodProbeGpuVertexMode() {
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE) return "hardcoded_clipspace_probe";
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP) return "replay_cpu_clip";
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD) return "replay_cpu_world";
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD) return "force_cpu_section_and_quad";
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD) return "forced_cpu_selected_quad";
+        return "real_decoded_quad";
     }
 
     private static boolean finalPassScreenspaceMarkerFragmentEnabled() {
@@ -424,7 +493,7 @@ public final class VulkanBerylSectionDrawPipeline {
         List<UBO> drawDescriptors = createManualDrawDescriptors();
         boolean debugFragmentShader = useDebugFragmentShader();
         String drawPassName = translucent ? "translucent" : "opaque";
-        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout:" + drawPassName, "Section draw descriptor mode=manual_dense, pass=" + drawPassName + ", bindings=[0,1,2,3,4,5,6,7,8], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", debugFragmentRequested=" + DRAW_DEBUG_FRAGMENT_DIAGNOSTIC + ", depthTextureSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX + ", normalTexturedDrawWired=true, shaderIndexingMode=instanceIndex_drawIndex_metadataPassBaseQuad_plus_vertexIndex_div_6_triangle_list, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=unused_firstVertex_zero, primitiveTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
+        VulkanBerylDebugLog.verboseOnce("section-draw-descriptor-layout:" + drawPassName, "Section draw descriptor mode=manual_dense, pass=" + drawPassName + ", bindings=[0,1,2,3,4,5,6,7,8,9], denseFromZero=true, vertexShader=" + DRAW_SHADER_NAME + ", fragmentShader=" + (debugFragmentShader ? DRAW_DEBUG_FRAGMENT_SHADER_NAME : DRAW_SHADER_NAME) + ", debugColourMode=" + debugFragmentShader + ", debugColourRequested=" + DEBUG_COLOUR_MODE + ", debugFragmentRequested=" + DRAW_DEBUG_FRAGMENT_DIAGNOSTIC + ", depthTextureSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX + ", realLodGpuDecodeParityBinding=" + REAL_LOD_GPU_DECODE_PARITY_BINDING + ", normalTexturedDrawWired=true, shaderIndexingMode=instanceIndex_drawIndex_metadataPassBaseQuad_plus_vertexIndex_div_6_triangle_list, shaderDrawIndexBuiltin=gl_InstanceIndex, shaderVertexBuiltin=gl_VertexIndex, shaderBaseVertexBuiltin=unused_firstVertex_zero, primitiveTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, shaderDrawParametersBuiltins=unavailable_in_runtime_glsl450_shaderc_path");
         try {
             builder.setUniforms(drawDescriptors, createManualDrawImageDescriptors());
         } catch (Exception e) {
@@ -741,8 +810,62 @@ public final class VulkanBerylSectionDrawPipeline {
             String define = "#define VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE 1\n";
             if (!source.contains(define)) {
                 Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+                source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
+                firstLineEnd = source.indexOf('\n');
             }
-            VulkanBerylDebugLog.once("section-draw-real-lod-single-quad-world-probe-enabled", "section draw real LOD single-quad world probe enabled: env=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE, forcedClipspaceOutput=false, usesGetQuadCornerPos=true, suppressesLocalQuadIndexGreaterThanZero=true, vertexShader=" + vertexShader.shaderPath());
+            if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE) {
+                define = "#define VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE 1\n";
+                if (!source.contains(define)) {
+                    Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+                    source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
+                    firstLineEnd = source.indexOf('\n');
+                }
+            }
+            if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP) {
+                define = "#define VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP 1\n";
+                if (!source.contains(define)) {
+                    Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+                    source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
+                    firstLineEnd = source.indexOf('\n');
+                }
+            }
+            if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD) {
+                define = "#define VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD 1\n";
+                if (!source.contains(define)) {
+                    Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+                    source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
+                    firstLineEnd = source.indexOf('\n');
+                }
+            }
+            if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD) {
+                define = "#define VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD 1\n";
+                if (!source.contains(define)) {
+                    Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+                    source = Files.readString(vertexShader.shaderPath(), StandardCharsets.UTF_8);
+                    firstLineEnd = source.indexOf('\n');
+                }
+            }
+            if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD) {
+                define = "#define VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD 1\n";
+                if (!source.contains(define)) {
+                    Files.writeString(vertexShader.shaderPath(), source.substring(0, firstLineEnd + 1) + define + source.substring(firstLineEnd + 1), StandardCharsets.UTF_8);
+                }
+            }
+            VulkanBerylDebugLog.once("section-draw-real-lod-single-quad-world-probe-enabled", "section draw real LOD single-quad world probe enabled: env=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE"
+                    + ", hardcodedClipspaceEnv=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE"
+                    + ", replayCpuClipEnv=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP"
+                    + ", replayCpuWorldEnv=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD"
+                    + ", forceCpuSectionAndQuadEnv=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD"
+                    + ", forceCpuSelectedQuadEnv=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD"
+                    + ", realLodProbeGpuVertexMode=" + realLodProbeGpuVertexMode()
+                    + ", forcedClipspaceOutput=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE
+                    + ", replayCpuClipOutput=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP
+                    + ", replayCpuWorldOutput=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD
+                    + ", realLodProbeForceCpuSectionAndQuadEnabled=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD
+                    + ", usesGetQuadCornerPos=" + (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD)
+                    + ", realLodProbeShaderStillUsesRealDecodePath=" + (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD)
+                    + ", suppressesLocalQuadIndexGreaterThanZero=true"
+                    + ", vertexShader=" + vertexShader.shaderPath());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to enable section draw real LOD single-quad world probe", e);
         }
@@ -869,6 +992,11 @@ public final class VulkanBerylSectionDrawPipeline {
         bindStorageBinding(GEOMETRY_BINDING, geometryData.getGeometryBuffer(), "geometryData.geometryBuffer");
         bindStorageBinding(METADATA_BINDING, geometryData.getMetadataBuffer(), "geometryData.metadataBuffer");
         bindStorageBinding(RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE) {
+            ensureRealLodGpuDecodeParityBuffers();
+            bindStorageBinding(REAL_LOD_GPU_DECODE_PARITY_BINDING, this.realLodGpuDecodeParityBuffer, "realLodGpuDecodeParityBuffer");
+        }
+        logSectionDrawDescriptorParityBindings(geometryData, renderList);
         this.ensureCommandBuffers(renderList.getMaxEntryCount());
         this.ensureCommandGenPipeline();
         if (CMDGEN_DISPATCH_NOOP || CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE) {
@@ -1157,6 +1285,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 : (cpuRenderListSelectionDiagnosticEnabled()
                 ? timedFindControlledRenderListSmokeSection(viewport, geometryData, renderList)
                 : ControlledRenderListSmoke.disabled());
+        updateRealLodProbeSceneUniformSelection(viewport, geometryData, cpuSelectionSmoke);
         logRenderListVisibilityDiagnostics(renderList, geometryData, controlledSmoke, cpuSelectionSmoke, rawVisibleCount, visibleCount, noDrawCountFullCmdgen, "frame_gate");
         boolean realRenderListCmdgenAllowed = ENABLE_CMDGEN_DISPATCH && !controlledSmoke.enabled() && visibleCount > 0 && frameSafety.allowCmdGen();
         boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK && !noDrawCountFullCmdgen && !realRenderListCmdgenAllowed;
@@ -1821,11 +1950,15 @@ public final class VulkanBerylSectionDrawPipeline {
         logRealQuadReadClipspaceProbeDiagnostic(viewport, geometryData, renderList, diagnosticSmoke, effectiveIndirectDrawCount);
         logFirstSubmittedRealQuadDiagnostics(viewport, geometryData, renderList, diagnosticSmoke, effectiveIndirectDrawCount);
         addDiagnosticCpuNanos(System.nanoTime() - realQuadDiagnosticStartNanos);
+        applyRealLodSingleQuadWorldProbeSafeState(renderer, viewport, commandBuffer);
+        logRealLodSingleQuadGpuVertexProofDiagnostic(diagnosticSmoke, indirectDrawCommandBuffer, effectiveIndirectDrawCount);
+        prepareRealLodGpuDecodeParityWrite(commandBuffer, diagnosticSmoke);
         if (gpuCountedIndirectDraw) {
             VK12.vkCmdDrawIndirectCount(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, this.drawCountBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         } else {
             VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         }
+        scheduleRealLodGpuDecodeParityReadback(commandBuffer, diagnosticSmoke, viewport.frameId, effectiveIndirectDrawCount);
         this.anyVkCmdDrawIndirectRecordedThisFrame = true;
         this.drawRecordedReasonThisFrame = DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : (gpuCountedIndirectDraw ? "normal_indirect_count_draw" : "normal_indirect_draw"));
         if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) {
@@ -1839,10 +1972,12 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", expectedColour=" + (realLodMagentaDiagnosticEnabled() ? "magenta" : "debug_hash_colour"), 60);
         }
         if (SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER && !this.finalPassScreenspaceMarkerRecorded) {
+            applyFinalPassScreenspaceMarkerStateOverride();
             VK10.vkCmdDraw(commandBuffer, FINAL_PASS_SCREENSPACE_MARKER_VERTEX_COUNT, FINAL_PASS_SCREENSPACE_MARKER_INSTANCE_COUNT, FINAL_PASS_SCREENSPACE_MARKER_FIRST_VERTEX, FINAL_PASS_SCREENSPACE_MARKER_FIRST_INSTANCE);
             this.anyVkCmdDrawRecordedThisFrame = true;
             this.finalPassScreenspaceMarkerRecorded = true;
-            VulkanBerylDebugLog.always("Section draw final-pass screenspace marker recorded: env=VOXY_VULKAN_BERYL_SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER, oneFrame=true"
+            VulkanBerylDebugLog.always("Section draw final-pass screenspace marker recorded: env=VOXY_VULKAN_BERYL_SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER, oneFrame=false"
+                    + ", sectionDrawFinalPassMarkerPersistent=true"
                     + ", markerRecordedAfterNormalSectionDraw=true"
                     + ", markerVertexCount=" + FINAL_PASS_SCREENSPACE_MARKER_VERTEX_COUNT
                     + ", markerInstanceCount=" + FINAL_PASS_SCREENSPACE_MARKER_INSTANCE_COUNT
@@ -1863,6 +1998,105 @@ public final class VulkanBerylSectionDrawPipeline {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         long submittedQuadCount = sample.sampledQuadCount >= 0L ? sample.sampledQuadCount : -1L;
         return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), submittedQuadCount, effectiveIndirectDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
+    }
+
+    private void prepareRealLodGpuDecodeParityWrite(VkCommandBuffer commandBuffer, ControlledRenderListSmoke diagnosticSmoke) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || !diagnosticSmoke.safe() || this.realLodGpuDecodeParityPending) return;
+        ensureRealLodGpuDecodeParityBuffers();
+        if (this.realLodGpuDecodeParityBuffer == null) return;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VK10.vkCmdFillBuffer(commandBuffer, this.realLodGpuDecodeParityBuffer.getId(), 0L, REAL_LOD_GPU_DECODE_PARITY_BYTES, 0);
+            VkMemoryBarrier.Buffer transferToVertex = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                    0, transferToVertex, null, null);
+        }
+    }
+
+    private void scheduleRealLodGpuDecodeParityReadback(VkCommandBuffer commandBuffer, ControlledRenderListSmoke diagnosticSmoke, int frameId, int effectiveIndirectDrawCount) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || !diagnosticSmoke.safe() || effectiveIndirectDrawCount <= 0 || this.realLodGpuDecodeParityPending) return;
+        ensureRealLodGpuDecodeParityBuffers();
+        if (this.realLodGpuDecodeParityBuffer == null || this.realLodGpuDecodeParityReadbackBuffer == null || this.realLodGpuDecodeParityReadbackBuffer.getDataPtr() == 0L) {
+            this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("readback_buffer_unavailable");
+            return;
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkMemoryBarrier.Buffer shaderToTransfer = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_SHADER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_TRANSFER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0, shaderToTransfer, null, null);
+
+            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
+            copyRegion.srcOffset(0L).dstOffset(0L).size(REAL_LOD_GPU_DECODE_PARITY_BYTES);
+            VK10.vkCmdCopyBuffer(commandBuffer, this.realLodGpuDecodeParityBuffer.getId(), this.realLodGpuDecodeParityReadbackBuffer.getId(), copyRegion);
+
+            VkMemoryBarrier.Buffer transferToHost = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_HOST_READ_BIT);
+            VK10.vkCmdPipelineBarrier(commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_HOST_BIT,
+                    0, transferToHost, null, null);
+        }
+        this.realLodGpuDecodeParityPending = true;
+        this.realLodGpuDecodeParityCompleted = false;
+        this.realLodGpuDecodeParityCopyRecorded = true;
+        long shaderFrameId = Integer.toUnsignedLong(frameId & 0x7fffffff);
+        this.realLodGpuDecodeParityPendingFrameId = shaderFrameId;
+        this.realLodGpuDecodeParityPendingRendererFrameSlot = safeRendererFrameSlot();
+        this.realLodGpuDecodeParityPendingSectionId = diagnosticSmoke.selectedVisibilityCandidateSectionId() >= 0
+                ? diagnosticSmoke.selectedVisibilityCandidateSectionId()
+                : diagnosticSmoke.sectionId();
+        this.realLodGpuDecodeParityPendingQuadIndex = diagnosticSmoke.selectedVisibilityCandidateQuadIndex() >= 0L
+                ? diagnosticSmoke.selectedVisibilityCandidateQuadIndex()
+                : Integer.toUnsignedLong(diagnosticSmoke.quadStart());
+        CpuDecodeParitySnapshot cpuSnapshot = this.realLodGpuDecodeParityCurrentCpuSnapshot;
+        if (cpuSnapshot == null || !cpuSnapshot.available()
+                || cpuSnapshot.frameId() != shaderFrameId
+                || cpuSnapshot.selectedSectionId() != this.realLodGpuDecodeParityPendingSectionId
+                || cpuSnapshot.selectedQuadIndex() != this.realLodGpuDecodeParityPendingQuadIndex) {
+            cpuSnapshot = CpuDecodeParitySnapshot.unavailable("cpu_snapshot_unavailable_or_changed");
+        }
+        this.realLodGpuDecodeParityPendingCpuSnapshot = cpuSnapshot;
+        this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("pending_gpu_completion");
+    }
+
+    private void consumeRealLodGpuDecodeParityReadbackIfReady(long currentFrameId) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || !this.realLodGpuDecodeParityPending || this.realLodGpuDecodeParityCompleted) return;
+        if (!this.realLodGpuDecodeParityCopyRecorded) {
+            this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("copy_not_recorded");
+            return;
+        }
+        long ageFrames = this.realLodGpuDecodeParityPendingFrameId < 0L || currentFrameId < 0L ? -1L : Math.max(0L, currentFrameId - this.realLodGpuDecodeParityPendingFrameId);
+        if (ageFrames == 0L) {
+            this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("too_young_same_frame");
+            return;
+        }
+        if (ageFrames < 0L) {
+            this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("pending_gpu_completion");
+            return;
+        }
+        long ptr = this.realLodGpuDecodeParityReadbackBuffer == null ? 0L : this.realLodGpuDecodeParityReadbackBuffer.getDataPtr();
+        if (ptr == 0L) {
+            this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("readback_buffer_unavailable");
+            return;
+        }
+        int[] words = new int[REAL_LOD_GPU_DECODE_PARITY_WORDS];
+        for (int i = 0; i < words.length; i++) {
+            words[i] = MemoryUtil.memGetInt(ptr + (long) i * Integer.BYTES);
+        }
+        this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.fromWords(words);
+        this.realLodGpuDecodeParityCompleted = true;
+        this.realLodGpuDecodeParityPending = false;
     }
 
     private static void applyOpaquePipelineState() {
@@ -1944,11 +2178,53 @@ public final class VulkanBerylSectionDrawPipeline {
     private void logRealLodSingleQuadWorldProbeDiagnostic(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
         RealQuadDiagnostic diagnostic = firstSubmittedRealQuadDiagnostic(viewport, geometryData, renderList, controlledSmoke, true);
+        this.realLodGpuDecodeParityCurrentCpuSnapshot = CpuDecodeParitySnapshot.fromDiagnostic(viewport.frameId, diagnostic, geometryData, this.realLodProbeSelectedSectionPassQuadStart);
         VulkanBerylDebugLog.rateLimited("section-draw-real-lod-single-quad-world-probe", "section draw real LOD single-quad world probe: enabled=true"
                 + ", normalIndirectDrawPath=true"
                 + ", forceSingleSubmittedCommand=true"
                 + ", forceSingleDecodedQuad=true"
-                + ", usesGetQuadCornerPosPath=true"
+                + ", realLodProbeGpuVertexMode=" + realLodProbeGpuVertexMode()
+                + ", realLodProbeGpuVertexProofAvailable=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE
+                + ", realLodProbeShaderExpectedFirstVertex=0"
+                + ", realLodProbeShaderExpectedFirstInstance=0"
+                + ", realLodProbeShaderExpectedQuadIndexFormula=" + (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD ? "sectionId=realLodProbeData.y_cpu_selected_section;quadIndex=realLodProbeData.x_cpu_selected_absolute_quad" : (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD ? "quadIndex=realLodProbeData.x_cpu_selected_absolute_quad" : "passQuadStart_plus_gl_VertexIndex_div_6"))
+                + ", realLodProbeCpuSelectedQuadIndex=" + diagnostic.quadIndex()
+                + ", realLodProbeCpuSelectedQuadIndexSpace=absolute_geometry_quad_index"
+                + ", realLodProbeCpuSelectedSectionId=" + diagnostic.sectionId()
+                + ", realLodProbeSelectedSectionPassQuadStart=" + this.realLodProbeSelectedSectionPassQuadStart
+                + ", realLodProbeForceCpuSectionAndQuadEnabled=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD
+                + ", realLodProbeShaderForcedSectionId=" + (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD ? this.realLodProbeCpuSelectedSectionId : -1)
+                + ", realLodProbeShaderForcedQuadIndex=" + ((REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD || REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD) ? Integer.toUnsignedLong(this.realLodProbeSceneUniformForcedQuadIndex) : -1L)
+                + ", realLodProbeShaderForcedPassQuadStart=" + (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD ? this.realLodProbeSelectedSectionPassQuadStart : -1L)
+                + ", realLodProbeShaderForcedQuadIndexSpace=" + ((REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD || REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD) ? "absolute_geometry_quad_index" : "not_applicable")
+                + ", realLodProbeShaderStillUsesRealDecodePath=" + (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD)
+                + ", realLodProbeShaderBypassesIndirectLookup=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD
+                + ", realLodProbeHardcodedClipspaceEnabled=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE
+                + ", realLodProbeReplayCpuClipAvailable=" + this.realLodProbeReplayCpuClipAvailable
+                + ", realLodProbeReplayCpuClip0=" + this.realLodProbeReplayCpuClip0
+                + ", realLodProbeReplayCpuClip1=" + this.realLodProbeReplayCpuClip1
+                + ", realLodProbeReplayCpuClip2=" + this.realLodProbeReplayCpuClip2
+                + ", realLodProbeReplayCpuClip3=" + this.realLodProbeReplayCpuClip3
+                + ", realLodProbeReplayCpuClipSource=cpu_final_clip"
+                + ", realLodProbeReplayCpuClipUsesSameSubmittedDrawCount=true"
+                + ", realLodProbeReplayCpuClipUsesSamePipeline=true"
+                + ", realLodProbeReplayCpuClipUsesSameDescriptorSets=true"
+                + ", realLodProbeReplayCpuClipUniformUploadPath=SceneUniform.binding0.vkCmdUpdateBuffer"
+                + ", realLodProbeReplayCpuClipUniformLayout=std140 SceneUniform offsets: realLodProbeData@" + SCENE_UNIFORM_REAL_LOD_PROBE_DATA_OFFSET_BYTES + " uvec4 flags.w bit1=replay_available, replayCpuClip0..3@" + SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_CLIP_OFFSET_BYTES + "/128/144/160 vec4, sizeBytes=" + SCENE_UNIFORM_SIZE_BYTES
+                + ", realLodProbeReplayCpuWorldAvailable=" + this.realLodProbeReplayCpuWorldAvailable
+                + ", realLodProbeReplayCpuWorld0=" + this.realLodProbeReplayCpuWorld0
+                + ", realLodProbeReplayCpuWorld1=" + this.realLodProbeReplayCpuWorld1
+                + ", realLodProbeReplayCpuWorld2=" + this.realLodProbeReplayCpuWorld2
+                + ", realLodProbeReplayCpuWorld3=" + this.realLodProbeReplayCpuWorld3
+                + ", realLodProbeReplayCpuWorldCoordinateSpace=" + this.realLodProbeReplayCpuWorldCoordinateSpace
+                + ", realLodProbeReplayCpuWorldUnavailableReason=" + this.realLodProbeReplayCpuWorldUnavailableReason
+                + ", realLodProbeReplayCpuWorldUsesSameMvp=true"
+                + ", realLodProbeReplayCpuWorldUsesSameSubmittedDrawCount=true"
+                + ", realLodProbeReplayCpuWorldUsesSamePipeline=true"
+                + ", realLodProbeReplayCpuWorldUsesSameDescriptorSets=true"
+                + ", realLodProbeReplayCpuWorldUniformLayout=" + realLodProbeUniformLayoutSummary()
+                + realLodGpuDecodeParityLogFields(viewport.frameId, diagnostic, geometryData)
+                + ", usesGetQuadCornerPosPath=" + (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD)
                 + ", cullDisabled=true"
                 + ", depthDisabled=true"
                 + ", forcedFragmentColour=magenta"
@@ -1964,7 +2240,92 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", finalGlPosition3=" + diagnostic.clip3()
                 + ", finalClipLooksVisible=" + diagnostic.intersectsClipSpace()
                 + ", renderPassFailureClaim=" + (diagnostic.intersectsClipSpace() ? "not_applicable" : "not_claimed_final_clip_not_visible")
+                + ", visibilityCandidateCount=" + controlledSmoke.visibilityCandidateCount()
+                + ", visibilityCandidateTestedCount=" + controlledSmoke.visibilityCandidateTestedCount()
+                + ", visibilityCandidateClipVisibleCount=" + controlledSmoke.visibilityCandidateClipVisibleCount()
+                + ", selectedVisibilityCandidateSectionId=" + controlledSmoke.selectedVisibilityCandidateSectionId()
+                + ", selectedVisibilityCandidateQuadIndex=" + controlledSmoke.selectedVisibilityCandidateQuadIndex()
+                + ", selectedVisibilityCandidateClipLooksVisible=" + controlledSmoke.selectedVisibilityCandidateClipLooksVisible()
+                + ", selectedVisibilityCandidateRejectReason=" + controlledSmoke.selectedVisibilityCandidateRejectReason()
+                + ", fallbackUsedOnlyAfterNoClipVisibleCandidate=" + controlledSmoke.fallbackUsedOnlyAfterNoClipVisibleCandidate()
                 + diagnostic.logFields(true), 60);
+    }
+
+    private void logRealLodSingleQuadGpuVertexProofDiagnostic(ControlledRenderListSmoke controlledSmoke, Buffer indirectDrawCommandBuffer, int effectiveIndirectDrawCount) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
+        DrawCommandDebugSample sample = this.lastCompletedDebugSample;
+        boolean commandSampleAvailable = sample.sampledCommandCount() > 0;
+        long sampledVertexCount = commandSampleAvailable ? Integer.toUnsignedLong(sample.firstVertexCount()) : -1L;
+        long sampledFirstVertex = commandSampleAvailable ? Integer.toUnsignedLong(sample.firstFirstVertex()) : -1L;
+        long sampledFirstInstance = commandSampleAvailable ? Integer.toUnsignedLong(sample.firstFirstInstance()) : -1L;
+        long cpuSelectedQuadIndex = controlledSmoke.safe() && controlledSmoke.selectedVisibilityCandidateQuadIndex() >= 0L
+                ? controlledSmoke.selectedVisibilityCandidateQuadIndex()
+                : (controlledSmoke.safe() ? Integer.toUnsignedLong(controlledSmoke.quadStart()) : -1L);
+        int cpuSelectedSectionId = controlledSmoke.safe() && controlledSmoke.selectedVisibilityCandidateSectionId() >= 0
+                ? controlledSmoke.selectedVisibilityCandidateSectionId()
+                : controlledSmoke.sectionId();
+        boolean proofAvailable = REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE
+                && this.sectionDrawVertexSourceContainsSingleQuadWorldProbeDefine
+                && this.sectionDrawVertexSourceContainsSingleQuadWorldProbeBranch
+                && effectiveIndirectDrawCount > 0;
+        VulkanBerylDebugLog.rateLimited("section-draw-real-lod-gpu-vertex-proof", "section draw real LOD single-quad GPU vertex proof:"
+                + " realLodProbeGpuVertexMode=" + realLodProbeGpuVertexMode()
+                + ", realLodProbeGpuVertexProofAvailable=" + proofAvailable
+                + ", realLodProbeShaderExpectedFirstVertex=0"
+                + ", realLodProbeShaderExpectedFirstInstance=0"
+                + ", realLodProbeShaderExpectedQuadIndexFormula=" + (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD ? "sectionId=realLodProbeData.y_cpu_selected_section;quadIndex=realLodProbeData.x_cpu_selected_absolute_quad;triVertex=gl_VertexIndex%6u;cornerId=0,1,2,2,1,3" : (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD ? "quadIndex=realLodProbeData.x_cpu_selected_absolute_quad;triVertex=gl_VertexIndex%6u;cornerId=0,1,2,2,1,3" : "quadIndex=drawExtractPassQuadStart(sectionData[indirectLookup[gl_InstanceIndex]])+(gl_VertexIndex/6u);triVertex=gl_VertexIndex%6u;cornerId=0,1,2,2,1,3"))
+                + ", realLodProbeCpuSelectedQuadIndex=" + cpuSelectedQuadIndex
+                + ", realLodProbeCpuSelectedQuadIndexSpace=absolute_geometry_quad_index"
+                + ", realLodProbeCpuSelectedSectionId=" + cpuSelectedSectionId
+                + ", realLodProbeSelectedSectionPassQuadStart=" + this.realLodProbeSelectedSectionPassQuadStart
+                + ", realLodProbeForceCpuSectionAndQuadEnabled=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD
+                + ", realLodProbeShaderForcedSectionId=" + (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD ? this.realLodProbeCpuSelectedSectionId : -1)
+                + ", realLodProbeShaderForcedQuadIndex=" + ((REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD || REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD) ? Integer.toUnsignedLong(this.realLodProbeSceneUniformForcedQuadIndex) : -1L)
+                + ", realLodProbeShaderForcedPassQuadStart=" + (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD ? this.realLodProbeSelectedSectionPassQuadStart : -1L)
+                + ", realLodProbeShaderForcedQuadIndexSpace=" + ((REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD || REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD) ? "absolute_geometry_quad_index" : "not_applicable")
+                + ", realLodProbeShaderStillUsesRealDecodePath=" + (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD)
+                + ", realLodProbeShaderBypassesIndirectLookup=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD
+                + ", realLodProbeHardcodedClipspaceEnv=VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE"
+                + ", realLodProbeHardcodedClipspaceEnabled=" + REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE
+                + ", realLodProbeReplayCpuClipAvailable=" + this.realLodProbeReplayCpuClipAvailable
+                + ", realLodProbeReplayCpuClip0=" + this.realLodProbeReplayCpuClip0
+                + ", realLodProbeReplayCpuClip1=" + this.realLodProbeReplayCpuClip1
+                + ", realLodProbeReplayCpuClip2=" + this.realLodProbeReplayCpuClip2
+                + ", realLodProbeReplayCpuClip3=" + this.realLodProbeReplayCpuClip3
+                + ", realLodProbeReplayCpuClipSource=cpu_final_clip"
+                + ", realLodProbeReplayCpuClipUsesSameSubmittedDrawCount=true"
+                + ", realLodProbeReplayCpuClipUsesSamePipeline=true"
+                + ", realLodProbeReplayCpuClipUsesSameDescriptorSets=true"
+                + ", realLodProbeReplayCpuClipUniformUploadPath=SceneUniform.binding0.vkCmdUpdateBuffer"
+                + ", realLodProbeReplayCpuClipUniformLayout=std140 SceneUniform offsets: realLodProbeData@" + SCENE_UNIFORM_REAL_LOD_PROBE_DATA_OFFSET_BYTES + " uvec4 flags.w bit1=replay_available, replayCpuClip0..3@" + SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_CLIP_OFFSET_BYTES + "/128/144/160 vec4, sizeBytes=" + SCENE_UNIFORM_SIZE_BYTES
+                + ", realLodProbeReplayCpuWorldAvailable=" + this.realLodProbeReplayCpuWorldAvailable
+                + ", realLodProbeReplayCpuWorld0=" + this.realLodProbeReplayCpuWorld0
+                + ", realLodProbeReplayCpuWorld1=" + this.realLodProbeReplayCpuWorld1
+                + ", realLodProbeReplayCpuWorld2=" + this.realLodProbeReplayCpuWorld2
+                + ", realLodProbeReplayCpuWorld3=" + this.realLodProbeReplayCpuWorld3
+                + ", realLodProbeReplayCpuWorldCoordinateSpace=" + this.realLodProbeReplayCpuWorldCoordinateSpace
+                + ", realLodProbeReplayCpuWorldUnavailableReason=" + this.realLodProbeReplayCpuWorldUnavailableReason
+                + ", realLodProbeReplayCpuWorldUsesSameMvp=true"
+                + ", realLodProbeReplayCpuWorldUsesSameSubmittedDrawCount=true"
+                + ", realLodProbeReplayCpuWorldUsesSamePipeline=true"
+                + ", realLodProbeReplayCpuWorldUsesSameDescriptorSets=true"
+                + ", realLodProbeReplayCpuWorldUniformLayout=" + realLodProbeUniformLayoutSummary()
+                + ", realLodProbeUsesSamePipelineAsRealDecodedQuadPath=true"
+                + ", realLodProbeUsesSameDescriptorSetsAsRealDecodedQuadPath=true"
+                + ", realLodProbeUsesSameIndirectCommandBufferAsRealDecodedQuadPath=true"
+                + ", realLodProbeUsesSameSubmittedDrawCountAsRealDecodedQuadPath=true"
+                + ", realLodProbePipelineMatchesBoundPipeline=" + (this.graphicsPipeline != null)
+                + ", realLodProbeDescriptorSetsBound=" + (this.graphicsPipeline != null && this.resourcesBound)
+                + ", realLodProbeIndirectCommandBufferId=" + (indirectDrawCommandBuffer == null ? 0L : indirectDrawCommandBuffer.getId())
+                + ", submittedDrawCount=" + effectiveIndirectDrawCount
+                + ", sampledCommandAvailable=" + commandSampleAvailable
+                + ", sampledCommand0.vertexCount=" + sampledVertexCount
+                + ", sampledCommand0.firstVertex=" + sampledFirstVertex
+                + ", sampledCommand0.firstInstance=" + sampledFirstInstance
+                + ", sampledCommand0.firstVertexMatchesShaderExpected=" + (commandSampleAvailable && sampledFirstVertex == 0L)
+                + ", sampledCommand0.firstInstanceMatchesShaderExpected=" + (commandSampleAvailable && sampledFirstInstance == 0L)
+                + ", hardcodedClipspaceProofExpectedIfVisible=raster_output_fragment_ok_bug_is_real_decoded_vertex_position_or_quad_index_logic"
+                + ", hardcodedClipspaceProofExpectedIfInvisible=single_quad_shader_branch_or_bound_draw_variant_not_executing", 60);
     }
 
     private void logFirstSubmittedRealQuadDiagnostics(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
@@ -1996,6 +2357,7 @@ public final class VulkanBerylSectionDrawPipeline {
         ClipDiagnostics clip = clipDiagnostics(viewport, rawPosA, rawPosB, quad);
         ClipDiagnostics relativeClip = clipDiagnosticsForMode(viewport, rawPosA, rawPosB, quad, true);
         ClipDiagnostics absoluteClip = clipDiagnosticsForMode(viewport, rawPosA, rawPosB, quad, false);
+        WorldCornerDiagnostics world = worldCornerDiagnostics(viewport, rawPosA, rawPosB, quad);
         String basePoint = quad.available() ? basePointDiagnostic(viewport, rawPosA, rawPosB, quad) : "unavailable";
         String sampleState = sample.sampledCommandCount() > 0 ? "completed" : (this.debugSamplePending ? "pending" : "unavailable");
         String status = quad.available() || !geometryDiagnosticMode ? "ok" : "geometry_quad_unavailable";
@@ -2008,7 +2370,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 clip.clip0(), clip.clip1(), clip.clip2(), clip.clip3(), clip.anyFiniteW(), clip.looksVisible(), clip.behindCamera(), sampleState,
                 relativeClip.clip0(), relativeClip.clip1(), relativeClip.clip2(), relativeClip.clip3(), relativeClip.looksVisible(),
                 absoluteClip.clip0(), absoluteClip.clip1(), absoluteClip.clip2(), absoluteClip.clip3(), absoluteClip.looksVisible(),
-                "relative_baseSection_innerTranslation", geometryDiagnostic.logFields());
+                "relative_baseSection_innerTranslation", world.corner0(), world.corner1(), world.corner2(), world.corner3(), geometryDiagnostic.logFields());
     }
 
     private long selectedGeometryDiagnosticQuadIndex(ControlledRenderListSmoke controlledSmoke, CmdgenCommandSnapshot snapshot) {
@@ -2024,6 +2386,146 @@ public final class VulkanBerylSectionDrawPipeline {
             return controlledSmoke.selectedVisibilityCandidateQuadIndex();
         }
         return entry0.opaqueQuadStart();
+    }
+
+    private void updateRealLodProbeSceneUniformSelection(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) {
+            return;
+        }
+        this.realLodProbeCpuSelectedQuadIndex = -1L;
+        this.realLodProbeCpuSelectedSectionId = -1;
+        this.realLodProbeSelectedSectionPassQuadStart = -1L;
+        this.realLodProbeSceneUniformForcedQuadIndex = 0;
+        clearRealLodProbeReplayCpuClip(REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP ? "selection_unavailable" : "not_requested");
+        clearRealLodProbeReplayCpuWorld(REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD ? "selection_unavailable" : "not_requested");
+        if (!controlledSmoke.safe()) {
+            return;
+        }
+        int sectionId = controlledSmoke.selectedVisibilityCandidateSectionId() >= 0
+                ? controlledSmoke.selectedVisibilityCandidateSectionId()
+                : controlledSmoke.sectionId();
+        long quadIndex = controlledSmoke.selectedVisibilityCandidateQuadIndex() >= 0L
+                ? controlledSmoke.selectedVisibilityCandidateQuadIndex()
+                : Integer.toUnsignedLong(controlledSmoke.quadStart());
+        this.realLodProbeCpuSelectedSectionId = sectionId;
+        this.realLodProbeCpuSelectedQuadIndex = quadIndex;
+        this.realLodProbeSelectedSectionPassQuadStart = selectedSectionPassQuadStart(geometryData, sectionId);
+        if ((REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD || REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD) && quadIndex >= 0L && quadIndex <= 0xffffffffL) {
+            this.realLodProbeSceneUniformForcedQuadIndex = (int) quadIndex;
+        }
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP) {
+            updateRealLodProbeReplayCpuClip(viewport, geometryData, controlledSmoke, sectionId, quadIndex);
+        }
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD) {
+            updateRealLodProbeReplayCpuWorld(viewport, geometryData, controlledSmoke, sectionId, quadIndex);
+        }
+    }
+
+    private void clearRealLodProbeReplayCpuClip(String reason) {
+        this.realLodProbeReplayCpuClipAvailable = false;
+        java.util.Arrays.fill(this.realLodProbeReplayCpuClip, 0.0F);
+        this.realLodProbeReplayCpuClip0 = "unavailable";
+        this.realLodProbeReplayCpuClip1 = "unavailable";
+        this.realLodProbeReplayCpuClip2 = "unavailable";
+        this.realLodProbeReplayCpuClip3 = "unavailable";
+        this.realLodProbeReplayCpuClipUnavailableReason = reason;
+    }
+
+    private void updateRealLodProbeReplayCpuClip(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke, int sectionId, long quadIndex) {
+        if (!controlledSmoke.safe()) {
+            clearRealLodProbeReplayCpuClip("controlled_selection_unavailable");
+            return;
+        }
+        if (sectionId < 0 || sectionId >= Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount()) || !geometryData.hasNonZeroSectionMetadata(sectionId)) {
+            clearRealLodProbeReplayCpuClip("section_metadata_unavailable");
+            return;
+        }
+        QuadSample quad = sampleQuad(geometryData, quadIndex);
+        if (!quad.available()) {
+            clearRealLodProbeReplayCpuClip("geometry_quad_unavailable_to_java_diagnostics");
+            return;
+        }
+        ClipDiagnostics clip = clipDiagnostics(
+                viewport,
+                geometryData.getSectionMetadataInt(sectionId, 0),
+                geometryData.getSectionMetadataInt(sectionId, 1),
+                quad);
+        if (!clip.hasRawClipValues()) {
+            clearRealLodProbeReplayCpuClip("clip_values_unavailable");
+            return;
+        }
+        for (int corner = 0; corner < 4; corner++) {
+            org.joml.Vector4f vec = clip.clip(corner);
+            int base = corner * 4;
+            this.realLodProbeReplayCpuClip[base] = vec.x;
+            this.realLodProbeReplayCpuClip[base + 1] = vec.y;
+            this.realLodProbeReplayCpuClip[base + 2] = vec.z;
+            this.realLodProbeReplayCpuClip[base + 3] = vec.w;
+        }
+        this.realLodProbeReplayCpuClipAvailable = true;
+        this.realLodProbeReplayCpuClip0 = clip.clip0();
+        this.realLodProbeReplayCpuClip1 = clip.clip1();
+        this.realLodProbeReplayCpuClip2 = clip.clip2();
+        this.realLodProbeReplayCpuClip3 = clip.clip3();
+        this.realLodProbeReplayCpuClipUnavailableReason = "none";
+    }
+
+    private void clearRealLodProbeReplayCpuWorld(String reason) {
+        this.realLodProbeReplayCpuWorldAvailable = false;
+        java.util.Arrays.fill(this.realLodProbeReplayCpuWorld, 0.0F);
+        this.realLodProbeReplayCpuWorld0 = "unavailable";
+        this.realLodProbeReplayCpuWorld1 = "unavailable";
+        this.realLodProbeReplayCpuWorld2 = "unavailable";
+        this.realLodProbeReplayCpuWorld3 = "unavailable";
+        this.realLodProbeReplayCpuWorldUnavailableReason = reason;
+        this.realLodProbeReplayCpuWorldCoordinateSpace = "unavailable";
+    }
+
+    private void updateRealLodProbeReplayCpuWorld(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke, int sectionId, long quadIndex) {
+        if (!controlledSmoke.safe()) {
+            clearRealLodProbeReplayCpuWorld("controlled_selection_unavailable");
+            return;
+        }
+        if (sectionId < 0 || sectionId >= Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount()) || !geometryData.hasNonZeroSectionMetadata(sectionId)) {
+            clearRealLodProbeReplayCpuWorld("section_metadata_unavailable");
+            return;
+        }
+        QuadSample quad = sampleQuad(geometryData, quadIndex);
+        if (!quad.available()) {
+            clearRealLodProbeReplayCpuWorld("geometry_quad_unavailable_to_java_diagnostics");
+            return;
+        }
+        WorldCornerDiagnostics world = worldCornerDiagnostics(
+                viewport,
+                geometryData.getSectionMetadataInt(sectionId, 0),
+                geometryData.getSectionMetadataInt(sectionId, 1),
+                quad);
+        if (!world.hasRawWorldValues()) {
+            clearRealLodProbeReplayCpuWorld("world_values_unavailable");
+            return;
+        }
+        for (int corner = 0; corner < 4; corner++) {
+            org.joml.Vector4f vec = world.corner(corner);
+            int base = corner * 4;
+            this.realLodProbeReplayCpuWorld[base] = vec.x;
+            this.realLodProbeReplayCpuWorld[base + 1] = vec.y;
+            this.realLodProbeReplayCpuWorld[base + 2] = vec.z;
+            this.realLodProbeReplayCpuWorld[base + 3] = vec.w;
+        }
+        this.realLodProbeReplayCpuWorldAvailable = true;
+        this.realLodProbeReplayCpuWorld0 = world.corner0();
+        this.realLodProbeReplayCpuWorld1 = world.corner1();
+        this.realLodProbeReplayCpuWorld2 = world.corner2();
+        this.realLodProbeReplayCpuWorld3 = world.corner3();
+        this.realLodProbeReplayCpuWorldCoordinateSpace = world.coordinateSpace();
+        this.realLodProbeReplayCpuWorldUnavailableReason = "none";
+    }
+
+    private long selectedSectionPassQuadStart(VulkanBerylSectionGeometryData geometryData, int sectionId) {
+        if (sectionId < 0 || sectionId >= Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount()) || !geometryData.hasNonZeroSectionMetadata(sectionId)) {
+            return -1L;
+        }
+        return Integer.toUnsignedLong(geometryData.getSectionMetadataInt(sectionId, 3)) + extractTranslucentQuadCount(geometryData, sectionId);
     }
 
 
@@ -2086,6 +2588,107 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", depthMask=false"
                 + ", topology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST"
                 + ", forcedFragmentColour=magenta", 60);
+    }
+
+    private static void applyFinalPassScreenspaceMarkerStateOverride() {
+        VRenderSystem.disableDepthTest();
+        VRenderSystem.depthMask(false);
+        VRenderSystem.depthFunc(519);
+        VRenderSystem.disableCull();
+        VRenderSystem.disableBlend();
+        VRenderSystem.colorMask(true, true, true, true);
+        configureSectionDrawPrimitiveTopologyTriangleList("final_pass_screenspace_marker");
+    }
+
+    private void applyRealLodSingleQuadWorldProbeSafeState(Renderer renderer, VulkanBerylViewport viewport, VkCommandBuffer commandBuffer) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
+
+        Framebuffer framebuffer;
+        try {
+            framebuffer = renderer.getBoundFramebuffer();
+        } catch (Exception e) {
+            framebuffer = null;
+        }
+
+        int targetWidth = framebuffer != null ? framebuffer.getWidth() : viewport.width;
+        int targetHeight = framebuffer != null ? framebuffer.getHeight() : viewport.height;
+        boolean safeStateApplied = false;
+        boolean pipelineBound = false;
+        boolean descriptorsBound = false;
+        boolean viewportForcedFullExtent = false;
+        boolean scissorForcedFullExtent = false;
+        String viewportExtent = "unavailable";
+        String scissorExtent = "unavailable";
+
+        VRenderSystem.disableDepthTest();
+        VRenderSystem.depthMask(false);
+        VRenderSystem.depthFunc(519);
+        VRenderSystem.disableCull();
+        VRenderSystem.disableBlend();
+        VRenderSystem.colorMask(true, true, true, true);
+        configureSectionDrawPrimitiveTopologyTriangleList("real_lod_single_quad_world_probe");
+        safeStateApplied = true;
+
+        if (this.graphicsPipeline != null) {
+            renderer.bindGraphicsPipeline(this.graphicsPipeline);
+            pipelineBound = true;
+        }
+        if (commandBuffer != null && this.graphicsPipeline != null && this.resourcesBound) {
+            this.bindSceneUniform(commandBuffer, viewport);
+            this.bindDrawTextureDescriptors();
+            this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
+            descriptorsBound = true;
+        }
+        if (targetWidth > 0 && targetHeight > 0) {
+            try {
+                Renderer.setViewport(0, 0, targetWidth, targetHeight);
+                viewportForcedFullExtent = true;
+                viewportExtent = targetWidth + "x" + targetHeight;
+            } catch (Exception e) {
+                viewportExtent = "unavailable:" + e.getClass().getSimpleName();
+            }
+            try {
+                Renderer.setScissor(0, 0, targetWidth, targetHeight);
+                scissorForcedFullExtent = true;
+                scissorExtent = targetWidth + "x" + targetHeight;
+            } catch (Exception e) {
+                scissorExtent = "unavailable:" + e.getClass().getSimpleName();
+            }
+        } else {
+            viewportExtent = "invalid:" + targetWidth + "x" + targetHeight;
+            scissorExtent = "invalid:" + targetWidth + "x" + targetHeight;
+        }
+
+        int depthState = PipelineState.getDepthState();
+        int assemblyRasterState = PipelineState.getAssemblyRasterState();
+        int blendState = PipelineState.getBlendState();
+        int colorMask = VRenderSystem.getColorMask();
+        boolean depthTestDisabled = !PipelineState.DepthState.depthTest(depthState);
+        boolean depthWriteDisabled = !PipelineState.DepthState.depthMask(depthState);
+        boolean cullDisabled = PipelineState.AssemblyRasterState.decodeCullMode(assemblyRasterState) == VK10.VK_CULL_MODE_NONE;
+        boolean blendDisabled = !PipelineState.BlendState.enable(blendState);
+        boolean colourWriteMaskEnabled = rgbaColourWriteMaskEnabled(colorMask);
+        boolean recordedInPresentedWorldTarget = framebuffer != null && targetWidth > 0 && targetHeight > 0;
+
+        VulkanBerylDebugLog.rateLimited("section-draw-real-lod-probe-safe-state", "section draw real LOD single-quad world probe safe state:"
+                + " realLodProbeSafeStateApplied=" + safeStateApplied
+                + ", realLodProbeDepthTestDisabled=" + depthTestDisabled
+                + ", realLodProbeDepthWriteDisabled=" + depthWriteDisabled
+                + ", realLodProbeCullDisabled=" + cullDisabled
+                + ", realLodProbeBlendDisabled=" + blendDisabled
+                + ", realLodProbeColourWriteMaskEnabled=" + colourWriteMaskEnabled
+                + ", realLodProbeViewportForcedFullExtent=" + viewportForcedFullExtent
+                + ", realLodProbeScissorForcedFullExtent=" + scissorForcedFullExtent
+                + ", realLodProbeViewportExtent=" + viewportExtent
+                + ", realLodProbeScissorExtent=" + scissorExtent
+                + ", realLodProbePipelineMatchesBoundPipeline=" + pipelineBound
+                + ", realLodProbeDescriptorSetsBound=" + descriptorsBound
+                + ", realLodProbeRecordedInPresentedWorldTarget=" + recordedInPresentedWorldTarget
+                + ", realLodProbePrimitiveTopology=" + vulkanPrimitiveTopologyName(PipelineState.AssemblyRasterState.decodeTopology(assemblyRasterState)) + "(" + PipelineState.AssemblyRasterState.decodeTopology(assemblyRasterState) + ")"
+                + ", realLodProbeColorWriteMask=" + colorMaskName(colorMask) + "(" + colorMask + ")"
+                + ", realLodProbePipelineId=0x" + Integer.toHexString(System.identityHashCode(this.graphicsPipeline))
+                + ", realLodProbePipelineHash=0x" + Integer.toHexString(Objects.hash(System.identityHashCode(this.graphicsPipeline), this.graphicsPipelineGeneration, this.sectionDrawFragmentSourceHash))
+                + ", passContext=" + SECTION_DRAW_PASS_CONTEXT.get(), 60);
     }
 
     private void logSectionDrawGraphicsPipelineState(Renderer renderer, VulkanBerylViewport viewport, String stage) {
@@ -2160,7 +2763,6 @@ public final class VulkanBerylSectionDrawPipeline {
     private void recordFinalPassScreenspaceMarker(Renderer renderer, VulkanBerylViewport viewport,
             VkCommandBuffer commandBuffer, int rawVisibleCount, int visibleCount) {
         if (!SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER) return;
-        if (this.finalPassScreenspaceMarkerRecorded) return;
 
         Framebuffer framebuffer;
         try {
@@ -2180,6 +2782,17 @@ public final class VulkanBerylSectionDrawPipeline {
 
         String skipReason;
         boolean recorded;
+        boolean pipelineBound = false;
+        boolean descriptorsBound = false;
+        boolean viewportForcedFullExtent = false;
+        boolean scissorForcedFullExtent = false;
+        String viewportExtent = "unavailable";
+        String scissorExtent = "unavailable";
+        String markerReadbackSupported = "false";
+        String markerReadbackSkipReason = "not_implemented_no_safe_render_pass_copy_or_readback_path";
+        int targetWidth = framebuffer != null ? framebuffer.getWidth() : viewport.width;
+        int targetHeight = framebuffer != null ? framebuffer.getHeight() : viewport.height;
+        long markerFrameCounter = ++this.finalPassScreenspaceMarkerFrameCounter;
 
         if (commandBuffer == null) {
             recorded = false;
@@ -2193,7 +2806,31 @@ public final class VulkanBerylSectionDrawPipeline {
         } else if (!hasActiveRenderTarget) {
             recorded = false;
             skipReason = "no_active_render_target";
+        } else if (targetWidth <= 0 || targetHeight <= 0) {
+            recorded = false;
+            skipReason = "invalid_framebuffer_extent";
         } else {
+            applyFinalPassScreenspaceMarkerStateOverride();
+            renderer.bindGraphicsPipeline(this.graphicsPipeline);
+            pipelineBound = true;
+            this.bindSceneUniform(commandBuffer, viewport);
+            this.bindDrawTextureDescriptors();
+            this.graphicsPipeline.bindDescriptorSets(commandBuffer, 0);
+            descriptorsBound = true;
+            try {
+                Renderer.setViewport(0, 0, targetWidth, targetHeight);
+                viewportForcedFullExtent = true;
+                viewportExtent = targetWidth + "x" + targetHeight;
+            } catch (Exception e) {
+                viewportExtent = "unavailable:" + e.getClass().getSimpleName();
+            }
+            try {
+                Renderer.setScissor(0, 0, targetWidth, targetHeight);
+                scissorForcedFullExtent = true;
+                scissorExtent = targetWidth + "x" + targetHeight;
+            } catch (Exception e) {
+                scissorExtent = "unavailable:" + e.getClass().getSimpleName();
+            }
             VK10.vkCmdDraw(commandBuffer, FINAL_PASS_SCREENSPACE_MARKER_VERTEX_COUNT,
                     FINAL_PASS_SCREENSPACE_MARKER_INSTANCE_COUNT,
                     FINAL_PASS_SCREENSPACE_MARKER_FIRST_VERTEX,
@@ -2208,10 +2845,21 @@ public final class VulkanBerylSectionDrawPipeline {
         long framebufferId = reflectLong(framebuffer, "getId", "id", "framebuffer", "frameBuffer", "handle");
         long colorImageId = reflectNestedLong(framebuffer, "image", "colorImage", "colorAttachment", "colorAttachmentImage", "mainColorImage");
         long colorViewId = reflectNestedLong(framebuffer, "imageView", "view", "colorView", "colorAttachmentView", "mainColorView");
+        int markerDepthState = PipelineState.getDepthState();
+        int markerAssemblyRasterState = PipelineState.getAssemblyRasterState();
+        int markerBlendState = PipelineState.getBlendState();
+        int markerColorMask = VRenderSystem.getColorMask();
+        boolean markerDepthTestDisabled = !PipelineState.DepthState.depthTest(markerDepthState);
+        boolean markerDepthWriteDisabled = !PipelineState.DepthState.depthMask(markerDepthState);
+        boolean markerCullDisabled = PipelineState.AssemblyRasterState.decodeCullMode(markerAssemblyRasterState) == VK10.VK_CULL_MODE_NONE;
+        boolean markerBlendDisabled = !PipelineState.BlendState.enable(markerBlendState);
+        boolean markerColourWriteMaskEnabled = markerColorMask == VRenderSystem.getColorMask();
         VulkanBerylDebugLog.always("Section draw final-pass screenspace marker diagnostic:"
                 + " sectionDrawFinalPassScreenspaceMarkerEnabled=true"
                 + ", sectionDrawFinalPassScreenspaceMarkerRecorded=" + recorded
                 + ", sectionDrawFinalPassScreenspaceMarkerSkipReason=" + skipReason
+                + ", sectionDrawFinalPassMarkerPersistent=true"
+                + ", sectionDrawFinalPassMarkerFrameCounter=" + markerFrameCounter
                 + ", renderListVisibleCountForDraw=" + visibleCount
                 + ", rawRenderListVisibleCount=" + rawVisibleCount
                 + ", cmdgenSkipped=not_reached_at_marker_point"
@@ -2230,7 +2878,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sectionDrawPipelineHash=0x" + Integer.toHexString(Objects.hash(System.identityHashCode(this.graphicsPipeline), this.graphicsPipelineGeneration, this.sectionDrawFragmentSourceHash))
                 + ", sectionDrawRecordedAfterMainClear=" + inferRecordedAfterMainClear(passContext)
                 + ", sectionDrawMayBeOverwrittenByLaterPass=" + inferMayBeOverwrittenByLaterPass(passContext)
-                + ", oneFrame=true"
+                + ", oneFrame=false"
                 + ", markerVertexCount=" + FINAL_PASS_SCREENSPACE_MARKER_VERTEX_COUNT
                 + ", markerInstanceCount=" + FINAL_PASS_SCREENSPACE_MARKER_INSTANCE_COUNT
                 + ", markerFirstInstance=0x" + Integer.toHexString(FINAL_PASS_SCREENSPACE_MARKER_FIRST_INSTANCE)
@@ -2246,9 +2894,24 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sectionDrawFinalPassMarkerClipMode=hardcoded_clipspace"
                 + ", sectionDrawFinalPassMarkerPipelineId=0x" + Integer.toHexString(System.identityHashCode(this.graphicsPipeline))
                 + ", sectionDrawFinalPassMarkerPipelineHash=0x" + Integer.toHexString(Objects.hash(System.identityHashCode(this.graphicsPipeline), this.graphicsPipelineGeneration, this.sectionDrawFragmentSourceHash))
-                + ", sectionDrawFinalPassMarkerPipelineMatchesBoundPipeline=true"
-                + ", sectionDrawFinalPassMarkerDepthZ=0.5"
-                + ", sectionDrawFinalPassMarkerTriangleCoverage=large_central");
+                + ", sectionDrawFinalPassMarkerPipelineMatchesBoundPipeline=" + pipelineBound
+                + ", sectionDrawFinalPassMarkerDescriptorSetsBound=" + descriptorsBound
+                + ", sectionDrawFinalPassMarkerDepthTestDisabled=" + markerDepthTestDisabled
+                + ", sectionDrawFinalPassMarkerDepthWriteDisabled=" + markerDepthWriteDisabled
+                + ", sectionDrawFinalPassMarkerStencilDisabled=unavailable:no_vrendersystem_or_pipeline_state_api"
+                + ", sectionDrawFinalPassMarkerCullDisabled=" + markerCullDisabled
+                + ", sectionDrawFinalPassMarkerBlendDisabled=" + markerBlendDisabled
+                + ", sectionDrawFinalPassMarkerColourWriteMaskEnabled=" + markerColourWriteMaskEnabled
+                + ", sectionDrawFinalPassMarkerViewportForcedFullExtent=" + viewportForcedFullExtent
+                + ", sectionDrawFinalPassMarkerScissorForcedFullExtent=" + scissorForcedFullExtent
+                + ", sectionDrawFinalPassMarkerViewportExtent=" + viewportExtent
+                + ", sectionDrawFinalPassMarkerScissorExtent=" + scissorExtent
+                + ", sectionDrawFinalPassMarkerTriangleCoverage=fullscreen"
+                + ", sectionDrawFinalPassMarkerRecordedBeforeRenderListGates=true"
+                + ", sectionDrawFinalPassMarkerRecordedAfterMainClear=" + inferRecordedAfterMainClear(passContext)
+                + ", sectionDrawFinalPassMarkerMayBeOverwrittenByLaterPass=" + inferMayBeOverwrittenByLaterPass(passContext)
+                + ", markerReadbackSupported=" + markerReadbackSupported
+                + ", markerReadbackSkipReason=" + markerReadbackSkipReason);
     }
 
     private static String inferRecordedAfterMainClear(String passContext) {
@@ -2401,6 +3064,14 @@ public final class VulkanBerylSectionDrawPipeline {
         if ((colorMask & VK10.VK_COLOR_COMPONENT_B_BIT) != 0) channels.add("B");
         if ((colorMask & VK10.VK_COLOR_COMPONENT_A_BIT) != 0) channels.add("A");
         return channels.isEmpty() ? "none" : String.join("", channels);
+    }
+
+    private static boolean rgbaColourWriteMaskEnabled(int colorMask) {
+        int rgbaMask = VK10.VK_COLOR_COMPONENT_R_BIT
+                | VK10.VK_COLOR_COMPONENT_G_BIT
+                | VK10.VK_COLOR_COMPONENT_B_BIT
+                | VK10.VK_COLOR_COMPONENT_A_BIT;
+        return (colorMask & rgbaMask) == rgbaMask;
     }
 
     private record ScheduledDebugReadback(boolean scheduled, String reason, long commandCopyBytes, long countCopyBytes, boolean alreadyPending, boolean scheduleSkipped, String skipReason, int rendererFrameSlot, long commandBufferAddress, long generation, long sourceBufferId) {
@@ -3078,10 +3749,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", controlledSmokeSelectedDistanceToBase=" + formatDouble(controlledSmoke.distanceToBase())
                 + ", visibilityCandidateCount=" + controlledSmoke.visibilityCandidateCount()
                 + ", visibilityCandidateTestedCount=" + controlledSmoke.visibilityCandidateTestedCount()
+                + ", visibilityCandidateClipVisibleCount=" + controlledSmoke.visibilityCandidateClipVisibleCount()
                 + ", selectedVisibilityCandidateSectionId=" + controlledSmoke.selectedVisibilityCandidateSectionId()
                 + ", selectedVisibilityCandidateQuadIndex=" + controlledSmoke.selectedVisibilityCandidateQuadIndex()
                 + ", selectedVisibilityCandidateClipLooksVisible=" + controlledSmoke.selectedVisibilityCandidateClipLooksVisible()
                 + ", selectedVisibilityCandidateRejectReason=" + controlledSmoke.selectedVisibilityCandidateRejectReason()
+                + ", fallbackUsedOnlyAfterNoClipVisibleCandidate=" + controlledSmoke.fallbackUsedOnlyAfterNoClipVisibleCandidate()
                 + ", voxyImportedSectionCount=unavailable"
                 + ", geometrySectionCount=" + Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount())
                 + ", usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
@@ -3337,7 +4010,51 @@ public final class VulkanBerylSectionDrawPipeline {
             allBehind &= clip.w <= 0.0F;
             anyVisible |= clip.w > 0.0F && Math.abs(clip.x) <= Math.abs(clip.w) && Math.abs(clip.y) <= Math.abs(clip.w) && clip.z >= -Math.abs(clip.w) && clip.z <= Math.abs(clip.w);
         }
-        return new ClipDiagnostics(formatVec4(clips[0]), formatVec4(clips[1]), formatVec4(clips[2]), formatVec4(clips[3]), anyFiniteW, anyVisible, allBehind);
+        return new ClipDiagnostics(formatVec4(clips[0]), formatVec4(clips[1]), formatVec4(clips[2]), formatVec4(clips[3]), clips, anyFiniteW, anyVisible, allBehind);
+    }
+
+    private static WorldCornerDiagnostics worldCornerDiagnostics(VulkanBerylViewport viewport, int rawPosA, int rawPosB, QuadSample quad) {
+        if (!quad.available()) return WorldCornerDiagnostics.unavailable();
+        int lodLevel = rawPosA >>> 28;
+        float lodScale = (float) (1 << lodLevel);
+        int[] lodPos = decodeLodPosition(rawPosA, rawPosB);
+        int baseX = (lodPos[0] << lodLevel) - viewport.section.x;
+        int baseY = (lodPos[1] << lodLevel) - viewport.section.y;
+        int baseZ = (lodPos[2] << lodLevel) - viewport.section.z;
+        float quadSizeX = Math.max(quad.sizeX(), 1.0F);
+        float quadSizeY = Math.max(quad.sizeY(), 1.0F);
+        org.joml.Vector4f[] corners = new org.joml.Vector4f[4];
+        boolean finite = true;
+        for (int corner = 0; corner < 4; corner++) {
+            float maskX = ((corner >> 1) & 1) * lodScale;
+            float maskY = (corner & 1) * lodScale;
+            float dataX = quadSizeX * maskX;
+            float dataY = quadSizeY * maskY;
+            float sx;
+            float sy;
+            float sz;
+            int axis = quad.face() >> 1;
+            if (axis == 0) {
+                sx = dataX;
+                sy = 0.0F;
+                sz = dataY;
+            } else if (axis == 1) {
+                sx = dataX;
+                sy = dataY;
+                sz = 0.0F;
+            } else {
+                sx = 0.0F;
+                sy = dataX;
+                sz = dataY;
+            }
+            float px = quad.posX() * lodScale + (baseX << 5) + sx;
+            float py = quad.posY() * lodScale + (baseY << 5) + sy;
+            float pz = quad.posZ() * lodScale + (baseZ << 5) + sz;
+            corners[corner] = new org.joml.Vector4f(px, py, pz, 1.0F);
+            finite &= Float.isFinite(px) && Float.isFinite(py) && Float.isFinite(pz);
+        }
+        return new WorldCornerDiagnostics(formatVec4(corners[0]), formatVec4(corners[1]), formatVec4(corners[2]), formatVec4(corners[3]),
+                corners, finite, "relative_baseSection_innerTranslation");
     }
 
     private static String basePointDiagnostic(VulkanBerylViewport viewport, int rawPosA, int rawPosB, QuadSample quad) {
@@ -3379,19 +4096,41 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
-    private record ClipDiagnostics(String clip0, String clip1, String clip2, String clip3, boolean anyFiniteW, boolean looksVisible, boolean behindCamera) {
-        static ClipDiagnostics unavailable() { return new ClipDiagnostics("unavailable", "unavailable", "unavailable", "unavailable", false, false, false); }
+    private record ClipDiagnostics(String clip0, String clip1, String clip2, String clip3, org.joml.Vector4f[] rawClips, boolean anyFiniteW, boolean looksVisible, boolean behindCamera) {
+        static ClipDiagnostics unavailable() { return new ClipDiagnostics("unavailable", "unavailable", "unavailable", "unavailable", null, false, false, false); }
+        boolean hasRawClipValues() {
+            return this.rawClips != null && this.rawClips.length == 4
+                    && this.rawClips[0] != null && this.rawClips[1] != null && this.rawClips[2] != null && this.rawClips[3] != null;
+        }
+        org.joml.Vector4f clip(int index) {
+            if (!hasRawClipValues() || index < 0 || index >= 4) throw new IllegalArgumentException("clip index unavailable: " + index);
+            return this.rawClips[index];
+        }
+    }
+
+    private record WorldCornerDiagnostics(String corner0, String corner1, String corner2, String corner3, org.joml.Vector4f[] rawCorners, boolean finite, String coordinateSpace) {
+        static WorldCornerDiagnostics unavailable() {
+            return new WorldCornerDiagnostics("unavailable", "unavailable", "unavailable", "unavailable", null, false, "unavailable");
+        }
+        boolean hasRawWorldValues() {
+            return this.finite && this.rawCorners != null && this.rawCorners.length == 4
+                    && this.rawCorners[0] != null && this.rawCorners[1] != null && this.rawCorners[2] != null && this.rawCorners[3] != null;
+        }
+        org.joml.Vector4f corner(int index) {
+            if (!hasRawWorldValues() || index < 0 || index >= 4) throw new IllegalArgumentException("world corner index unavailable: " + index);
+            return this.rawCorners[index];
+        }
     }
 
     private record RealQuadDiagnostic(String status, int sectionId, long drawIndex, long vertexCount, long firstVertex, long quadIndex, String rawQuad, int decodedLod, String selectedReason, String baseSectionPos, String innerTranslation, String basePoint, String lodScale, String axis, String quadSizeAddin, String clip0, String clip1, String clip2, String clip3, boolean anyFiniteW, boolean intersectsClipSpace, boolean behindCamera, String commandSampleState,
                                       String relativeClip0, String relativeClip1, String relativeClip2, String relativeClip3, boolean relativeAnyCornerIntersectsClipSpace,
                                       String absoluteClip0, String absoluteClip1, String absoluteClip2, String absoluteClip3, boolean absoluteAnyCornerIntersectsClipSpace,
-                                      String selectedTransformMode, String geometryDiagnosticFields) {
+                                      String selectedTransformMode, String worldCorner0, String worldCorner1, String worldCorner2, String worldCorner3, String geometryDiagnosticFields) {
         static RealQuadDiagnostic unavailable(String status, long drawIndex, long vertexCount, long firstVertex, String geometryDiagnosticFields) {
             return new RealQuadDiagnostic(status, -1, drawIndex, vertexCount, firstVertex, -1L, "unavailable", -1, "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", "unavailable", false, false, false, "unavailable",
                     "unavailable", "unavailable", "unavailable", "unavailable", false,
                     "unavailable", "unavailable", "unavailable", "unavailable", false,
-                    "relative_baseSection_innerTranslation", geometryDiagnosticFields);
+                    "relative_baseSection_innerTranslation", "unavailable", "unavailable", "unavailable", "unavailable", geometryDiagnosticFields);
         }
 
         String logFields() {
@@ -3437,11 +4176,272 @@ public final class VulkanBerylSectionDrawPipeline {
                     + ", absoluteClip3=" + absoluteClip3
                     + ", absoluteAnyCornerIntersectsClipSpace=" + absoluteAnyCornerIntersectsClipSpace
                     + ", selectedTransformMode=" + selectedTransformMode
+                    + ", worldCorner0=" + worldCorner0
+                    + ", worldCorner1=" + worldCorner1
+                    + ", worldCorner2=" + worldCorner2
+                    + ", worldCorner3=" + worldCorner3
                     + ", anyCornerFiniteW=" + anyFiniteW
                     + ", anyCornerIntersectsClipSpace=" + intersectsClipSpace
                     + ", allCornersBehindCamera=" + behindCamera
                     + ", commandSampleState=" + commandSampleState
                     + (includeGeometryDiagnosticFields ? geometryDiagnosticFields : "");
+        }
+    }
+
+    private String realLodGpuDecodeParityLogFields(long currentFrameId, RealQuadDiagnostic cpu, VulkanBerylSectionGeometryData geometryData) {
+        consumeRealLodGpuDecodeParityReadbackIfReady(currentFrameId);
+        GpuDecodeParitySnapshot gpu = this.realLodGpuDecodeParitySnapshot;
+        CpuDecodeParitySnapshot cpuSnapshot = this.realLodGpuDecodeParityPendingCpuSnapshot;
+        logRealLodProbeBoundBufferContentDiagnostics(geometryData, cpuSnapshot, gpu);
+        boolean activeSectionIdMatchesCpu = gpu.available()
+                && cpuSnapshot != null
+                && cpuSnapshot.available()
+                && gpu.frameId() == cpuSnapshot.frameId()
+                && gpu.activeSectionId() == cpuSnapshot.selectedSectionId();
+        boolean activeAbsoluteQuadIndexMatchesCpu = gpu.available()
+                && cpuSnapshot != null
+                && cpuSnapshot.available()
+                && gpu.frameId() == cpuSnapshot.frameId()
+                && gpu.activeAbsoluteQuadIndex() == cpuSnapshot.selectedQuadIndex();
+        boolean activePassQuadStartMatchesCpu = gpu.available()
+                && cpuSnapshot != null
+                && cpuSnapshot.available()
+                && gpu.frameId() == cpuSnapshot.frameId()
+                && gpu.activePassQuadStart() == cpuSnapshot.selectedSectionPassQuadStart();
+        boolean activeSectionMetaMatchesCpu = gpu.available()
+                && cpuSnapshot != null
+                && cpuSnapshot.available()
+                && gpu.frameId() == cpuSnapshot.frameId()
+                && gpu.activeSectionMetaMatches(cpuSnapshot);
+        boolean activeAbsoluteDecodeIdentityMatchesCpu = activeSectionIdMatchesCpu && activeAbsoluteQuadIndexMatchesCpu;
+        long cpuRenderListEntryForDrawIndex = gpu.magicValid() && gpu.normalDrawIndex() == 0L && cpuSnapshot != null && cpuSnapshot.available()
+                ? cpuSnapshot.selectedSectionId()
+                : -1L;
+        boolean renderListIdentityMatchesCpu = gpu.magicValid()
+                && cpuSnapshot != null
+                && cpuSnapshot.available()
+                && gpu.normalDrawIndex() == 0L
+                && gpu.normalSectionId() == cpuSnapshot.selectedSectionId();
+        boolean normalIdentityWriteVerified = gpu.magicValid()
+                && gpu.normalAbsoluteQuadIndex() == gpu.normalPassQuadStart() + gpu.normalLocalQuadIndex();
+        boolean activeIdentityWriteVerified = gpu.magicValid()
+                && (gpu.activeLocalQuadIndex() == 0xffffffffL || gpu.activeAbsoluteQuadIndex() == gpu.activePassQuadStart() + gpu.activeLocalQuadIndex());
+        boolean available = gpu.available() && activeAbsoluteDecodeIdentityMatchesCpu;
+        String unavailableReason = available ? "none"
+                : (!gpu.magicValid() ? gpu.reason()
+                : (cpuSnapshot == null || !cpuSnapshot.available() ? "cpu_snapshot_unavailable"
+                : "stale_or_unmatched_gpu_record"));
+        String mismatchReason = realLodProbeDecodeMismatchReason(cpuSnapshot, gpu, available, unavailableReason, activePassQuadStartMatchesCpu, activeSectionMetaMatchesCpu);
+        return ", realLodProbeGpuDecodeParityAvailable=" + available
+                + ", realLodProbeGpuParityRecordMatchesCpuSnapshot=" + activeAbsoluteDecodeIdentityMatchesCpu
+                + ", realLodProbeGpuActiveDecodeIdentityMatchesCpuSnapshot=" + activeAbsoluteDecodeIdentityMatchesCpu
+                + ", realLodProbeGpuActiveSectionIdMatchesCpu=" + activeSectionIdMatchesCpu
+                + ", realLodProbeGpuActiveAbsoluteQuadIndexMatchesCpu=" + activeAbsoluteQuadIndexMatchesCpu
+                + ", realLodProbeGpuActivePassQuadStartMatchesCpu=" + activePassQuadStartMatchesCpu
+                + ", realLodProbeGpuActiveSectionMetaMatchesCpu=" + activeSectionMetaMatchesCpu
+                + ", realLodProbeGpuActiveAbsoluteDecodeIdentityMatchesCpu=" + activeAbsoluteDecodeIdentityMatchesCpu
+                + ", realLodProbeGpuParityMagicValid=" + gpu.magicValid()
+                + ", realLodProbeGpuParityFrameId=" + (gpu.magicValid() ? gpu.frameId() : -1L)
+                + ", realLodProbeCpuSnapshotFrameId=" + (cpuSnapshot != null && cpuSnapshot.available() ? cpuSnapshot.frameId() : -1L)
+                + ", realLodProbeGpuResolvedDrawIndex=" + (gpu.magicValid() ? gpu.normalDrawIndex() : -1L)
+                + ", realLodProbeGpuResolvedSectionId=" + (gpu.magicValid() ? gpu.normalSectionId() : -1)
+                + ", realLodProbeGpuNormalResolvedDrawIndex=" + (gpu.magicValid() ? gpu.normalDrawIndex() : -1L)
+                + ", realLodProbeGpuNormalResolvedSectionId=" + (gpu.magicValid() ? gpu.normalSectionId() : -1)
+                + ", realLodProbeCpuRenderListEntryForDrawIndex=" + cpuRenderListEntryForDrawIndex
+                + ", realLodProbeGpuResolvedPassQuadStart=" + (gpu.magicValid() ? gpu.normalPassQuadStart() : -1L)
+                + ", realLodProbeGpuNormalResolvedPassQuadStart=" + (gpu.magicValid() ? gpu.normalPassQuadStart() : -1L)
+                + ", realLodProbeCpuSelectedSectionPassQuadStart=" + (cpuSnapshot != null && cpuSnapshot.available() ? cpuSnapshot.selectedSectionPassQuadStart() : -1L)
+                + ", realLodProbeGpuResolvedLocalQuadIndex=" + (gpu.magicValid() ? gpu.normalLocalQuadIndex() : -1L)
+                + ", realLodProbeGpuNormalResolvedLocalQuadIndex=" + (gpu.magicValid() ? gpu.normalLocalQuadIndex() : -1L)
+                + ", realLodProbeGpuResolvedAbsoluteQuadIndex=" + (gpu.magicValid() ? gpu.normalAbsoluteQuadIndex() : -1L)
+                + ", realLodProbeGpuNormalResolvedAbsoluteQuadIndex=" + (gpu.magicValid() ? gpu.normalAbsoluteQuadIndex() : -1L)
+                + ", realLodProbeCpuSelectedQuadIndex=" + (cpuSnapshot != null && cpuSnapshot.available() ? cpuSnapshot.selectedQuadIndex() : -1L)
+                + ", realLodProbeRenderListIdentityMatchesCpu=" + renderListIdentityMatchesCpu
+                + ", realLodProbeParityIdentityWriteVerified=" + activeIdentityWriteVerified
+                + ", realLodProbeNormalParityIdentityWriteVerified=" + normalIdentityWriteVerified
+                + ", realLodProbeActiveParityIdentityWriteVerified=" + activeIdentityWriteVerified
+                + ", realLodProbeGpuActiveDecodeMode=" + (gpu.magicValid() ? gpu.activeDecodeModeName() : "unavailable")
+                + ", realLodProbeGpuActiveSectionId=" + (gpu.magicValid() ? gpu.activeSectionId() : -1)
+                + ", realLodProbeGpuActivePassQuadStart=" + (gpu.magicValid() ? gpu.activePassQuadStart() : -1L)
+                + ", realLodProbeGpuActiveLocalQuadIndex=" + (gpu.magicValid() ? gpu.activeLocalQuadIndexString() : "unavailable")
+                + ", realLodProbeGpuActiveAbsoluteQuadIndex=" + (gpu.magicValid() ? gpu.activeAbsoluteQuadIndex() : -1L)
+                + ", realLodProbeGpuActiveBypassedIndirectLookup=" + (gpu.magicValid() && gpu.activeBypassedIndirectLookup())
+                + ", realLodProbeGpuParitySelectedSectionId=" + (gpu.magicValid() ? gpu.activeSectionId() : -1)
+                + ", realLodProbeCpuSnapshotSelectedSectionId=" + (cpuSnapshot != null && cpuSnapshot.available() ? cpuSnapshot.selectedSectionId() : -1)
+                + ", realLodProbeGpuParitySelectedQuadIndex=" + (gpu.magicValid() ? gpu.activeAbsoluteQuadIndex() : -1L)
+                + ", realLodProbeCpuSnapshotSelectedQuadIndex=" + (cpuSnapshot != null && cpuSnapshot.available() ? cpuSnapshot.selectedQuadIndex() : -1L)
+                + ", realLodProbeGpuParityPassQuadStart=" + (gpu.magicValid() ? gpu.activePassQuadStart() : -1L)
+                + ", realLodProbeCpuSnapshotSelectedSectionPassQuadStart=" + (cpuSnapshot != null && cpuSnapshot.available() ? cpuSnapshot.selectedSectionPassQuadStart() : -1L)
+                + ", gpuActiveSectionMetaA0=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaA0()) : "unavailable")
+                + ", gpuActiveSectionMetaA1=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaA1()) : "unavailable")
+                + ", gpuActiveSectionMetaA2=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaA2()) : "unavailable")
+                + ", gpuActiveSectionMetaA3=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaA3()) : "unavailable")
+                + ", gpuActiveSectionMetaB0=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaB0()) : "unavailable")
+                + ", gpuActiveSectionMetaB1=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaB1()) : "unavailable")
+                + ", gpuActiveSectionMetaB2=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaB2()) : "unavailable")
+                + ", gpuActiveSectionMetaB3=" + (gpu.magicValid() ? Integer.toUnsignedString(gpu.activeSectionMetaB3()) : "unavailable")
+                + ", cpuSelectedSectionMetaA0=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaA0()) : "unavailable")
+                + ", cpuSelectedSectionMetaA1=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaA1()) : "unavailable")
+                + ", cpuSelectedSectionMetaA2=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaA2()) : "unavailable")
+                + ", cpuSelectedSectionMetaA3=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaA3()) : "unavailable")
+                + ", cpuSelectedSectionMetaB0=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaB0()) : "unavailable")
+                + ", cpuSelectedSectionMetaB1=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaB1()) : "unavailable")
+                + ", cpuSelectedSectionMetaB2=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaB2()) : "unavailable")
+                + ", cpuSelectedSectionMetaB3=" + (cpuSnapshot != null && cpuSnapshot.available() ? Integer.toUnsignedString(cpuSnapshot.selectedSectionMetaB3()) : "unavailable")
+                + ", realLodProbeGpuParityDrawIndex=" + (gpu.magicValid() ? gpu.normalDrawIndex() : -1L)
+                + ", realLodProbeGpuParityLocalQuadIndex=" + (gpu.magicValid() ? gpu.activeLocalQuadIndexString() : "unavailable")
+                + ", realLodProbeGpuParityCommandBufferFrameSlot=" + (gpu.magicValid() ? gpu.commandBufferFrameSlot() : -1L)
+                + ", realLodProbeDecodeMismatchReason=" + mismatchReason
+                + ", realLodProbeGpuDecodeParityUnavailableReason=" + unavailableReason
+                + ", realLodProbeGpuDecodeParityFrameId=" + (gpu.available() ? gpu.frameId() : -1L)
+                + ", realLodProbeGpuDecodeParityPending=" + this.realLodGpuDecodeParityPending
+                + (available ? realLodGpuDecodeParityMatchedLogFields(cpuSnapshot, gpu) : "");
+    }
+
+    private static String realLodGpuDecodeParityMatchedLogFields(CpuDecodeParitySnapshot cpu, GpuDecodeParitySnapshot gpu) {
+        return ", realLodProbeCpuRawQuadData=" + cpu.rawQuad()
+                + ", realLodProbeGpuRawQuadData=" + gpu.rawQuadString()
+                + ", realLodProbeCpuDecodedLodLevel=" + cpu.decodedLod()
+                + ", realLodProbeGpuDecodedLodLevel=" + Integer.toUnsignedString(gpu.lodLevel())
+                + ", realLodProbeCpuBasePoint=" + cpu.basePoint()
+                + ", realLodProbeGpuBasePoint=" + gpu.basePoint()
+                + ", realLodProbeCpuLodScale=" + cpu.lodScale()
+                + ", realLodProbeGpuLodScale=" + gpu.lodScaleString()
+                + ", realLodProbeCpuQuadSizeAddin=" + cpu.quadSizeAddin()
+                + ", realLodProbeGpuQuadSizeAddin=" + gpu.quadSizeAddin()
+                + ", realLodProbeCpuAxis=" + cpu.axis()
+                + ", realLodProbeGpuAxis=" + Integer.toUnsignedString(gpu.axis())
+                + ", realLodProbeCpuWorldCorner0=" + cpu.worldCorner0()
+                + ", realLodProbeCpuWorldCorner1=" + cpu.worldCorner1()
+                + ", realLodProbeCpuWorldCorner2=" + cpu.worldCorner2()
+                + ", realLodProbeCpuWorldCorner3=" + cpu.worldCorner3()
+                + ", realLodProbeGpuWorldCorner0=" + gpu.worldCorner0()
+                + ", realLodProbeGpuWorldCorner1=" + gpu.worldCorner1()
+                + ", realLodProbeGpuWorldCorner2=" + gpu.worldCorner2()
+                + ", realLodProbeGpuWorldCorner3=" + gpu.worldCorner3();
+    }
+
+    private static String realLodProbeDecodeMismatchReason(CpuDecodeParitySnapshot cpu, GpuDecodeParitySnapshot gpu, boolean available, String unavailableReason, boolean activePassQuadStartMatchesCpu, boolean activeSectionMetaMatchesCpu) {
+        if (!available) return "gpu_decode_parity_unavailable:" + unavailableReason;
+        if (!activePassQuadStartMatchesCpu) return "gpu_section_meta_pass_quad_start_mismatch";
+        if (!activeSectionMetaMatchesCpu) return "gpu_section_meta_raw_fields_mismatch";
+        if (!Objects.equals(cpu.rawQuad(), gpu.rawQuadString())) return "gpu_raw_quad_mismatch";
+        if (cpu.decodedLod() != gpu.lodLevel()
+                || !Objects.equals(cpu.basePoint(), gpu.basePoint())
+                || !Objects.equals(cpu.lodScale(), gpu.lodScaleString())
+                || !Objects.equals(cpu.quadSizeAddin(), gpu.quadSizeAddin())
+                || !Objects.equals(cpu.axis(), Integer.toUnsignedString(gpu.axis()))
+                || !Objects.equals(cpu.worldCorner0(), gpu.worldCorner0())
+                || !Objects.equals(cpu.worldCorner1(), gpu.worldCorner1())
+                || !Objects.equals(cpu.worldCorner2(), gpu.worldCorner2())
+                || !Objects.equals(cpu.worldCorner3(), gpu.worldCorner3())) {
+            return "gpu_setup_quad_decode_mismatch";
+        }
+        return "gpu_decode_matches_but_not_visible";
+    }
+
+    private record CpuDecodeParitySnapshot(boolean available, String reason, long frameId, int selectedSectionId, long selectedQuadIndex, long selectedSectionPassQuadStart,
+                                           int selectedSectionMetaA0, int selectedSectionMetaA1, int selectedSectionMetaA2, int selectedSectionMetaA3,
+                                           int selectedSectionMetaB0, int selectedSectionMetaB1, int selectedSectionMetaB2, int selectedSectionMetaB3,
+                                           String rawQuad, int decodedLod, String basePoint, String lodScale, String quadSizeAddin, String axis,
+                                           String worldCorner0, String worldCorner1, String worldCorner2, String worldCorner3) {
+        static CpuDecodeParitySnapshot unavailable(String reason) {
+            return new CpuDecodeParitySnapshot(false, reason, -1L, -1, -1L, -1L,
+                    0, 0, 0, 0, 0, 0, 0, 0,
+                    "unavailable", -1, "unavailable", "unavailable", "unavailable", "unavailable",
+                    "unavailable", "unavailable", "unavailable", "unavailable");
+        }
+
+        static CpuDecodeParitySnapshot fromDiagnostic(int frameId, RealQuadDiagnostic diagnostic, VulkanBerylSectionGeometryData geometryData, long selectedSectionPassQuadStart) {
+            if (diagnostic == null || diagnostic.sectionId() < 0 || diagnostic.quadIndex() < 0L) {
+                return unavailable("diagnostic_unavailable");
+            }
+            int sectionId = diagnostic.sectionId();
+            if (geometryData == null || sectionId >= Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount()) || !geometryData.hasNonZeroSectionMetadata(sectionId)) {
+                return unavailable("section_metadata_unavailable");
+            }
+            return new CpuDecodeParitySnapshot(true, "none", Integer.toUnsignedLong(frameId & 0x7fffffff), diagnostic.sectionId(), diagnostic.quadIndex(), selectedSectionPassQuadStart,
+                    geometryData.getSectionMetadataInt(sectionId, 0), geometryData.getSectionMetadataInt(sectionId, 1),
+                    geometryData.getSectionMetadataInt(sectionId, 2), geometryData.getSectionMetadataInt(sectionId, 3),
+                    geometryData.getSectionMetadataInt(sectionId, 4), geometryData.getSectionMetadataInt(sectionId, 5),
+                    geometryData.getSectionMetadataInt(sectionId, 6), geometryData.getSectionMetadataInt(sectionId, 7),
+                    diagnostic.rawQuad(), diagnostic.decodedLod(), diagnostic.basePoint(), diagnostic.lodScale(), diagnostic.quadSizeAddin(), diagnostic.axis(),
+                    diagnostic.worldCorner0(), diagnostic.worldCorner1(), diagnostic.worldCorner2(), diagnostic.worldCorner3());
+        }
+    }
+
+    private record GpuDecodeParitySnapshot(boolean available, boolean magicValid, String reason, long frameId,
+                                           long normalDrawIndex, int normalSectionId, long normalPassQuadStart, long normalLocalQuadIndex, long normalAbsoluteQuadIndex,
+                                           int activeDecodeMode, int activeSectionId, long activePassQuadStart, long activeLocalQuadIndex, long activeAbsoluteQuadIndex, boolean activeBypassedIndirectLookup,
+                                           long commandBufferFrameSlot,
+                                           long rawQuad, int lodLevel, int axis,
+                                           int activeSectionMetaA0, int activeSectionMetaA1, int activeSectionMetaA2, int activeSectionMetaA3,
+                                           int activeSectionMetaB0, int activeSectionMetaB1, int activeSectionMetaB2, int activeSectionMetaB3,
+                                           String basePoint, String lodScaleString, String quadSizeAddin,
+                                           String worldCorner0, String worldCorner1, String worldCorner2, String worldCorner3) {
+        static GpuDecodeParitySnapshot unavailable(String reason) {
+            return new GpuDecodeParitySnapshot(false, false, reason, -1L,
+                    -1L, -1, -1L, -1L, -1L,
+                    -1, -1, -1L, -1L, -1L, false,
+                    -1L, 0L, -1, -1,
+                    0, 0, 0, 0, 0, 0, 0, 0,
+                    "unavailable", "unavailable", "unavailable",
+                    "unavailable", "unavailable", "unavailable", "unavailable");
+        }
+
+        static GpuDecodeParitySnapshot fromWords(int[] words) {
+            if (words == null || words.length < REAL_LOD_GPU_DECODE_PARITY_WORDS) return unavailable("readback_word_count_invalid");
+            if (words[0] != REAL_LOD_GPU_DECODE_PARITY_MAGIC) return unavailable("magic_mismatch:0x" + Integer.toHexString(words[0]));
+            long raw = (Integer.toUnsignedLong(words[15]) << 32) | Integer.toUnsignedLong(words[14]);
+            return new GpuDecodeParitySnapshot(true, true, "none", Integer.toUnsignedLong(words[1]),
+                    Integer.toUnsignedLong(words[2]), words[3], Integer.toUnsignedLong(words[4]), Integer.toUnsignedLong(words[5]), Integer.toUnsignedLong(words[6]),
+                    words[7], words[8], Integer.toUnsignedLong(words[9]), Integer.toUnsignedLong(words[10]), Integer.toUnsignedLong(words[11]), words[12] != 0,
+                    Integer.toUnsignedLong(words[13]),
+                    raw, words[16], words[17],
+                    words[42], words[43], words[44], words[45], words[46], words[47], words[48], words[49],
+                    formatFloat(Float.intBitsToFloat(words[18])) + "," + formatFloat(Float.intBitsToFloat(words[19])) + "," + formatFloat(Float.intBitsToFloat(words[20])),
+                    formatFloat(Float.intBitsToFloat(words[21])),
+                    formatFloat(Float.intBitsToFloat(words[22])) + "," + formatFloat(Float.intBitsToFloat(words[23])),
+                    formatGpuWorldCorner(words, 26),
+                    formatGpuWorldCorner(words, 30),
+                    formatGpuWorldCorner(words, 34),
+                    formatGpuWorldCorner(words, 38));
+        }
+
+        String rawQuadString() {
+            return "0x" + Long.toUnsignedString(this.rawQuad, 16) + "/" + Long.toUnsignedString(this.rawQuad);
+        }
+
+        String activeDecodeModeName() {
+            return switch (this.activeDecodeMode) {
+                case 0 -> "real_decoded_quad";
+                case 1 -> "forced_cpu_selected_quad";
+                case 2 -> "force_cpu_section_and_quad";
+                default -> "unknown:" + Integer.toUnsignedString(this.activeDecodeMode);
+            };
+        }
+
+        String activeLocalQuadIndexString() {
+            return this.activeLocalQuadIndex == 0xffffffffL ? "invalid" : Long.toUnsignedString(this.activeLocalQuadIndex);
+        }
+
+        boolean activeSectionMetaMatches(CpuDecodeParitySnapshot cpu) {
+            return cpu != null
+                    && this.activeSectionMetaA0 == cpu.selectedSectionMetaA0()
+                    && this.activeSectionMetaA1 == cpu.selectedSectionMetaA1()
+                    && this.activeSectionMetaA2 == cpu.selectedSectionMetaA2()
+                    && this.activeSectionMetaA3 == cpu.selectedSectionMetaA3()
+                    && this.activeSectionMetaB0 == cpu.selectedSectionMetaB0()
+                    && this.activeSectionMetaB1 == cpu.selectedSectionMetaB1()
+                    && this.activeSectionMetaB2 == cpu.selectedSectionMetaB2()
+                    && this.activeSectionMetaB3 == cpu.selectedSectionMetaB3();
+        }
+
+        private static String formatGpuWorldCorner(int[] words, int offset) {
+            return formatFloat(Float.intBitsToFloat(words[offset]))
+                    + "," + formatFloat(Float.intBitsToFloat(words[offset + 1]))
+                    + "," + formatFloat(Float.intBitsToFloat(words[offset + 2]))
+                    + "," + formatFloat(Float.intBitsToFloat(words[offset + 3]));
         }
     }
 
@@ -4831,12 +5831,13 @@ public final class VulkanBerylSectionDrawPipeline {
                     logCachedExpensiveDiagnosticSelection("reused", this.cachedExpensiveDiagnosticSmoke);
                     return this.cachedExpensiveDiagnosticSmoke;
                 }
-                if (this.lastExpensiveDiagnosticScanNanos != 0L
+                if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE
+                        && this.lastExpensiveDiagnosticScanNanos != 0L
                         && (now - this.lastExpensiveDiagnosticScanNanos) < EXPENSIVE_DIAGNOSTIC_CACHE_NANOS) {
                     VulkanBerylDebugLog.once("expensive-world-draw-diagnostic-rescan-throttled",
                             "expensive world-draw diagnostic rescan throttled after geometry change; using fallback_nearest_non_empty until cache interval elapses");
                     return ControlledRenderListSmoke.safe(selectedSectionId, selectedQuadStart, selectedQuadCount,
-                            candidateCount == 1 && selectedSectionId == 0 ? "first_section" : "fallback_nearest_non_empty",
+                            fallbackSelectionStrategy(candidateCount, selectedSectionId),
                             candidateCount, selectedDistance, visibilitySelection);
                 }
                 this.lastExpensiveDiagnosticScanNanos = now;
@@ -4850,10 +5851,12 @@ public final class VulkanBerylSectionDrawPipeline {
                             "single-quad world probe found no clip-visible candidate: maxCandidateTests=" + EXPENSIVE_DIAGNOSTIC_MAX_CANDIDATE_TESTS
                                     + ", visibilityCandidateCount=" + visibilitySelection.candidateCount()
                                     + ", visibilityCandidateTestedCount=" + visibilitySelection.testedCount()
+                                    + ", visibilityCandidateClipVisibleCount=" + visibilitySelection.clipVisibleCount()
                                     + ", rejectReason=" + visibilitySelection.rejectReason()
+                                    + ", fallbackUsedOnlyAfterNoClipVisibleCandidate=" + (!visibilitySelection.found() && visibilitySelection.testedCount() > 0)
                                     + ", fallback=fallback_nearest_non_empty", 30);
                     result = ControlledRenderListSmoke.safe(selectedSectionId, selectedQuadStart, selectedQuadCount,
-                            candidateCount == 1 && selectedSectionId == 0 ? "first_section" : "fallback_nearest_non_empty",
+                            fallbackSelectionStrategy(candidateCount, selectedSectionId),
                             candidateCount, selectedDistance, visibilitySelection);
                 }
                 this.cachedExpensiveDiagnosticSmoke = result;
@@ -4863,7 +5866,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 return result;
             }
             return ControlledRenderListSmoke.safe(selectedSectionId, selectedQuadStart, selectedQuadCount,
-                    candidateCount == 1 && selectedSectionId == 0 ? "first_section" : "fallback_nearest_non_empty",
+                    fallbackSelectionStrategy(candidateCount, selectedSectionId),
                     candidateCount, selectedDistance, visibilitySelection);
         }
         if (!sawOpaqueQuads) {
@@ -4875,6 +5878,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private VisibilityCandidateSelection findClipVisibleCandidate(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, int sectionCount, long usedGeometryBytes) {
         int candidateCount = 0;
         int testedCount = 0;
+        int clipVisibleCount = 0;
         int selectedSectionId = -1;
         long selectedQuadIndex = -1L;
         int selectedSectionQuadStart = 0;
@@ -4897,7 +5901,7 @@ public final class VulkanBerylSectionDrawPipeline {
             }
             candidateCount++;
             double distance = distanceSectionToBase(geometryData, sectionId, viewport);
-            long candidateQuadLimit = REAL_LOD_SINGLE_QUAD_WORLD_PROBE ? Math.min(opaqueQuadCount, 1L) : opaqueQuadCount;
+            long candidateQuadLimit = opaqueQuadCount;
             for (long quadOffset = 0L; quadOffset < candidateQuadLimit; quadOffset++) {
                 if (testedCount >= EXPENSIVE_DIAGNOSTIC_MAX_CANDIDATE_TESTS) {
                     if ("no_clip_visible_candidate".equals(rejectReason)) rejectReason = "candidate_cap_reached";
@@ -4916,23 +5920,31 @@ public final class VulkanBerylSectionDrawPipeline {
                     continue;
                 }
                 ClipDiagnostics clip = clipDiagnostics(viewport, geometryData.getSectionMetadataInt(sectionId, 0), geometryData.getSectionMetadataInt(sectionId, 1), quad);
-                if (!clip.looksVisible()) {
+                ClipDiagnostics relativeClip = clipDiagnosticsForMode(viewport, geometryData.getSectionMetadataInt(sectionId, 0), geometryData.getSectionMetadataInt(sectionId, 1), quad, true);
+                boolean clipVisible = clip.looksVisible() && relativeClip.looksVisible() && !clip.behindCamera();
+                if (!clipVisible) {
                     if (clip.behindCamera()) rejectReason = "clip_depth_cull_behind_camera";
                     else if ("no_clip_visible_candidate".equals(rejectReason) || "geometry_quad_unavailable_to_java_diagnostics".equals(rejectReason) || "geometry_quad_decode_empty_quad".equals(rejectReason)) rejectReason = "clip_depth_cull_offscreen_clip";
                     continue;
                 }
+                clipVisibleCount++;
                 if (selectedSectionId < 0 || distance < selectedDistance) {
                     selectedSectionId = sectionId;
                     selectedQuadIndex = quadIndex;
-                    selectedSectionQuadStart = (int) opaqueQuadStart;
-                    selectedSectionQuadCount = opaqueQuadCount;
+                    selectedSectionQuadStart = (int) quadIndex;
+                    selectedSectionQuadCount = Math.max(1L, opaqueQuadStart + opaqueQuadCount - quadIndex);
                     selectedDistance = distance;
                     selectedClipLooksVisible = true;
                     rejectReason = "none";
                 }
             }
         }
-        return new VisibilityCandidateSelection(candidateCount, testedCount, selectedSectionId, selectedQuadIndex, selectedSectionQuadStart, selectedSectionQuadCount, selectedClipLooksVisible, rejectReason, selectedDistance);
+        return new VisibilityCandidateSelection(candidateCount, testedCount, clipVisibleCount, selectedSectionId, selectedQuadIndex, selectedSectionQuadStart, selectedSectionQuadCount, selectedClipLooksVisible, rejectReason, selectedDistance);
+    }
+
+    private static String fallbackSelectionStrategy(int candidateCount, int selectedSectionId) {
+        if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return "fallback_nearest_non_empty";
+        return candidateCount == 1 && selectedSectionId == 0 ? "first_section" : "fallback_nearest_non_empty";
     }
 
     private static void logCachedExpensiveDiagnosticSelection(String action, ControlledRenderListSmoke smoke) {
@@ -4943,9 +5955,12 @@ public final class VulkanBerylSectionDrawPipeline {
                         + ", sectionId=" + smoke.sectionId()
                         + ", quadStart=" + smoke.quadStart()
                         + ", quadCount=" + smoke.quadCount()
+                        + ", visibilityCandidateCount=" + smoke.visibilityCandidateCount()
                         + ", visibilityCandidateTestedCount=" + smoke.visibilityCandidateTestedCount()
+                        + ", visibilityCandidateClipVisibleCount=" + smoke.visibilityCandidateClipVisibleCount()
                         + ", selectedVisibilityCandidateQuadIndex=" + smoke.selectedVisibilityCandidateQuadIndex()
-                        + ", rejectReason=" + smoke.selectedVisibilityCandidateRejectReason());
+                        + ", rejectReason=" + smoke.selectedVisibilityCandidateRejectReason()
+                        + ", fallbackUsedOnlyAfterNoClipVisibleCandidate=" + smoke.fallbackUsedOnlyAfterNoClipVisibleCandidate());
     }
 
     private void logControlledSmokeDiagnosticIfChanged(VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke smoke) {
@@ -4961,10 +5976,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 + " controlledSmokeSelectedDistanceToBase=" + formatDouble(smoke.distanceToBase())
                 + " visibilityCandidateCount=" + smoke.visibilityCandidateCount()
                 + " visibilityCandidateTestedCount=" + smoke.visibilityCandidateTestedCount()
+                + " visibilityCandidateClipVisibleCount=" + smoke.visibilityCandidateClipVisibleCount()
                 + " selectedVisibilityCandidateSectionId=" + smoke.selectedVisibilityCandidateSectionId()
                 + " selectedVisibilityCandidateQuadIndex=" + smoke.selectedVisibilityCandidateQuadIndex()
                 + " selectedVisibilityCandidateClipLooksVisible=" + smoke.selectedVisibilityCandidateClipLooksVisible()
-                + " selectedVisibilityCandidateRejectReason=" + smoke.selectedVisibilityCandidateRejectReason();
+                + " selectedVisibilityCandidateRejectReason=" + smoke.selectedVisibilityCandidateRejectReason()
+                + " fallbackUsedOnlyAfterNoClipVisibleCandidate=" + smoke.fallbackUsedOnlyAfterNoClipVisibleCandidate();
         if (diagnostic.equals(this.lastControlledSmokeDiagnostic)) {
             return;
         }
@@ -4979,10 +5996,12 @@ public final class VulkanBerylSectionDrawPipeline {
                     + " controlledSmokeSelectedDistanceToBase=" + formatDouble(smoke.distanceToBase())
                     + " visibilityCandidateCount=" + smoke.visibilityCandidateCount()
                     + " visibilityCandidateTestedCount=" + smoke.visibilityCandidateTestedCount()
+                    + " visibilityCandidateClipVisibleCount=" + smoke.visibilityCandidateClipVisibleCount()
                     + " selectedVisibilityCandidateSectionId=" + smoke.selectedVisibilityCandidateSectionId()
                     + " selectedVisibilityCandidateQuadIndex=" + smoke.selectedVisibilityCandidateQuadIndex()
                     + " selectedVisibilityCandidateClipLooksVisible=" + smoke.selectedVisibilityCandidateClipLooksVisible()
-                    + " selectedVisibilityCandidateRejectReason=" + smoke.selectedVisibilityCandidateRejectReason());
+                    + " selectedVisibilityCandidateRejectReason=" + smoke.selectedVisibilityCandidateRejectReason()
+                    + " fallbackUsedOnlyAfterNoClipVisibleCandidate=" + smoke.fallbackUsedOnlyAfterNoClipVisibleCandidate());
         } else {
             VulkanBerylDebugLog.always("Controlled render-list smoke blocked: " + diagnostic);
         }
@@ -5040,8 +6059,8 @@ public final class VulkanBerylSectionDrawPipeline {
         return total;
     }
 
-    private record VisibilityCandidateSelection(int candidateCount, int testedCount, int sectionId, long quadIndex, int sectionQuadStart, long sectionQuadCount, boolean clipLooksVisible, String rejectReason, double distanceToBase) {
-        static VisibilityCandidateSelection notRun() { return new VisibilityCandidateSelection(0, 0, -1, -1L, 0, 0L, false, (ENABLE_EXPENSIVE_WORLD_DRAW_DIAGNOSTICS && REAL_LOD_VISIBILITY_DIAGNOSTIC) ? "not_found" : "not_run", Double.NaN); }
+    private record VisibilityCandidateSelection(int candidateCount, int testedCount, int clipVisibleCount, int sectionId, long quadIndex, int sectionQuadStart, long sectionQuadCount, boolean clipLooksVisible, String rejectReason, double distanceToBase) {
+        static VisibilityCandidateSelection notRun() { return new VisibilityCandidateSelection(0, 0, 0, -1, -1L, 0, 0L, false, (ENABLE_EXPENSIVE_WORLD_DRAW_DIAGNOSTICS && REAL_LOD_VISIBILITY_DIAGNOSTIC) ? "not_found" : "not_run", Double.NaN); }
         boolean found() { return this.sectionId >= 0 && this.quadIndex >= 0L && this.clipLooksVisible; }
     }
 
@@ -5055,10 +6074,17 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         int visibilityCandidateCount() { return this.visibilitySelection.candidateCount(); }
         int visibilityCandidateTestedCount() { return this.visibilitySelection.testedCount(); }
+        int visibilityCandidateClipVisibleCount() { return this.visibilitySelection.clipVisibleCount(); }
         int selectedVisibilityCandidateSectionId() { return this.visibilitySelection.sectionId(); }
         long selectedVisibilityCandidateQuadIndex() { return this.visibilitySelection.quadIndex(); }
         boolean selectedVisibilityCandidateClipLooksVisible() { return this.visibilitySelection.clipLooksVisible(); }
         String selectedVisibilityCandidateRejectReason() { return this.visibilitySelection.rejectReason(); }
+        boolean fallbackUsedOnlyAfterNoClipVisibleCandidate() {
+            return "fallback_nearest_non_empty".equals(this.selectionStrategy)
+                    && this.visibilitySelection.testedCount() > 0
+                    && this.visibilitySelection.clipVisibleCount() == 0
+                    && !this.visibilitySelection.found();
+        }
     }
 
     public void free() {
@@ -5200,6 +6226,14 @@ public final class VulkanBerylSectionDrawPipeline {
             this.geometryQuadDebugReadbackBuffer.scheduleFree();
             this.geometryQuadDebugReadbackBuffer = null;
         }
+        if (this.realLodGpuDecodeParityBuffer != null) {
+            this.realLodGpuDecodeParityBuffer.scheduleFree();
+            this.realLodGpuDecodeParityBuffer = null;
+        }
+        if (this.realLodGpuDecodeParityReadbackBuffer != null) {
+            this.realLodGpuDecodeParityReadbackBuffer.scheduleFree();
+            this.realLodGpuDecodeParityReadbackBuffer = null;
+        }
         this.resourcesBound = false;
     }
     private static long readTempFileSize(Path path) {
@@ -5214,7 +6248,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
 
     private static List<UBO> createManualDrawDescriptors() {
-        List<UBO> descriptors = new java.util.ArrayList<>(7);
+        List<UBO> descriptors = new java.util.ArrayList<>(8);
         int vertexStage = VK10.VK_SHADER_STAGE_VERTEX_BIT;
         descriptors.add(new ManualUBO(SCENE_UNIFORM_BINDING, vertexStage, SCENE_UNIFORM_SIZE_BYTES / Integer.BYTES));
         descriptors.add(new ManualStorageBuffer(1, vertexStage, 1));
@@ -5223,6 +6257,7 @@ public final class VulkanBerylSectionDrawPipeline {
         descriptors.add(new ManualStorageBuffer(GEOMETRY_BINDING, vertexStage, 1));
         descriptors.add(new ManualStorageBuffer(METADATA_BINDING, vertexStage, 1));
         descriptors.add(new ManualStorageBuffer(RENDER_LIST_BINDING, vertexStage, 1));
+        descriptors.add(new ManualStorageBuffer(REAL_LOD_GPU_DECODE_PARITY_BINDING, vertexStage, REAL_LOD_GPU_DECODE_PARITY_WORDS));
         return descriptors;
     }
 
@@ -7643,6 +8678,21 @@ public final class VulkanBerylSectionDrawPipeline {
         this.sceneUniformBound = false;
     }
 
+    private void ensureRealLodGpuDecodeParityBuffers() {
+        if (this.realLodGpuDecodeParityBuffer == null) {
+            this.realLodGpuDecodeParityBuffer = new Buffer("voxy_vulkanberyl_real_lod_gpu_decode_parity",
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    MemoryTypes.GPU_MEM);
+            this.realLodGpuDecodeParityBuffer.createBuffer(REAL_LOD_GPU_DECODE_PARITY_BYTES);
+        }
+        if (this.realLodGpuDecodeParityReadbackBuffer == null) {
+            this.realLodGpuDecodeParityReadbackBuffer = new Buffer("voxy_vulkanberyl_real_lod_gpu_decode_parity_readback",
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    MemoryTypes.HOST_MEM);
+            this.realLodGpuDecodeParityReadbackBuffer.createBuffer(REAL_LOD_GPU_DECODE_PARITY_BYTES);
+        }
+    }
+
     private void bindUniformBinding(int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
         long bufferSize = buffer.getBufferSize();
@@ -7675,6 +8725,193 @@ public final class VulkanBerylSectionDrawPipeline {
         int rangeBytes = (int) bufferSize;
         VulkanBerylDebugLog.trace("binding-draw-descriptor:" + binding + ":" + label, "Binding draw descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
         ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
+    }
+
+    private void logSectionDrawDescriptorParityBindings(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || this.graphicsPipeline == null) return;
+        UBO geometryUbo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == GEOMETRY_BINDING);
+        UBO metadataUbo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == METADATA_BINDING);
+        UBO renderListUbo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == RENDER_LIST_BINDING);
+        UBO parityUbo = this.graphicsPipeline.getUBO(candidate -> candidate.binding == REAL_LOD_GPU_DECODE_PARITY_BINDING);
+        Buffer geometryBuffer = geometryData == null ? null : geometryData.getGeometryBuffer();
+        Buffer metadataBuffer = geometryData == null ? null : geometryData.getMetadataBuffer();
+        Buffer renderListBuffer = renderList == null ? null : renderList.getBuffer();
+        long geometryRange = geometryBuffer == null ? -1L : geometryBuffer.getBufferSize();
+        long metadataRange = metadataBuffer == null ? -1L : metadataBuffer.getBufferSize();
+        long renderListRange = renderListBuffer == null ? -1L : renderList.getBuffer().getBufferSize();
+        long parityRange = this.realLodGpuDecodeParityBuffer == null ? -1L : this.realLodGpuDecodeParityBuffer.getBufferSize();
+        int geomStride = 8;
+        int metaStride = 32;
+        int rlStride = 4;
+        long geomQuadByteOffset = Math.max(0L, this.realLodProbeCpuSelectedQuadIndex) * (long) geomStride;
+        long metaSectionByteOffset = (long) Math.max(0, this.realLodProbeCpuSelectedSectionId) * (long) metaStride;
+        boolean geomQuadInRange = geomQuadByteOffset + geomStride <= geometryRange;
+        boolean metaSectionInRange = metaSectionByteOffset + metaStride <= metadataRange;
+        VulkanBerylDebugLog.rateLimited("section-draw-real-lod-descriptor-parity-bindings", "section draw real LOD descriptor parity bindings:"
+                + " binding4GeometryPresent=" + (geometryUbo != null)
+                + ", binding4GeometryExpectedBufferId=" + bufferId(geometryBuffer)
+                + ", binding4GeometryBoundBufferId=" + boundBufferId(geometryUbo)
+                + ", binding4GeometryBoundExpectedResource=" + boundExpectedBuffer(geometryUbo, geometryBuffer)
+                + ", binding4GeometryDescriptorOffset=0"
+                + ", binding4GeometryDescriptorRangeBytes=" + geometryRange
+                + ", binding4GeometryElementStride=" + geomStride
+                + ", binding4GeometrySelectedQuadByteOffset=" + geomQuadByteOffset
+                + ", binding4GeometrySelectedQuadInRange=" + geomQuadInRange
+                + ", binding5MetadataPresent=" + (metadataUbo != null)
+                + ", binding5MetadataExpectedBufferId=" + bufferId(metadataBuffer)
+                + ", binding5MetadataBoundBufferId=" + boundBufferId(metadataUbo)
+                + ", binding5MetadataBoundExpectedResource=" + boundExpectedBuffer(metadataUbo, metadataBuffer)
+                + ", binding5MetadataDescriptorOffset=0"
+                + ", binding5MetadataDescriptorRangeBytes=" + metadataRange
+                + ", binding5MetadataElementStride=" + metaStride
+                + ", binding5MetadataSelectedSectionByteOffset=" + metaSectionByteOffset
+                + ", binding5MetadataSelectedSectionInRange=" + metaSectionInRange
+                + ", binding6RenderListPresent=" + (renderListUbo != null)
+                + ", binding6RenderListExpectedBufferId=" + bufferId(renderListBuffer)
+                + ", binding6RenderListBoundBufferId=" + boundBufferId(renderListUbo)
+                + ", binding6RenderListBoundExpectedResource=" + boundExpectedBuffer(renderListUbo, renderListBuffer)
+                + ", binding6RenderListDescriptorOffset=0"
+                + ", binding6RenderListDescriptorRangeBytes=" + renderListRange
+                + ", binding6RenderListElementStride=" + rlStride
+                + ", binding9ParityPresent=" + (parityUbo != null)
+                + ", binding9ParityExpectedBufferId=" + bufferId(this.realLodGpuDecodeParityBuffer)
+                + ", binding9ParityBoundBufferId=" + boundBufferId(parityUbo)
+                + ", binding9ParityBoundExpectedResource=" + boundExpectedBuffer(parityUbo, this.realLodGpuDecodeParityBuffer)
+                + ", binding9ParityDescriptorOffset=0"
+                + ", binding9ParityDescriptorRangeBytes=" + parityRange
+                + ", binding9ParityWords=" + REAL_LOD_GPU_DECODE_PARITY_WORDS
+                + ", binding9ParityBytes=" + REAL_LOD_GPU_DECODE_PARITY_BYTES, 60);
+    }
+
+    private static long bufferId(Buffer buffer) {
+        return buffer == null ? 0L : buffer.getId();
+    }
+
+    private static long boundBufferId(UBO ubo) {
+        if (ubo == null || ubo.getBufferSlice() == null || ubo.getBufferSlice().getBuffer() == null) return 0L;
+        return ubo.getBufferSlice().getBuffer().getId();
+    }
+
+    private static boolean boundExpectedBuffer(UBO ubo, Buffer expectedBuffer) {
+        return expectedBuffer != null && boundBufferId(ubo) == expectedBuffer.getId();
+    }
+    private void logRealLodProbeBoundBufferContentDiagnostics(VulkanBerylSectionGeometryData geometryData, CpuDecodeParitySnapshot cpuSnapshot, GpuDecodeParitySnapshot gpuSnapshot) {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || geometryData == null) return;
+        this.realLodProbeBoundMetadataReadbackAvailable = false;
+        this.realLodProbeBoundGeometryReadbackAvailable = false;
+        this.realLodProbeBoundMetadataMatchesCpuSnapshot = "unchecked";
+        this.realLodProbeShaderMetadataMatchesBoundMetadata = "unchecked";
+        this.realLodProbeBoundGeometryRawQuadMatchesCpuSnapshot = "unchecked";
+        this.realLodProbeShaderRawQuadMatchesBoundGeometry = "unchecked";
+        this.realLodProbeBufferContentMismatchReason = "not_computed";
+        Buffer metadataBuf = geometryData.getMetadataBuffer();
+        long metadataPtr = metadataBuf == null ? 0L : metadataBuf.getDataPtr();
+        int sectionId = this.realLodProbeCpuSelectedSectionId;
+        int sectionByteOffset = sectionId * 32;
+        if (metadataPtr != 0L && sectionId >= 0 && sectionByteOffset + 32 <= metadataBuf.getBufferSize()) {
+            this.realLodProbeBoundMetadataSectionMetaA0 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset);
+            this.realLodProbeBoundMetadataSectionMetaA1 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset + 4L);
+            this.realLodProbeBoundMetadataSectionMetaA2 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset + 8L);
+            this.realLodProbeBoundMetadataSectionMetaA3 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset + 12L);
+            this.realLodProbeBoundMetadataSectionMetaB0 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset + 16L);
+            this.realLodProbeBoundMetadataSectionMetaB1 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset + 20L);
+            this.realLodProbeBoundMetadataSectionMetaB2 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset + 24L);
+            this.realLodProbeBoundMetadataSectionMetaB3 = MemoryUtil.memGetInt(metadataPtr + sectionByteOffset + 28L);
+            this.realLodProbeBoundMetadataReadbackAvailable = true;
+        }
+        Buffer geometryBuf = geometryData.getGeometryBuffer();
+        long geometryPtr = geometryBuf == null ? 0L : geometryBuf.getDataPtr();
+        long quadIndex = this.realLodProbeCpuSelectedQuadIndex;
+        long quadByteOffset = quadIndex * 8L;
+        if (geometryPtr != 0L && quadIndex >= 0L && quadByteOffset + 8L <= geometryBuf.getBufferSize()) {
+            this.realLodProbeBoundGeometryRawQuadData = MemoryUtil.memGetLong(geometryPtr + quadByteOffset);
+            this.realLodProbeBoundGeometryReadbackAvailable = true;
+        }
+        boolean boundMetaMatchesCpu = false;
+        if (this.realLodProbeBoundMetadataReadbackAvailable && cpuSnapshot != null && cpuSnapshot.available()) {
+            boundMetaMatchesCpu = this.realLodProbeBoundMetadataSectionMetaA0 == cpuSnapshot.selectedSectionMetaA0()
+                    && this.realLodProbeBoundMetadataSectionMetaA1 == cpuSnapshot.selectedSectionMetaA1()
+                    && this.realLodProbeBoundMetadataSectionMetaA2 == cpuSnapshot.selectedSectionMetaA2()
+                    && this.realLodProbeBoundMetadataSectionMetaA3 == cpuSnapshot.selectedSectionMetaA3()
+                    && this.realLodProbeBoundMetadataSectionMetaB0 == cpuSnapshot.selectedSectionMetaB0()
+                    && this.realLodProbeBoundMetadataSectionMetaB1 == cpuSnapshot.selectedSectionMetaB1()
+                    && this.realLodProbeBoundMetadataSectionMetaB2 == cpuSnapshot.selectedSectionMetaB2()
+                    && this.realLodProbeBoundMetadataSectionMetaB3 == cpuSnapshot.selectedSectionMetaB3();
+        }
+        this.realLodProbeBoundMetadataMatchesCpuSnapshot = this.realLodProbeBoundMetadataReadbackAvailable ? String.valueOf(boundMetaMatchesCpu) : "unavailable";
+        boolean shaderMetaMatchesBound = false;
+        if (this.realLodProbeBoundMetadataReadbackAvailable && gpuSnapshot != null && gpuSnapshot.available() && gpuSnapshot.magicValid()) {
+            shaderMetaMatchesBound = this.realLodProbeBoundMetadataSectionMetaA0 == gpuSnapshot.activeSectionMetaA0()
+                    && this.realLodProbeBoundMetadataSectionMetaA1 == gpuSnapshot.activeSectionMetaA1()
+                    && this.realLodProbeBoundMetadataSectionMetaA2 == gpuSnapshot.activeSectionMetaA2()
+                    && this.realLodProbeBoundMetadataSectionMetaA3 == gpuSnapshot.activeSectionMetaA3()
+                    && this.realLodProbeBoundMetadataSectionMetaB0 == gpuSnapshot.activeSectionMetaB0()
+                    && this.realLodProbeBoundMetadataSectionMetaB1 == gpuSnapshot.activeSectionMetaB1()
+                    && this.realLodProbeBoundMetadataSectionMetaB2 == gpuSnapshot.activeSectionMetaB2()
+                    && this.realLodProbeBoundMetadataSectionMetaB3 == gpuSnapshot.activeSectionMetaB3();
+        }
+        this.realLodProbeShaderMetadataMatchesBoundMetadata = this.realLodProbeBoundMetadataReadbackAvailable ? String.valueOf(shaderMetaMatchesBound) : "unavailable";
+        boolean boundGeomMatchesCpu = false;
+        if (this.realLodProbeBoundGeometryReadbackAvailable && cpuSnapshot != null && cpuSnapshot.available()) {
+            boundGeomMatchesCpu = Long.toUnsignedString(this.realLodProbeBoundGeometryRawQuadData).equals(cpuSnapshot.rawQuad());
+        }
+        this.realLodProbeBoundGeometryRawQuadMatchesCpuSnapshot = this.realLodProbeBoundGeometryReadbackAvailable ? String.valueOf(boundGeomMatchesCpu) : "unavailable";
+        boolean shaderQuadMatchesBound = false;
+        if (this.realLodProbeBoundGeometryReadbackAvailable && gpuSnapshot != null && gpuSnapshot.available() && gpuSnapshot.magicValid()) {
+            shaderQuadMatchesBound = Long.toUnsignedString(this.realLodProbeBoundGeometryRawQuadData).equals(Long.toUnsignedString(gpuSnapshot.rawQuad()));
+        }
+        this.realLodProbeShaderRawQuadMatchesBoundGeometry = this.realLodProbeBoundGeometryReadbackAvailable ? String.valueOf(shaderQuadMatchesBound) : "unavailable";
+        boolean boundMetaIsZero = this.realLodProbeBoundMetadataReadbackAvailable
+                && this.realLodProbeBoundMetadataSectionMetaA0 == 0
+                && this.realLodProbeBoundMetadataSectionMetaA1 == 0
+                && this.realLodProbeBoundMetadataSectionMetaA2 == 0
+                && this.realLodProbeBoundMetadataSectionMetaA3 == 0
+                && this.realLodProbeBoundMetadataSectionMetaB0 == 0
+                && this.realLodProbeBoundMetadataSectionMetaB1 == 0
+                && this.realLodProbeBoundMetadataSectionMetaB2 == 0
+                && this.realLodProbeBoundMetadataSectionMetaB3 == 0;
+        boolean boundGeomIsZero = this.realLodProbeBoundGeometryReadbackAvailable && this.realLodProbeBoundGeometryRawQuadData == 0L;
+        boolean gpuAvailable = gpuSnapshot != null && gpuSnapshot.available() && gpuSnapshot.magicValid();
+        if (!this.realLodProbeBoundMetadataReadbackAvailable) {
+            this.realLodProbeBufferContentMismatchReason = "metadata_descriptor_range_or_offset_mismatch";
+        } else if (!this.realLodProbeBoundGeometryReadbackAvailable) {
+            this.realLodProbeBufferContentMismatchReason = "geometry_descriptor_range_or_offset_mismatch";
+        } else if (boundMetaIsZero) {
+            this.realLodProbeBufferContentMismatchReason = "metadata_bound_buffer_zero";
+        } else if (boundGeomIsZero) {
+            this.realLodProbeBufferContentMismatchReason = "geometry_bound_buffer_zero";
+        } else if (!boundMetaMatchesCpu) {
+            this.realLodProbeBufferContentMismatchReason = "metadata_bound_buffer_differs_from_cpu_snapshot";
+        } else if (!boundGeomMatchesCpu) {
+            this.realLodProbeBufferContentMismatchReason = "geometry_bound_buffer_differs_from_cpu_snapshot";
+        } else if (gpuAvailable && !shaderMetaMatchesBound) {
+            this.realLodProbeBufferContentMismatchReason = "metadata_shader_read_differs_from_bound_buffer";
+        } else if (gpuAvailable && !shaderQuadMatchesBound) {
+            this.realLodProbeBufferContentMismatchReason = "geometry_shader_read_differs_from_bound_buffer";
+        } else {
+            this.realLodProbeBufferContentMismatchReason = "none";
+        }
+        VulkanBerylDebugLog.rateLimited("section-draw-real-lod-bound-buffer-content", "section draw real LOD bound buffer content diagnostics:"
+                + " realLodProbeBoundMetadataReadbackAvailable=" + this.realLodProbeBoundMetadataReadbackAvailable
+                + ", boundMetadataSectionId=" + sectionId
+                + ", boundMetadataByteOffset=" + sectionByteOffset
+                + ", boundMetadataSectionMetaA0=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaA0) : "unavailable")
+                + ", boundMetadataSectionMetaA1=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaA1) : "unavailable")
+                + ", boundMetadataSectionMetaA2=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaA2) : "unavailable")
+                + ", boundMetadataSectionMetaA3=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaA3) : "unavailable")
+                + ", boundMetadataSectionMetaB0=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaB0) : "unavailable")
+                + ", boundMetadataSectionMetaB1=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaB1) : "unavailable")
+                + ", boundMetadataSectionMetaB2=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaB2) : "unavailable")
+                + ", boundMetadataSectionMetaB3=" + (this.realLodProbeBoundMetadataReadbackAvailable ? Integer.toUnsignedString(this.realLodProbeBoundMetadataSectionMetaB3) : "unavailable")
+                + ", realLodProbeBoundMetadataMatchesCpuSnapshot=" + this.realLodProbeBoundMetadataMatchesCpuSnapshot
+                + ", realLodProbeShaderMetadataMatchesBoundMetadata=" + this.realLodProbeShaderMetadataMatchesBoundMetadata
+                + ", realLodProbeBoundGeometryReadbackAvailable=" + this.realLodProbeBoundGeometryReadbackAvailable
+                + ", boundGeometryQuadIndex=" + quadIndex
+                + ", boundGeometryByteOffset=" + quadByteOffset
+                + ", realLodProbeBoundGeometryRawQuadData=" + (this.realLodProbeBoundGeometryReadbackAvailable ? "0x" + Long.toHexString(this.realLodProbeBoundGeometryRawQuadData) + "/" + Long.toUnsignedString(this.realLodProbeBoundGeometryRawQuadData) : "unavailable")
+                + ", realLodProbeBoundGeometryRawQuadMatchesCpuSnapshot=" + this.realLodProbeBoundGeometryRawQuadMatchesCpuSnapshot
+                + ", realLodProbeShaderRawQuadMatchesBoundGeometry=" + this.realLodProbeShaderRawQuadMatchesBoundGeometry
+                + ", realLodProbeBufferContentMismatchReason=" + this.realLodProbeBufferContentMismatchReason, 60);
     }
 
     private void bindComputeStorageBinding(int binding, Buffer buffer, String label) {
@@ -7970,6 +9207,23 @@ public final class VulkanBerylSectionDrawPipeline {
             MemoryUtil.memPutFloat(ptr + 8L, viewport.innerTranslation.z);
             ptr += 12L;
             MemoryUtil.memPutFloat(ptr, 0.0F);
+            ptr += 4L;
+            MemoryUtil.memPutInt(ptr, this.realLodProbeSceneUniformForcedQuadIndex);
+            MemoryUtil.memPutInt(ptr + 4L, this.realLodProbeCpuSelectedSectionId);
+            MemoryUtil.memPutInt(ptr + 8L, (int) this.realLodProbeSelectedSectionPassQuadStart);
+            int realLodProbeFlags = (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SELECTED_QUAD ? 1 : 0)
+                    | (this.realLodProbeReplayCpuClipAvailable ? 2 : 0)
+                    | (this.realLodProbeReplayCpuWorldAvailable ? 4 : 0)
+                    | (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_FORCE_CPU_SECTION_AND_QUAD ? 8 : 0);
+            MemoryUtil.memPutInt(ptr + 12L, realLodProbeFlags);
+            ptr += 16L;
+            for (int i = 0; i < this.realLodProbeReplayCpuClip.length; i++) {
+                MemoryUtil.memPutFloat(ptr + (long) i * Float.BYTES, this.realLodProbeReplayCpuClip[i]);
+            }
+            ptr += (long) this.realLodProbeReplayCpuClip.length * Float.BYTES;
+            for (int i = 0; i < this.realLodProbeReplayCpuWorld.length; i++) {
+                MemoryUtil.memPutFloat(ptr + (long) i * Float.BYTES, this.realLodProbeReplayCpuWorld[i]);
+            }
             VK10.vkCmdUpdateBuffer(commandBuffer, uniformBuffer.getId(), ubo.getBufferSlice().getOffset(), uniformData);
             VkMemoryBarrier.Buffer transferToVertex = VkMemoryBarrier.calloc(1, stack)
                     .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
@@ -7982,6 +9236,50 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         this.sectionDrawBinding0DescriptorKind = descriptorKind(ubo);
         this.sceneUniformBound = true;
+        logRealLodProbeReplayCpuClipUniformUpload();
+        logRealLodProbeReplayCpuWorldUniformUpload();
+    }
+
+    private void logRealLodProbeReplayCpuClipUniformUpload() {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP) return;
+        VulkanBerylDebugLog.rateLimited("section-draw-real-lod-replay-cpu-clip-upload", "section draw real LOD replay CPU clip uniform upload:"
+                + " realLodProbeGpuVertexMode=" + realLodProbeGpuVertexMode()
+                + ", realLodProbeReplayCpuClipAvailable=" + this.realLodProbeReplayCpuClipAvailable
+                + ", realLodProbeReplayCpuClip0=" + this.realLodProbeReplayCpuClip0
+                + ", realLodProbeReplayCpuClip1=" + this.realLodProbeReplayCpuClip1
+                + ", realLodProbeReplayCpuClip2=" + this.realLodProbeReplayCpuClip2
+                + ", realLodProbeReplayCpuClip3=" + this.realLodProbeReplayCpuClip3
+                + ", realLodProbeReplayCpuClipSource=cpu_final_clip"
+                + ", realLodProbeReplayCpuClipUnavailableReason=" + this.realLodProbeReplayCpuClipUnavailableReason
+                + ", realLodProbeReplayCpuClipUniformUploadPath=SceneUniform.binding0.vkCmdUpdateBuffer"
+                + ", realLodProbeReplayCpuClipUniformLayout=std140 SceneUniform offsets: realLodProbeData@" + SCENE_UNIFORM_REAL_LOD_PROBE_DATA_OFFSET_BYTES + " uvec4 flags.w bit1=replay_available, replayCpuClip0..3@" + SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_CLIP_OFFSET_BYTES + "/128/144/160 vec4, sizeBytes=" + SCENE_UNIFORM_SIZE_BYTES, 60);
+    }
+
+    private void logRealLodProbeReplayCpuWorldUniformUpload() {
+        if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD) return;
+        VulkanBerylDebugLog.rateLimited("section-draw-real-lod-replay-cpu-world-upload", "section draw real LOD replay CPU world uniform upload:"
+                + " realLodProbeGpuVertexMode=" + realLodProbeGpuVertexMode()
+                + ", realLodProbeReplayCpuWorldAvailable=" + this.realLodProbeReplayCpuWorldAvailable
+                + ", realLodProbeReplayCpuWorld0=" + this.realLodProbeReplayCpuWorld0
+                + ", realLodProbeReplayCpuWorld1=" + this.realLodProbeReplayCpuWorld1
+                + ", realLodProbeReplayCpuWorld2=" + this.realLodProbeReplayCpuWorld2
+                + ", realLodProbeReplayCpuWorld3=" + this.realLodProbeReplayCpuWorld3
+                + ", realLodProbeReplayCpuWorldCoordinateSpace=" + this.realLodProbeReplayCpuWorldCoordinateSpace
+                + ", realLodProbeReplayCpuWorldUnavailableReason=" + this.realLodProbeReplayCpuWorldUnavailableReason
+                + ", realLodProbeReplayCpuWorldUsesSameMvp=true"
+                + ", realLodProbeReplayCpuWorldUsesSameSubmittedDrawCount=true"
+                + ", realLodProbeReplayCpuWorldUsesSamePipeline=true"
+                + ", realLodProbeReplayCpuWorldUsesSameDescriptorSets=true"
+                + ", realLodProbeReplayCpuWorldUniformUploadPath=SceneUniform.binding0.vkCmdUpdateBuffer"
+                + ", realLodProbeReplayCpuWorldUniformLayout=" + realLodProbeUniformLayoutSummary(), 60);
+    }
+
+    private static String realLodProbeUniformLayoutSummary() {
+        return "std140 SceneUniform offsets: realLodProbeData@" + SCENE_UNIFORM_REAL_LOD_PROBE_DATA_OFFSET_BYTES
+                + " uvec4 flags.w bit1=replay_cpu_clip_available bit2=replay_cpu_world_available bit3=force_cpu_section_and_quad"
+                + ", replayCpuClip0..3@" + SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_CLIP_OFFSET_BYTES + "/128/144/160 vec4"
+                + ", replayCpuWorld0..3@" + SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_WORLD_OFFSET_BYTES + "/192/208/224 vec4"
+                + ", sizeBytes=" + SCENE_UNIFORM_SIZE_BYTES;
     }
 
     private void logSectionDrawBindingState(String drawSubmitReason) {
