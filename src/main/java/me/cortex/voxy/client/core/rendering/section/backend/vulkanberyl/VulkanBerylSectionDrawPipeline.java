@@ -441,7 +441,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
     private static boolean realLodMagentaDiagnosticEnabled() {
-        return REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE || REAL_QUAD_READ_CLIPSPACE_PROBE || REAL_LOD_SINGLE_QUAD_WORLD_PROBE;
+        return REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE || REAL_QUAD_READ_CLIPSPACE_PROBE || REAL_LOD_SINGLE_QUAD_WORLD_PROBE || SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER;
     }
 
     private static String realLodProbeGpuVertexMode() {
@@ -1976,7 +1976,7 @@ public final class VulkanBerylSectionDrawPipeline {
             VK10.vkCmdDraw(commandBuffer, FINAL_PASS_SCREENSPACE_MARKER_VERTEX_COUNT, FINAL_PASS_SCREENSPACE_MARKER_INSTANCE_COUNT, FINAL_PASS_SCREENSPACE_MARKER_FIRST_VERTEX, FINAL_PASS_SCREENSPACE_MARKER_FIRST_INSTANCE);
             this.anyVkCmdDrawRecordedThisFrame = true;
             this.finalPassScreenspaceMarkerRecorded = true;
-            VulkanBerylDebugLog.always("Section draw final-pass screenspace marker recorded: env=VOXY_VULKAN_BERYL_SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER, oneFrame=false"
+            VulkanBerylDebugLog.always("Section draw final-pass screenspace marker recorded: env=VOXY_VULKAN_BERYL_SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER, oneFrame=true"
                     + ", sectionDrawFinalPassMarkerPersistent=true"
                     + ", markerRecordedAfterNormalSectionDraw=true"
                     + ", markerVertexCount=" + FINAL_PASS_SCREENSPACE_MARKER_VERTEX_COUNT
@@ -2878,7 +2878,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sectionDrawPipelineHash=0x" + Integer.toHexString(Objects.hash(System.identityHashCode(this.graphicsPipeline), this.graphicsPipelineGeneration, this.sectionDrawFragmentSourceHash))
                 + ", sectionDrawRecordedAfterMainClear=" + inferRecordedAfterMainClear(passContext)
                 + ", sectionDrawMayBeOverwrittenByLaterPass=" + inferMayBeOverwrittenByLaterPass(passContext)
-                + ", oneFrame=false"
+                + ", oneFrame=true"
                 + ", markerVertexCount=" + FINAL_PASS_SCREENSPACE_MARKER_VERTEX_COUNT
                 + ", markerInstanceCount=" + FINAL_PASS_SCREENSPACE_MARKER_INSTANCE_COUNT
                 + ", markerFirstInstance=0x" + Integer.toHexString(FINAL_PASS_SCREENSPACE_MARKER_FIRST_INSTANCE)
