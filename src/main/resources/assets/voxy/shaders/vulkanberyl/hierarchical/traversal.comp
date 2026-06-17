@@ -1,4 +1,5 @@
 #version 460 core
+#extension GL_EXT_debug_printf : enable
 
 // Vulkan/Beryl traversal port of the MDIC hierarchical traversal shader.
 // Binding layout (set = 0):
@@ -90,18 +91,16 @@ void addRequest(inout UnpackedNode node) {
     if (frameId < 4u) {
         return;
     }
-    if (!hasRequested(node)) {
-        uint limit = min(requestQueueSize, uint(MAX_REQUEST_QUEUE_SIZE));
-        uint observed = requestQueueIndex.x;
-        while (observed < limit) {
-            uint previous = atomicCompSwap(requestQueueIndex.x, observed, observed + 1u);
-            if (previous == observed) {
-                requestQueue[observed] = getRawPos(node);
-                markRequested(node);
-                return;
-            }
-            observed = previous;
+    uint limit = min(requestQueueSize, uint(MAX_REQUEST_QUEUE_SIZE));
+    uint observed = requestQueueIndex.x;
+    while (observed < limit) {
+        uint previous = atomicCompSwap(requestQueueIndex.x, observed, observed + 1u);
+        if (previous == observed) {
+            requestQueue[observed] = getRawPos(node);
+            markRequested(node);
+            return;
         }
+        observed = previous;
     }
 }
 

@@ -1,0 +1,19 @@
+---
+description: Vulkan-Voxy project overview
+globs: ["*.java", "*.groovy", "*.gradle", "*.md", "*.yml", "*.yaml"]
+alwaysApply: true
+---
+# Vulkan-Voxy
+
+Vulkan 3D voxel engine using Voxy (LWJGL-based). LOD pipeline with 7-stage compute-based mesh generation. C++ style systems architecture translated to Java with LWJGL.
+
+## Stack
+- Java, LWJGL 3, Vulkan
+- Gradle build system
+- Custom GLSL shaders for compute and rendering
+
+## Key Conventions
+- LOD pipeline: 7 stages from voxel data to rendered mesh
+- GPU synchronization with explicit barriers
+- C++-style systems architecture (data-oriented)
+- All GPU resources managed through LWJGL bindings

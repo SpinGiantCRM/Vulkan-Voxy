@@ -7,3 +7,6 @@
 /logs/
 
 /bin/
+
+# AI agent / IDE config (local only)
+.cursorignore

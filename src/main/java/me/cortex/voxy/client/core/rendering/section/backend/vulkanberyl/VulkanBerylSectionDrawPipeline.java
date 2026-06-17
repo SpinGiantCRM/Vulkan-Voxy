@@ -70,6 +70,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylCmdgenDiagnostics.ensureLoaded();
     }
 
+
     private GraphicsPipeline graphicsPipeline;
     private GraphicsPipeline translucentGraphicsPipeline;
     private DrawPass activeDrawPass = DrawPass.OPAQUE;
@@ -80,6 +81,7 @@ public final class VulkanBerylSectionDrawPipeline {
         OPAQUE,
         TRANSLUCENT
     }
+
     private ComputePipeline commandGenPipeline;
     private ComputePipeline commandGenNoopPipeline;
     private ComputePipeline commandGenMinimalTinySsboReadProbePipeline;
@@ -374,6 +376,7 @@ public final class VulkanBerylSectionDrawPipeline {
     private static final boolean REAL_LOD_VISIBILITY_DIAGNOSTIC = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_VISIBILITY_DIAGNOSTIC");
     private static final boolean REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE");
     private static final boolean ENABLE_EXPENSIVE_WORLD_DRAW_DIAGNOSTICS = VulkanBerylEnvironment.flag(EXPENSIVE_WORLD_DRAW_DIAGNOSTICS_ENV, false);
+    private static final boolean ENABLE_LODS = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_LODS", false);
     private static final boolean REAL_QUAD_READ_CLIPSPACE_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_QUAD_READ_CLIPSPACE_PROBE");
     private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE");
     private static final boolean REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE = REAL_LOD_SINGLE_QUAD_WORLD_PROBE && VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE");
@@ -408,18 +411,22 @@ public final class VulkanBerylSectionDrawPipeline {
         SECTION_DRAW_PASS_CONTEXT.set(passContext == null || passContext.isBlank() ? "unknown" : passContext);
     }
 
+
     public static void clearSectionDrawPassContext() {
         SECTION_DRAW_PASS_CONTEXT.remove();
     }
+
 
 
     private static boolean screenspaceSmokeShaderEnabled() {
         return DRAW_SCREENSPACE_SMOKE || DRAW_SCREENSPACE_SMOKE_INDIRECT || (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) || SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER;
     }
 
+
     private static boolean screenspaceSmokeDirectDrawEnabled() {
         return DRAW_SCREENSPACE_SMOKE && !DRAW_SCREENSPACE_SMOKE_INDIRECT;
     }
+
 
     private static String screenspaceSmokeEnvName() {
         if (DRAW_SCREENSPACE_SMOKE_INDIRECT) return "VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE_INDIRECT";
@@ -432,17 +439,21 @@ public final class VulkanBerylSectionDrawPipeline {
         return "VOXY_VULKAN_BERYL_DRAW_SCREENSPACE_SMOKE";
     }
 
+
     private static boolean useDebugFragmentShader() {
         return DRAW_DEBUG_FRAGMENT_DIAGNOSTIC || DEBUG_COLOUR_MODE || REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE || REAL_QUAD_READ_CLIPSPACE_PROBE || REAL_LOD_SINGLE_QUAD_WORLD_PROBE || SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER;
     }
+
 
     private static boolean controlledRenderListDiagnosticEnabled() {
         return RENDERLIST_SMOKE_ONE_ENTRY || REAL_QUAD_READ_CLIPSPACE_PROBE || REAL_LOD_SINGLE_QUAD_WORLD_PROBE;
     }
 
+
     private static boolean realLodMagentaDiagnosticEnabled() {
         return REAL_LOD_VISIBILITY_DIAGNOSTIC || REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE || REAL_QUAD_READ_CLIPSPACE_PROBE || REAL_LOD_SINGLE_QUAD_WORLD_PROBE || SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER;
     }
+
 
     private static String realLodProbeGpuVertexMode() {
         if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE_HARDCODED_CLIPSPACE) return "hardcoded_clipspace_probe";
@@ -453,13 +464,16 @@ public final class VulkanBerylSectionDrawPipeline {
         return "real_decoded_quad";
     }
 
+
     private static boolean finalPassScreenspaceMarkerFragmentEnabled() {
         return SECTION_DRAW_FINAL_PASS_SCREENSPACE_MARKER;
     }
 
+
     static double getLastDiagnosticCpuMs() {
         return lastDiagnosticCpuMs;
     }
+
 
     public void ensureDrawPipeline() {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
@@ -469,11 +483,13 @@ public final class VulkanBerylSectionDrawPipeline {
         this.graphicsPipelineCreated = true;
     }
 
+
     private void ensureTranslucentDrawPipeline() {
         if (this.freed) throw new IllegalStateException("section draw pipeline is freed");
         if (this.translucentGraphicsPipeline != null) return;
         this.translucentGraphicsPipeline = this.createDrawPipeline(true);
     }
+
 
     private GraphicsPipeline createDrawPipeline(boolean translucent) {
 
@@ -607,29 +623,12 @@ public final class VulkanBerylSectionDrawPipeline {
         return pipeline;
     }
 
+
     private static VertexFormat resolveDummyVertexFormat() {
-        VertexFormat positionFormat = tryGetVertexFormatField("POSITION");
-        if (positionFormat != null) {
-            return positionFormat;
-        }
-        VertexFormat positionColorFormat = tryGetVertexFormatField("POSITION_COLOR");
-        if (positionColorFormat != null) {
-            return positionColorFormat;
-        }
-        throw new IllegalStateException("Unable to resolve a non-null dummy vertex format for VulkanMod graphics pipeline creation");
+        return DefaultVertexFormat.EMPTY;
     }
 
-    private static VertexFormat tryGetVertexFormatField(String fieldName) {
-        try {
-            var field = DefaultVertexFormat.class.getDeclaredField(fieldName);
-            Object value = field.get(null);
-            if (value instanceof VertexFormat format) {
-                return format;
-            }
-        } catch (Throwable ignored) {
-        }
-        return null;
-    }
+
 
     private static boolean declaresVertexInputs(String vertexSource) {
         if (vertexSource == null || vertexSource.isEmpty()) return false;
@@ -643,6 +642,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return false;
     }
+
 
 
     private static String readPreprocessedShaderPreview(Path shaderPath, int maxLines) {
@@ -662,6 +662,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return preview.toString();
     }
 
+
     private static byte[] readShaderBytes(Path shaderPath, String stage) {
         try {
             return Files.readAllBytes(shaderPath);
@@ -669,6 +670,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to read preprocessed " + stage + " shader bytes: " + shaderPath, e);
         }
     }
+
 
     private static void applyDrawVisibilityDiagnosticDefines(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         applyDrawScreenspaceSmokeDefine(preprocessedShaders);
@@ -679,6 +681,7 @@ public final class VulkanBerylSectionDrawPipeline {
         applyFinalPassScreenspaceMarkerFragmentDefine(preprocessedShaders);
         applyDepthTextureSamplingDefine(preprocessedShaders);
     }
+
 
     private static void applyDrawScreenspaceSmokeDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         if (!screenspaceSmokeShaderEnabled() && !DRAW_WORLDSPACE_SMOKE_INDIRECT) return;
@@ -714,6 +717,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to enable section draw screenspace smoke diagnostic", e);
         }
     }
+
 
     private static void applyTranslucentDrawDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         VulkanBerylShaderImportPreprocessor.PreparedShader vertexShader = preprocessedShaders.shaders().stream()
@@ -751,6 +755,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static void applyRealLodVertexPathClipspaceProbeDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         if (!REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return;
         VulkanBerylShaderImportPreprocessor.PreparedShader vertexShader = preprocessedShaders.shaders().stream()
@@ -773,6 +778,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static void applyRealQuadReadClipspaceProbeDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         if (!REAL_QUAD_READ_CLIPSPACE_PROBE) return;
         VulkanBerylShaderImportPreprocessor.PreparedShader vertexShader = preprocessedShaders.shaders().stream()
@@ -794,6 +800,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to enable section draw real quad-read clip-space probe", e);
         }
     }
+
 
     private static void applyRealLodSingleQuadWorldProbeDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
@@ -871,6 +878,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static void applyRealLodVisibilityDiagnosticFragmentDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         if (!realLodMagentaDiagnosticEnabled()) return;
         VulkanBerylShaderImportPreprocessor.PreparedShader fragmentShader = preprocessedShaders.shaders().stream()
@@ -892,6 +900,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to enable section draw real LOD visibility diagnostic", e);
         }
     }
+
 
 
     private static void applyDepthTextureSamplingDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
@@ -916,6 +925,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static void applyFinalPassScreenspaceMarkerFragmentDefine(VulkanBerylShaderImportPreprocessor.PreparedShaderSet preprocessedShaders) {
         if (!finalPassScreenspaceMarkerFragmentEnabled()) return;
         VulkanBerylShaderImportPreprocessor.PreparedShader fragmentShader = preprocessedShaders.shaders().stream()
@@ -937,6 +947,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed to enable section draw final-pass screenspace marker fragment define", e);
         }
     }
+
 
     private static void verifyNoUtf8BomAndLogPrefix(String stage, Path shaderPath, byte[] bytes) {
         if (bytes.length == 0) {
@@ -964,6 +975,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", previewHex=" + hex
                 + ", previewText='" + text + "'");
     }
+
 
 
     public void ensureDrawResourcesBound(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
@@ -1122,15 +1134,18 @@ public final class VulkanBerylSectionDrawPipeline {
         logSectionDrawBindingState("resource_bind");
     }
 
+
     public boolean isReady() {
         return this.graphicsPipeline != null && this.resourcesBound && !this.freed;
     }
+
     public void pollDebugReadback() {
         if (!CMDGEN_DEBUG_READBACK_LOG_ONLY) {
             this.consumePendingDebugCommandSampleIfReady(this.controlledSmokeCommandReadbackFrameId < 0 ? -1 : this.controlledSmokeCommandReadbackFrameId + 1);
         }
         VulkanBerylLodBringupDiagnostics.updateCmdgenSample(this.lastCompletedDebugSample.sampledCommandCount() > 0 && this.lastCompletedDebugSample.invalidSampledCommandCount() == 0, null);
     }
+
     public boolean isSceneUniformBound() { return this.sceneUniformBound; }
     public boolean isGraphicsPipelineCreated() { return this.graphicsPipelineCreated; }
     public boolean isCommandGenPipelineCreated() { return this.commandGenPipelineCreated; }
@@ -1154,6 +1169,7 @@ public final class VulkanBerylSectionDrawPipeline {
         applyOpaquePipelineState();
         return this.renderSectionPass(renderer, viewport, geometryData, renderList);
     }
+
 
     public OpaqueDrawSubmission renderTranslucent(Renderer renderer,
                             VulkanBerylViewport viewport,
@@ -1185,6 +1201,7 @@ public final class VulkanBerylSectionDrawPipeline {
             applyOpaquePipelineState();
         }
     }
+
 
     private OpaqueDrawSubmission renderSectionPass(Renderer renderer,
                             VulkanBerylViewport viewport,
@@ -1287,16 +1304,17 @@ public final class VulkanBerylSectionDrawPipeline {
                 : ControlledRenderListSmoke.disabled());
         updateRealLodProbeSceneUniformSelection(viewport, geometryData, cpuSelectionSmoke);
         logRenderListVisibilityDiagnostics(renderList, geometryData, controlledSmoke, cpuSelectionSmoke, rawVisibleCount, visibleCount, noDrawCountFullCmdgen, "frame_gate");
-        boolean realRenderListCmdgenAllowed = ENABLE_CMDGEN_DISPATCH && !controlledSmoke.enabled() && visibleCount > 0 && frameSafety.allowCmdGen();
+        logCpuMirrorMetadataDiagnostic(geometryData, "frame_gate");
+        boolean realRenderListCmdgenAllowed = ENABLE_CMDGEN_DISPATCH && !controlledSmoke.enabled() && visibleCount > 0 && (ENABLE_LODS || frameSafety.allowCmdGen());
         boolean noOpCmdgenSmoke = ENABLE_CMDGEN_DISPATCH && !ENABLE_INDIRECT_DRAW && !CMDGEN_DEBUG_READBACK && !noDrawCountFullCmdgen && !realRenderListCmdgenAllowed;
-        boolean fullCmdgenDispatchAllowed = ENABLE_CMDGEN_DISPATCH && (realRenderListCmdgenAllowed || isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED);
+        boolean fullCmdgenDispatchAllowed = ENABLE_LODS || (ENABLE_CMDGEN_DISPATCH && (realRenderListCmdgenAllowed || isolationStage != null || ENABLE_INDIRECT_DRAW || noOpCmdgenSmoke || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED));
         String fullCmdgenDispatchBlocker = fullCmdgenDispatchAllowed ? "ready" : (!ENABLE_CMDGEN_DISPATCH ? "cmdgen_dispatch_disabled" : "select_isolation_stage_or_force_full_cmdgen_dispatch_with_indirect_disabled");
-        boolean cmdgenAllowed = ENABLE_CMDGEN_DISPATCH && (realRenderListCmdgenAllowed || noOpCmdgenSmoke || isolationStage != null || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED || frameSafety.allowCmdGen() || controlledSmoke.safe());
+        boolean cmdgenAllowed = ENABLE_LODS || (ENABLE_CMDGEN_DISPATCH && (realRenderListCmdgenAllowed || noOpCmdgenSmoke || isolationStage != null || noDrawCountFullCmdgen || FORCE_FULL_CMDGEN_DISPATCH_WITH_INDIRECT_DISABLED || frameSafety.allowCmdGen() || controlledSmoke.safe()));
         String cmdgenAllowReason = realRenderListCmdgenAllowed ? "real_render_list_cmdgen_allowed" : (controlledSmoke.safe() ? "controlled_smoke_section_available" : (noOpCmdgenSmoke ? "noop_cmdgen_smoke_allowed" : "ready"));
         CmdgenCommandSnapshot currentCmdgenSnapshot = cmdgenCommandSnapshot(geometryData, renderList, controlledSmoke);
         boolean cmdgenSampleValid = completedCmdgenSampleSnapshotMatches(currentCmdgenSnapshot);
         boolean indirectSafetyAllowed = frameSafety.allowIndirectDraw() || controlledSmoke.safe();
-        boolean indirectAllowed = ENABLE_INDIRECT_DRAW && indirectSafetyAllowed;
+        boolean indirectAllowed = ENABLE_LODS || (ENABLE_INDIRECT_DRAW && indirectSafetyAllowed);
         boolean cmdgenDispatchSubmitted = false;
         int cmdgenDispatchGroupCount = 0;
         boolean cmdgenDispatchCallRecorded = false;
@@ -1397,7 +1415,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_PROBE
                 || CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_PROBE
                 || CMDGEN_DENSE_LAYOUT_NOOP_PROBE;
-        String cmdgenBlocker = validateCmdgenDispatchInputs(geometryData, renderList, visibleCount, controlledSmoke, realRenderListCmdgenAllowed || (noOpCmdgenSmoke && isolationStage == null) || singleSsboReadProbe, isolationStage);
+        String cmdgenBlocker = validateCmdgenDispatchInputs(geometryData, renderList, visibleCount, controlledSmoke, ENABLE_LODS || realRenderListCmdgenAllowed || (noOpCmdgenSmoke && isolationStage == null) || singleSsboReadProbe, isolationStage);
         if (cmdgenBlocker != null) {
             logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
                     testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
@@ -1769,7 +1787,7 @@ public final class VulkanBerylSectionDrawPipeline {
             logScreenspaceSmokeSubmitDiagnostics(false, "render_draw_submit_skipped_after_cmdgen", null);
             return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, "render_draw_submit_skipped_after_cmdgen");
         }
-        String zeroValidCommandReason = zeroValidCommandSkipReason(visibleCount);
+        String zeroValidCommandReason = zeroValidCommandSkipReason(visibleCount, cmdgenSampleValid);
         if (zeroValidCommandReason != null && !screenspaceSmokeDirectDrawEnabled()) {
             logTestStatus(testTraversalStageLimit, testStageMeaning, rawVisibleCount, visibleCount,
                     testProbeSelected, testProbeEnvName, testSelectedShader, testIsolationMode,
@@ -1953,14 +1971,26 @@ public final class VulkanBerylSectionDrawPipeline {
         applyRealLodSingleQuadWorldProbeSafeState(renderer, viewport, commandBuffer);
         logRealLodSingleQuadGpuVertexProofDiagnostic(diagnosticSmoke, indirectDrawCommandBuffer, effectiveIndirectDrawCount);
         prepareRealLodGpuDecodeParityWrite(commandBuffer, diagnosticSmoke);
-        if (gpuCountedIndirectDraw) {
+        boolean cpuMirrorDrawCommands = false;
+        int cpuMirrorCommandCount = 0;
+        if (ENABLE_LODS && CMDGEN_DEBUG_READBACK && gpuCountedIndirectDraw
+                && effectiveIndirectDrawCount > 0
+                && geometryData.getSectionMetadataMirrorWriteCount() > 0L) {
+            cpuMirrorCommandCount = buildIndirectCommandsFromCpuMirror(
+                    commandBuffer, this.drawCommandBuffer, geometryData, renderList, effectiveIndirectDrawCount);
+            cpuMirrorDrawCommands = cpuMirrorCommandCount > 0;
+        }
+        if (cpuMirrorDrawCommands) {
+            VK10.vkCmdDrawIndirect(commandBuffer, this.drawCommandBuffer.getId(), 0L, cpuMirrorCommandCount, DRAW_COMMAND_STRIDE_BYTES);
+        } else if (gpuCountedIndirectDraw) {
             VK12.vkCmdDrawIndirectCount(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, this.drawCountBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         } else {
             VK10.vkCmdDrawIndirect(commandBuffer, indirectDrawCommandBuffer.getId(), 0L, effectiveIndirectDrawCount, DRAW_COMMAND_STRIDE_BYTES);
         }
-        scheduleRealLodGpuDecodeParityReadback(commandBuffer, diagnosticSmoke, viewport.frameId, effectiveIndirectDrawCount);
+        int activeDrawCount = cpuMirrorDrawCommands ? cpuMirrorCommandCount : effectiveIndirectDrawCount;
+        scheduleRealLodGpuDecodeParityReadback(commandBuffer, diagnosticSmoke, viewport.frameId, activeDrawCount);
         this.anyVkCmdDrawIndirectRecordedThisFrame = true;
-        this.drawRecordedReasonThisFrame = DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : (gpuCountedIndirectDraw ? "normal_indirect_count_draw" : "normal_indirect_draw"));
+        this.drawRecordedReasonThisFrame = cpuMirrorDrawCommands ? "cpu_mirror_indirect_draw" : (DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (controlledSmokeIndirectDrawPath ? "controlled_smoke_indirect_draw" : (gpuCountedIndirectDraw ? "normal_indirect_count_draw" : "normal_indirect_draw")));
         if (SECTION_DRAW_SAME_PASS_SCREENSPACE_PROBE && !REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) {
             VK10.vkCmdDraw(commandBuffer, SAME_PASS_SCREENSPACE_PROBE_VERTEX_COUNT, SAME_PASS_SCREENSPACE_PROBE_INSTANCE_COUNT, SAME_PASS_SCREENSPACE_PROBE_FIRST_VERTEX, SAME_PASS_SCREENSPACE_PROBE_FIRST_INSTANCE);
             this.anyVkCmdDrawRecordedThisFrame = true;
@@ -2000,6 +2030,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new OpaqueDrawSubmission(visibleCount, DRAW_SCREENSPACE_SMOKE_INDIRECT ? "screenspace_smoke_indirect_draw" : (DRAW_WORLDSPACE_SMOKE_INDIRECT ? "worldspace_smoke_indirect_draw" : "indirect_generated_per_section"), submittedQuadCount, effectiveIndirectDrawCount, sample.sampledCommandCount, sample.invalidSampledCommandCount, sample.sampledQuadCount, this.debugSamplePending, null);
     }
 
+
     private void prepareRealLodGpuDecodeParityWrite(VkCommandBuffer commandBuffer, ControlledRenderListSmoke diagnosticSmoke) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || !diagnosticSmoke.safe() || this.realLodGpuDecodeParityPending) return;
         ensureRealLodGpuDecodeParityBuffers();
@@ -2016,6 +2047,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     0, transferToVertex, null, null);
         }
     }
+
 
     private void scheduleRealLodGpuDecodeParityReadback(VkCommandBuffer commandBuffer, ControlledRenderListSmoke diagnosticSmoke, int frameId, int effectiveIndirectDrawCount) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || !diagnosticSmoke.safe() || effectiveIndirectDrawCount <= 0 || this.realLodGpuDecodeParityPending) return;
@@ -2070,6 +2102,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.realLodGpuDecodeParitySnapshot = GpuDecodeParitySnapshot.unavailable("pending_gpu_completion");
     }
 
+
     private void consumeRealLodGpuDecodeParityReadbackIfReady(long currentFrameId) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || !this.realLodGpuDecodeParityPending || this.realLodGpuDecodeParityCompleted) return;
         if (!this.realLodGpuDecodeParityCopyRecorded) {
@@ -2099,6 +2132,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.realLodGpuDecodeParityPending = false;
     }
 
+
     private static void applyOpaquePipelineState() {
         VRenderSystem.disableBlend();
         VRenderSystem.disableCull();
@@ -2106,6 +2140,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VRenderSystem.depthMask(true);
         VRenderSystem.depthFunc(515);
     }
+
 
     private static void applyTranslucentPipelineState() {
         VRenderSystem.enableBlend();
@@ -2115,6 +2150,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VRenderSystem.depthMask(false);
         VRenderSystem.depthFunc(515);
     }
+
 
     private void logRealLodVertexPathClipspaceProbeDiagnostic(ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
         if (!REAL_LOD_VERTEX_PATH_CLIPSPACE_PROBE) return;
@@ -2157,6 +2193,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sampledCommand0.firstInstanceExpectedRenderListEntry0=" + (commandSampleAvailable && commandFirstInstance == 0L), 60);
     }
 
+
     private void logRealQuadReadClipspaceProbeDiagnostic(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
         if (!REAL_QUAD_READ_CLIPSPACE_PROBE) return;
         RealQuadDiagnostic diagnostic = firstSubmittedRealQuadDiagnostic(viewport, geometryData, renderList, controlledSmoke, false);
@@ -2174,6 +2211,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", submittedDrawCount=" + effectiveIndirectDrawCount
                 + diagnostic.logFields(), 60);
     }
+
 
     private void logRealLodSingleQuadWorldProbeDiagnostic(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
@@ -2250,6 +2288,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", fallbackUsedOnlyAfterNoClipVisibleCandidate=" + controlledSmoke.fallbackUsedOnlyAfterNoClipVisibleCandidate()
                 + diagnostic.logFields(true), 60);
     }
+
 
     private void logRealLodSingleQuadGpuVertexProofDiagnostic(ControlledRenderListSmoke controlledSmoke, Buffer indirectDrawCommandBuffer, int effectiveIndirectDrawCount) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
@@ -2328,6 +2367,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", hardcodedClipspaceProofExpectedIfInvisible=single_quad_shader_branch_or_bound_draw_variant_not_executing", 60);
     }
 
+
     private void logFirstSubmittedRealQuadDiagnostics(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, int effectiveIndirectDrawCount) {
         if (!REAL_LOD_VISIBILITY_DIAGNOSTIC && !REAL_QUAD_READ_CLIPSPACE_PROBE && !REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
         RealQuadDiagnostic diagnostic = firstSubmittedRealQuadDiagnostic(viewport, geometryData, renderList, controlledSmoke, REAL_LOD_SINGLE_QUAD_WORLD_PROBE);
@@ -2336,6 +2376,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", submittedDrawCount=" + effectiveIndirectDrawCount
                 + diagnostic.logFields(REAL_LOD_SINGLE_QUAD_WORLD_PROBE), 60);
     }
+
 
     private RealQuadDiagnostic firstSubmittedRealQuadDiagnostic(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, boolean geometryDiagnosticMode) {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
@@ -2373,12 +2414,14 @@ public final class VulkanBerylSectionDrawPipeline {
                 "relative_baseSection_innerTranslation", world.corner0(), world.corner1(), world.corner2(), world.corner3(), geometryDiagnostic.logFields());
     }
 
+
     private long selectedGeometryDiagnosticQuadIndex(ControlledRenderListSmoke controlledSmoke, CmdgenCommandSnapshot snapshot) {
         if (controlledSmoke.safe()) {
             return selectedGeometryDiagnosticQuadIndex(controlledSmoke, new RenderListEntry0Diagnostics(controlledSmoke.sectionId(), controlledSmoke.quadStart(), 0L, Integer.toUnsignedLong(controlledSmoke.quadStart()), controlledSmoke.quadCount(), true));
         }
         return snapshot.available() && snapshot.expectedFirstVertex() >= 0L ? snapshot.expectedFirstVertex() / 4L : -1L;
     }
+
 
     private static long selectedGeometryDiagnosticQuadIndex(ControlledRenderListSmoke controlledSmoke, RenderListEntry0Diagnostics entry0) {
         if (!entry0.valid()) return -1L;
@@ -2387,6 +2430,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return entry0.opaqueQuadStart();
     }
+
 
     private void updateRealLodProbeSceneUniformSelection(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) {
@@ -2421,6 +2465,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private void clearRealLodProbeReplayCpuClip(String reason) {
         this.realLodProbeReplayCpuClipAvailable = false;
         java.util.Arrays.fill(this.realLodProbeReplayCpuClip, 0.0F);
@@ -2430,6 +2475,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.realLodProbeReplayCpuClip3 = "unavailable";
         this.realLodProbeReplayCpuClipUnavailableReason = reason;
     }
+
 
     private void updateRealLodProbeReplayCpuClip(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke, int sectionId, long quadIndex) {
         if (!controlledSmoke.safe()) {
@@ -2470,6 +2516,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.realLodProbeReplayCpuClipUnavailableReason = "none";
     }
 
+
     private void clearRealLodProbeReplayCpuWorld(String reason) {
         this.realLodProbeReplayCpuWorldAvailable = false;
         java.util.Arrays.fill(this.realLodProbeReplayCpuWorld, 0.0F);
@@ -2480,6 +2527,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.realLodProbeReplayCpuWorldUnavailableReason = reason;
         this.realLodProbeReplayCpuWorldCoordinateSpace = "unavailable";
     }
+
 
     private void updateRealLodProbeReplayCpuWorld(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke, int sectionId, long quadIndex) {
         if (!controlledSmoke.safe()) {
@@ -2521,12 +2569,14 @@ public final class VulkanBerylSectionDrawPipeline {
         this.realLodProbeReplayCpuWorldUnavailableReason = "none";
     }
 
+
     private long selectedSectionPassQuadStart(VulkanBerylSectionGeometryData geometryData, int sectionId) {
         if (sectionId < 0 || sectionId >= Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount()) || !geometryData.hasNonZeroSectionMetadata(sectionId)) {
             return -1L;
         }
         return Integer.toUnsignedLong(geometryData.getSectionMetadataInt(sectionId, 3)) + extractTranslucentQuadCount(geometryData, sectionId);
     }
+
 
 
     private OpaqueDrawSubmission renderScreenspaceSmokeIndirectIsolated(Renderer renderer, VulkanBerylViewport viewport, VkCommandBuffer commandBuffer) {
@@ -2562,6 +2612,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new OpaqueDrawSubmission(0, "screenspace_smoke_indirect_draw", -1L, smokeSubmittedDrawCount, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, null);
     }
 
+
     private static void configureSectionDrawPrimitiveTopologyTriangleList(String stage) {
         int previousTopology = VRenderSystem.topology;
         VRenderSystem.topology = VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -2569,6 +2620,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", previousTopology=" + vulkanPrimitiveTopologyName(previousTopology) + "(" + previousTopology + ")"
                 + ", currentTopology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST(" + VK10.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST + ")");
     }
+
 
     private static void applyRealLodVisibilityDiagnosticPipelineStateOverride() {
         if (!realLodMagentaDiagnosticEnabled()) return;
@@ -2590,6 +2642,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", forcedFragmentColour=magenta", 60);
     }
 
+
     private static void applyFinalPassScreenspaceMarkerStateOverride() {
         VRenderSystem.disableDepthTest();
         VRenderSystem.depthMask(false);
@@ -2599,6 +2652,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VRenderSystem.colorMask(true, true, true, true);
         configureSectionDrawPrimitiveTopologyTriangleList("final_pass_screenspace_marker");
     }
+
 
     private void applyRealLodSingleQuadWorldProbeSafeState(Renderer renderer, VulkanBerylViewport viewport, VkCommandBuffer commandBuffer) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return;
@@ -2691,6 +2745,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", passContext=" + SECTION_DRAW_PASS_CONTEXT.get(), 60);
     }
 
+
     private void logSectionDrawGraphicsPipelineState(Renderer renderer, VulkanBerylViewport viewport, String stage) {
         Framebuffer framebuffer = renderer.getBoundFramebuffer();
         int assemblyRasterState = PipelineState.getAssemblyRasterState();
@@ -2722,6 +2777,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", renderTargetExtent=" + (framebuffer == null ? "unbound" : framebuffer.getWidth() + "x" + framebuffer.getHeight())
                 + ", berylDynamicViewportScissor=true", 60);
     }
+
 
     private void logSectionDrawRenderTargetPathDiagnostics(Renderer renderer, VulkanBerylViewport viewport, VkCommandBuffer commandBuffer, String stage, Buffer indirectDrawCommandBuffer, int submittedDrawCount) {
         Framebuffer framebuffer = renderer.getBoundFramebuffer();
@@ -2759,6 +2815,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", boundFramebufferFormat=" + (framebuffer == null ? "unbound" : framebuffer.getFormat())
                 + ", boundFramebufferExtent=" + (framebuffer == null ? "unbound" : framebuffer.getWidth() + "x" + framebuffer.getHeight()), 60);
     }
+
 
     private void recordFinalPassScreenspaceMarker(Renderer renderer, VulkanBerylViewport viewport,
             VkCommandBuffer commandBuffer, int rawVisibleCount, int visibleCount) {
@@ -2914,15 +2971,18 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", markerReadbackSkipReason=" + markerReadbackSkipReason);
     }
 
+
     private static String inferRecordedAfterMainClear(String passContext) {
         if (passContext != null && passContext.contains("before_shader_end")) return "likely_true_sodium_terrain_pass_already_begun";
         return "unknown";
     }
 
+
     private static String inferMayBeOverwrittenByLaterPass(String passContext) {
         if (passContext != null && passContext.contains("cutout")) return "possible_later_translucent_weather_hand_sodium_passes";
         return "unknown";
     }
+
 
     private static String shortSha256(String source) {
         try {
@@ -2937,11 +2997,13 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static String formatHandle(long handle) {
         if (handle == Long.MIN_VALUE) return "unavailable";
         if (handle == 0L) return "0";
         return "0x" + Long.toHexString(handle);
     }
+
 
     private static String reflectBooleanState(Object target, String... names) {
         if (target == null) return "unavailable";
@@ -2952,6 +3014,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return "unknown";
     }
 
+
     private static long reflectLong(Object target, String... names) {
         if (target == null) return 0L;
         for (String name : names) {
@@ -2961,6 +3024,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return Long.MIN_VALUE;
     }
+
 
     private static long reflectNestedLong(Object target, String... names) {
         if (target == null) return 0L;
@@ -2979,6 +3043,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return Long.MIN_VALUE;
     }
 
+
     private static long valueToHandle(Object value) {
         if (value instanceof Number number) return number.longValue();
         if (value == null || value instanceof String || value instanceof Boolean) return Long.MIN_VALUE;
@@ -2988,6 +3053,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (handle instanceof Number number) return number.longValue();
         return Long.MIN_VALUE;
     }
+
 
     private static Object reflectValue(Object target, String name) {
         if (target == null || name == null || name.isBlank()) return null;
@@ -3016,6 +3082,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return null;
     }
 
+
     private static String vulkanPrimitiveTopologyName(int topology) {
         return switch (topology) {
             case VK10.VK_PRIMITIVE_TOPOLOGY_POINT_LIST -> "VK_PRIMITIVE_TOPOLOGY_POINT_LIST";
@@ -3033,6 +3100,7 @@ public final class VulkanBerylSectionDrawPipeline {
         };
     }
 
+
     private static String vulkanCullModeName(int cullMode) {
         return switch (cullMode) {
             case VK10.VK_CULL_MODE_NONE -> "VK_CULL_MODE_NONE";
@@ -3042,6 +3110,7 @@ public final class VulkanBerylSectionDrawPipeline {
             default -> "unknown";
         };
     }
+
 
     private static String vulkanCompareOpName(int compareOp) {
         return switch (compareOp) {
@@ -3057,6 +3126,7 @@ public final class VulkanBerylSectionDrawPipeline {
         };
     }
 
+
     private static String colorMaskName(int colorMask) {
         List<String> channels = new ArrayList<>(4);
         if ((colorMask & VK10.VK_COLOR_COMPONENT_R_BIT) != 0) channels.add("R");
@@ -3066,6 +3136,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return channels.isEmpty() ? "none" : String.join("", channels);
     }
 
+
     private static boolean rgbaColourWriteMaskEnabled(int colorMask) {
         int rgbaMask = VK10.VK_COLOR_COMPONENT_R_BIT
                 | VK10.VK_COLOR_COMPONENT_G_BIT
@@ -3073,6 +3144,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 | VK10.VK_COLOR_COMPONENT_A_BIT;
         return (colorMask & rgbaMask) == rgbaMask;
     }
+
 
     private record ScheduledDebugReadback(boolean scheduled, String reason, long commandCopyBytes, long countCopyBytes, boolean alreadyPending, boolean scheduleSkipped, String skipReason, int rendererFrameSlot, long commandBufferAddress, long generation, long sourceBufferId) {
         private ScheduledDebugReadback(boolean scheduled, String reason, long commandCopyBytes, long countCopyBytes) {
@@ -3083,6 +3155,7 @@ public final class VulkanBerylSectionDrawPipeline {
             this(scheduled, reason, commandCopyBytes, countCopyBytes, alreadyPending, scheduleSkipped, skipReason, -1, 0L, -1L, 0L);
         }
     }
+
 
     private record ControlledSmokeCommandValidation(boolean valid, String waitReason, String mismatch) {}
 
@@ -3100,6 +3173,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.debugSamplePending) return new ControlledSmokeCommandValidation(false, this.controlledSmokeCommandReadbackGpuCompletionKnown ? "pending_host_read" : "pending_gpu_completion", "pending");
         return new ControlledSmokeCommandValidation(false, "pending_host_read", "not_observed");
     }
+
 
     private void recordControlledSmokeCommandReadbackSchedule(ScheduledDebugReadback scheduledDebugReadback, int frameId) {
         this.controlledSmokeCommandReadbackAlreadyPending = scheduledDebugReadback.alreadyPending();
@@ -3156,6 +3230,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", controlledSmokeCommandReadbackVkDrawIndirectCommandBytes=" + DRAW_COMMAND_STRIDE_BYTES
                 + ", javaKnownControlledSmokeCommandActualOrder=" + this.javaKnownControlledSmokeCommandActualOrder, 30);
     }
+
 
     private void logControlledSmokeCommandReadbackLifecycle(int currentFrameId, ControlledSmokeCommandValidation validation) {
         int readbackFrameId = this.controlledSmokeCommandReadbackFrameId;
@@ -3218,10 +3293,12 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.stateLimited("controlled-smoke-command-readback-lifecycle", "controlled smoke command readback lifecycle: " + diagnostic, diagnostic);
     }
 
+
     private static String hostVisibleString(Buffer buffer) {
         if (buffer == null) return "unknown";
         return buffer.getDataPtr() == 0L ? "false" : "true";
     }
+
 
     private long controlledSmokeActiveReadbackSourceBufferId() {
         if (this.javaKnownControlledSmokeCommandWrittenThisFrame && this.controlledSmokeKnownCommandBuffer != null) {
@@ -3229,6 +3306,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId();
     }
+
 
     private void updateControlledSmokeCommandGeneration(int sectionId, long vertexCount, int instanceCount, long firstVertex, int firstInstance, long bufferId) {
         boolean changed = this.controlledSmokeCommandExpectedSectionId != sectionId
@@ -3259,9 +3337,11 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private boolean controlledSmokeCommandReadbackMatchesCurrentGeneration() {
         return this.controlledSmokeCommandReadbackCompleted && this.controlledSmokeCommandReadbackCompletedGeneration == this.controlledSmokeCommandGeneration;
     }
+
 
     private boolean controlledSmokeCommandReadbackScheduledMetadataMatchesCurrentExpected() {
         return this.controlledSmokeCommandReadbackCompletedSectionId == this.controlledSmokeCommandExpectedSectionId
@@ -3272,6 +3352,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 && this.controlledSmokeCommandReadbackCompletedBufferId == this.controlledSmokeCommandExpectedBufferId;
     }
 
+
     private boolean controlledSmokeCommandReadbackObservedMatchesCurrentExpected() {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         if (sample.sampledCommandCount() <= 0) return false;
@@ -3281,11 +3362,13 @@ public final class VulkanBerylSectionDrawPipeline {
                 && sample.firstFirstInstance() == this.controlledSmokeCommandExpectedFirstInstance;
     }
 
+
     private boolean controlledSmokeCommandReadbackMatchesCurrentExpected() {
         return controlledSmokeCommandReadbackMatchesCurrentGeneration()
                 && controlledSmokeCommandReadbackScheduledMetadataMatchesCurrentExpected()
                 && controlledSmokeCommandReadbackObservedMatchesCurrentExpected();
     }
+
 
     private String controlledSmokeCommandReadbackStaleReason() {
         if (!this.controlledSmokeCommandReadbackCompleted || controlledSmokeCommandReadbackMatchesCurrentExpected()) return "none";
@@ -3300,9 +3383,11 @@ public final class VulkanBerylSectionDrawPipeline {
         return "expected_command_changed";
     }
 
+
     private boolean controlledSmokeKnownCommandUploadCurrentGenerationQueued() {
         return this.controlledSmokeCommandUploadGeneration == this.controlledSmokeCommandGeneration && this.controlledSmokeCommandUploadGeneration >= 0L;
     }
+
 
     private boolean controlledSmokeKnownCommandUploadAgeReady(int currentFrameId) {
         if (!controlledSmokeKnownCommandUploadCurrentGenerationQueued()) return false;
@@ -3310,17 +3395,20 @@ public final class VulkanBerylSectionDrawPipeline {
         return (currentFrameId - this.controlledSmokeCommandUploadFrameId) >= 2;
     }
 
+
     private int controlledSmokeKnownCommandUploadAgeFrames(int currentFrameId) {
         if (!controlledSmokeKnownCommandUploadCurrentGenerationQueued()) return -1;
         if (this.controlledSmokeCommandUploadFrameId < 0) return -1;
         return Math.max(0, currentFrameId - this.controlledSmokeCommandUploadFrameId);
     }
 
+
     private String controlledSmokeKnownCommandUploadCompletionKnownString(int currentFrameId) {
         if (!controlledSmokeKnownCommandUploadCurrentGenerationQueued()) return "false";
         if (controlledSmokeKnownCommandUploadAgeReady(currentFrameId)) return "true";
         return "unknown";
     }
+
 
     private String computeControlledSmokeCommandValidationState(ControlledRenderListSmoke controlledSmoke, int currentFrameId) {
         if (!controlledSmokeKnownCommandUploadCurrentGenerationQueued() || !controlledSmokeKnownCommandUploadAgeReady(currentFrameId)) {
@@ -3344,6 +3432,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return "readback_valid";
     }
 
+
     private static String drawSubmitReasonForControlledSmokeState(String state) {
         return switch (state) {
             case "upload_pending" -> "diagnostic_waiting_for_upload_completion";
@@ -3355,6 +3444,7 @@ public final class VulkanBerylSectionDrawPipeline {
         };
     }
 
+
     private boolean controlledSmokeDiagnosticBypassAllowed(ControlledRenderListSmoke controlledSmoke, int currentFrameId) {
         if (!DISABLE_CONTROLLED_SMOKE_READBACK_COPY) return false;
         if (!DRAW_SCREENSPACE_SMOKE_INDIRECT) return false;
@@ -3364,6 +3454,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (!controlledSmokeKnownCommandUploadAgeReady(currentFrameId)) return false;
         return true;
     }
+
 
     private boolean controlledSmokeDrawCommandLooksDrawable(ControlledRenderListSmoke controlledSmoke, VulkanBerylSectionGeometryData geometryData, ControlledSmokeCommandValidation commandValidation) {
         if (!controlledSmoke.safe()) return false;
@@ -3376,6 +3467,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 && geometryByteStart >= 0L
                 && geometryByteEnd <= geometryData.getUsedGeometryBytes();
     }
+
 
     private String controlledSmokeCommandMismatch(ControlledRenderListSmoke controlledSmoke, DrawCommandDebugSample sample) {
         if (sample.firstVertexCount() == 0) return "vertexCount_zero";
@@ -3391,6 +3483,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
+
     private void logScreenspaceSmokeSubmittedDrawCountGuard(int submittedDrawCount, String stage) {
         if (!DRAW_SCREENSPACE_SMOKE_INDIRECT) return;
         if (submittedDrawCount <= 1) return;
@@ -3402,6 +3495,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", guardStage=" + stage
                 + ", drawSubmitReason=screenspace_smoke_indirect_draw");
     }
+
 
     private void logScreenspaceSmokeSubmitDiagnostics(boolean submitted, String reason, ControlledSmokeCommandValidation commandValidation) {
         if (!screenspaceSmokeShaderEnabled()) return;
@@ -3430,6 +3524,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", screenspaceSmokeSubmitReason=" + reason;
         VulkanBerylDebugLog.stateLimited("screenspace-smoke-draw-isolation", "screenspace smoke draw isolation: " + diagnostic, diagnostic);
     }
+
 
     private void logSmokeDrawOutputDiagnostics(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, int visibleCount, int submittedDrawCount, ControlledSmokeCommandValidation commandValidation) {
         if (!controlledSmoke.enabled()) return;
@@ -3589,6 +3684,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.lastSmokeDrawOutputDiagnostic = diagnostic;
         VulkanBerylDebugLog.rateLimited("controlled-smoke-draw-output-diagnostics", "Controlled smoke draw-output diagnostics: " + diagnostic, 1);
     }
+
 
     private void logWorldDrawMappingDiagnostics(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke, int submittedDrawCount, long commandVertexCount, long commandFirstVertex, String priorInvisibleReason) {
         if (!controlledSmoke.enabled()) return;
@@ -3765,6 +3861,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.rateLimited("controlled-world-draw-mapping-diagnostics", "Controlled world draw mapping diagnostics: " + diagnostic, 1);
     }
 
+
     private RenderListEntry0Diagnostics renderListEntry0Diagnostics(VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke controlledSmoke) {
         if (!controlledSmoke.safe()) {
             return RenderListEntry0Diagnostics.unavailable(controlledSmoke.sectionId());
@@ -3777,6 +3874,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new RenderListEntry0Diagnostics(sectionId, quadStart, translucentQuadCount, opaqueQuadStart, opaqueQuadCount, true);
     }
 
+
     private static String commandMismatchReason(boolean commandAvailable, long commandVertexCount, long commandFirstVertex, long expectedVertexCount, long expectedFirstVertex, String sampleUnavailableReason) {
         if (!commandAvailable) return sampleUnavailableReason;
         boolean firstVertexMatches = commandFirstVertex == expectedFirstVertex;
@@ -3786,6 +3884,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (!firstVertexMatches) return "firstVertex_mismatch";
         return "vertexCount_mismatch";
     }
+
 
     private static String worldInvisibleReason(boolean commandAvailable, boolean commandMatchesRenderListEntry0, boolean mvpFinite, QuadSample quad0, ClipDiagnostics clip, String priorInvisibleReason, String sampleUnavailableReason) {
         if (commandAvailable && !commandMatchesRenderListEntry0) return "firstVertex_or_vertexCount_mismatch";
@@ -3800,6 +3899,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return "shader_indexing_or_clip_depth_cull_or_geometry_quad_decode_or_position_transform_or_debug_fragment_pipeline_state";
     }
 
+
     private static double nearestSectionDistanceToBase(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewport viewport) {
         int sectionCount = Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount());
         double nearest = Double.POSITIVE_INFINITY;
@@ -3809,6 +3909,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return nearest;
     }
+
 
     private GeometryQuadDiagnostics geometryQuadDiagnostics(VulkanBerylSectionGeometryData geometryData, long quadIndex, long currentFrameId) {
         long byteOffset = quadIndex < 0L ? -1L : Math.multiplyExact(quadIndex, Long.BYTES);
@@ -3887,6 +3988,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 this.geometryDiagnosticStaleCleared, this.geometryDiagnosticStaleClearReason, this.geometryDiagnosticScheduledAfterStaleClear);
     }
 
+
     private QuadSample sampleQuadFromJavaDiagnostics(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
         if (quadIndex < 0L) return QuadSample.unavailable();
         long byteOffset = quadIndex * 8L;
@@ -3902,6 +4004,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return QuadSample.unavailable();
     }
+
 
     private QuadSample sampleQuad(VulkanBerylSectionGeometryData geometryData, long quadIndex) {
         if (quadIndex < 0L) return QuadSample.unavailable();
@@ -3924,6 +4027,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return QuadSample.unavailable();
     }
 
+
     private static String quadDiagnostic(int index, QuadSample quad) {
         String prefix = ", worldDrawQuad" + index;
         return prefix + "Raw=" + quad.rawString()
@@ -3933,6 +4037,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + prefix + "Size=" + quad.sizeX() + "," + quad.sizeY()
                 + prefix + "StateId=" + quad.stateId();
     }
+
 
     private static SceneDiagnostics sceneDiagnostics(VulkanBerylViewport viewport) {
         org.joml.Matrix4f mat = new org.joml.Matrix4f(viewport.MVP);
@@ -3952,9 +4057,11 @@ public final class VulkanBerylSectionDrawPipeline {
         return new SceneDiagnostics(finite, summary, mat);
     }
 
+
     private static ClipDiagnostics clipDiagnostics(VulkanBerylViewport viewport, int rawPosA, int rawPosB, QuadSample quad) {
         return clipDiagnosticsForMode(viewport, rawPosA, rawPosB, quad, true);
     }
+
 
     private static ClipDiagnostics clipDiagnosticsForMode(VulkanBerylViewport viewport, int rawPosA, int rawPosB, QuadSample quad, boolean relativeToCameraSection) {
         if (!quad.available()) return ClipDiagnostics.unavailable();
@@ -4013,6 +4120,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new ClipDiagnostics(formatVec4(clips[0]), formatVec4(clips[1]), formatVec4(clips[2]), formatVec4(clips[3]), clips, anyFiniteW, anyVisible, allBehind);
     }
 
+
     private static WorldCornerDiagnostics worldCornerDiagnostics(VulkanBerylViewport viewport, int rawPosA, int rawPosB, QuadSample quad) {
         if (!quad.available()) return WorldCornerDiagnostics.unavailable();
         int lodLevel = rawPosA >>> 28;
@@ -4057,6 +4165,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 corners, finite, "relative_baseSection_innerTranslation");
     }
 
+
     private static String basePointDiagnostic(VulkanBerylViewport viewport, int rawPosA, int rawPosB, QuadSample quad) {
         if (!quad.available()) return "unavailable";
         int lodLevel = rawPosA >>> 28;
@@ -4071,14 +4180,17 @@ public final class VulkanBerylSectionDrawPipeline {
         return formatFloat(px) + "," + formatFloat(py) + "," + formatFloat(pz);
     }
 
+
     private static String formatVec4(org.joml.Vector4f vec) {
         return formatFloat(vec.x) + "," + formatFloat(vec.y) + "," + formatFloat(vec.z) + "," + formatFloat(vec.w);
     }
+
 
     private static String formatFloat(float value) {
         if (!Float.isFinite(value)) return Float.toString(value);
         return String.format(java.util.Locale.ROOT, "%.3f", value);
     }
+
 
     private record SceneDiagnostics(boolean finite, String summary, org.joml.Matrix4f matrix) {}
 
@@ -4096,6 +4208,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private record ClipDiagnostics(String clip0, String clip1, String clip2, String clip3, org.joml.Vector4f[] rawClips, boolean anyFiniteW, boolean looksVisible, boolean behindCamera) {
         static ClipDiagnostics unavailable() { return new ClipDiagnostics("unavailable", "unavailable", "unavailable", "unavailable", null, false, false, false); }
         boolean hasRawClipValues() {
@@ -4107,6 +4220,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return this.rawClips[index];
         }
     }
+
 
     private record WorldCornerDiagnostics(String corner0, String corner1, String corner2, String corner3, org.joml.Vector4f[] rawCorners, boolean finite, String coordinateSpace) {
         static WorldCornerDiagnostics unavailable() {
@@ -4121,6 +4235,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return this.rawCorners[index];
         }
     }
+
 
     private record RealQuadDiagnostic(String status, int sectionId, long drawIndex, long vertexCount, long firstVertex, long quadIndex, String rawQuad, int decodedLod, String selectedReason, String baseSectionPos, String innerTranslation, String basePoint, String lodScale, String axis, String quadSizeAddin, String clip0, String clip1, String clip2, String clip3, boolean anyFiniteW, boolean intersectsClipSpace, boolean behindCamera, String commandSampleState,
                                       String relativeClip0, String relativeClip1, String relativeClip2, String relativeClip3, boolean relativeAnyCornerIntersectsClipSpace,
@@ -4187,6 +4302,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     + (includeGeometryDiagnosticFields ? geometryDiagnosticFields : "");
         }
     }
+
 
     private String realLodGpuDecodeParityLogFields(long currentFrameId, RealQuadDiagnostic cpu, VulkanBerylSectionGeometryData geometryData) {
         consumeRealLodGpuDecodeParityReadbackIfReady(currentFrameId);
@@ -4298,6 +4414,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + (available ? realLodGpuDecodeParityMatchedLogFields(cpuSnapshot, gpu) : "");
     }
 
+
     private static String realLodGpuDecodeParityMatchedLogFields(CpuDecodeParitySnapshot cpu, GpuDecodeParitySnapshot gpu) {
         return ", realLodProbeCpuRawQuadData=" + cpu.rawQuad()
                 + ", realLodProbeGpuRawQuadData=" + gpu.rawQuadString()
@@ -4321,6 +4438,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", realLodProbeGpuWorldCorner3=" + gpu.worldCorner3();
     }
 
+
     private static String realLodProbeDecodeMismatchReason(CpuDecodeParitySnapshot cpu, GpuDecodeParitySnapshot gpu, boolean available, String unavailableReason, boolean activePassQuadStartMatchesCpu, boolean activeSectionMetaMatchesCpu) {
         if (!available) return "gpu_decode_parity_unavailable:" + unavailableReason;
         if (!activePassQuadStartMatchesCpu) return "gpu_section_meta_pass_quad_start_mismatch";
@@ -4339,6 +4457,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return "gpu_decode_matches_but_not_visible";
     }
+
 
     private record CpuDecodeParitySnapshot(boolean available, String reason, long frameId, int selectedSectionId, long selectedQuadIndex, long selectedSectionPassQuadStart,
                                            int selectedSectionMetaA0, int selectedSectionMetaA1, int selectedSectionMetaA2, int selectedSectionMetaA3,
@@ -4369,6 +4488,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     diagnostic.worldCorner0(), diagnostic.worldCorner1(), diagnostic.worldCorner2(), diagnostic.worldCorner3());
         }
     }
+
 
     private record GpuDecodeParitySnapshot(boolean available, boolean magicValid, String reason, long frameId,
                                            long normalDrawIndex, int normalSectionId, long normalPassQuadStart, long normalLocalQuadIndex, long normalAbsoluteQuadIndex,
@@ -4445,6 +4565,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private record GeometryQuadDiagnostics(long quadIndex, long byteOffset, long requiredBytes, long bufferSizeBytes, long usedBytes, boolean inUsedRange, boolean readbackScheduled, boolean readbackCopyRecorded, boolean readbackCompleted, String rejectReason,
                                            long frameId, long currentFrameId, int rendererFrameSlot, long commandBufferAddress,
                                            DrawPass drawPass, long sourceBufferId, long currentSourceBufferId, long geometrySyncGeneration, long currentGeometrySyncGeneration,
@@ -4476,6 +4597,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private record QuadSample(boolean available, long raw, boolean empty, int face, int posX, int posY, int posZ, int sizeX, int sizeY, int stateId) {
         static QuadSample unavailable() { return new QuadSample(false, 0L, true, -1, 0, 0, 0, 0, 0, -1); }
         static QuadSample of(long raw) {
@@ -4484,9 +4606,11 @@ public final class VulkanBerylSectionDrawPipeline {
         String rawString() { return this.available ? "0x" + Long.toUnsignedString(this.raw, 16) + "/" + Long.toUnsignedString(this.raw) : "unavailable"; }
     }
 
+
     private static int eu32(long data, int amountBits, int shift) {
         return (int) ((data >>> shift) & ((1L << amountBits) - 1L));
     }
+
 
     private void recordJavaKnownControlledSmokeCommandToMainBuffer(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int frameId) {
         if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER || !controlledRenderListDiagnosticEnabled() || !controlledSmoke.safe()) return;
@@ -4642,6 +4766,7 @@ public final class VulkanBerylSectionDrawPipeline {
             + ", controlledSmokeCommandExpectedFirstVertex=" + expectedFirstVertex, 30);
     }
 
+
     private void recordScreenspaceSmokeIndirectKnownCommand(int frameId) {
         if (!DRAW_SCREENSPACE_SMOKE_INDIRECT) return;
         ensureControlledSmokeKnownCommandBuffer();
@@ -4697,6 +4822,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", targetBufferId=" + targetBufferId
                 + ", tupleChanged=" + tupleChanged, 1);
     }
+
 
     private void recordJavaKnownControlledSmokeCommand(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int frameId) {
         if (CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND) {
@@ -4836,6 +4962,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", cmdgenCommandWriteSkippedReason=dedicated_known_buffer_overrides_shader_command", 60);
     }
 
+
     private void ensureControlledSmokeKnownCommandBuffer() {
         if (this.controlledSmokeKnownCommandBuffer != null) {
             if (this.controlledSmokeKnownCommandBuffer.getBufferSize() >= DRAW_COMMAND_STRIDE_BYTES && this.controlledSmokeKnownCommandBuffer.getId() != 0L) return;
@@ -4846,6 +4973,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.controlledSmokeKnownCommandBuffer = new Buffer("voxy_vulkanberyl_controlled_smoke_known_draw_command", this.controlledSmokeKnownCommandBufferUsageFlags, MemoryTypes.GPU_MEM);
         this.controlledSmokeKnownCommandBuffer.createBuffer(DRAW_COMMAND_STRIDE_BYTES);
     }
+
 
     private void uploadControlledSmokeKnownCommand(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
         if (this.controlledSmokeKnownCommandBuffer == null) throw new IllegalStateException("controlled smoke known command buffer missing");
@@ -4861,6 +4989,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private Buffer controlledSmokeDrawCommandBuffer(ControlledRenderListSmoke controlledSmoke) {
         if (controlledSmoke.safe() && CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER && controlledRenderListDiagnosticEnabled() && CONTROLLED_SMOKE_USE_MAIN_DRAW_COMMAND_BUFFER_FOR_KNOWN_COMMAND) {
             return this.drawCommandBuffer;
@@ -4870,6 +4999,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return this.drawCommandBuffer;
     }
+
 
     private JavaDrawCountDiagnostic recordJavaDrawCountForNoDrawCountCmdgen(VkCommandBuffer commandBuffer, ControlledRenderListSmoke controlledSmoke, int visibleCount) {
         if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return new JavaDrawCountDiagnostic(visibleCount, "shader_drawcount_write");
@@ -4927,6 +5057,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", drawCountDescriptorBufferId=" + (cmdgenDrawCountDescriptorBuffer() == null ? 0L : cmdgenDrawCountDescriptorBuffer().getId()), 60);
         return new JavaDrawCountDiagnostic(javaDrawCount, drawCountSource);
     }
+
 
     private void logDrawSubmitHandoffDiagnostic(int renderListVisibleCountForDraw, JavaDrawCountDiagnostic javaDrawCount, boolean cmdgenDispatchRecorded, int cmdgenDispatchGroupCount, boolean indirectAllowed, boolean indirectDrawRecorded, int submittedDrawCount, String drawSubmitReason, boolean noDrawCountFullCmdgen) {
         logScreenspaceSmokeSubmittedDrawCountGuard(submittedDrawCount, "draw_handoff");
@@ -4995,6 +5126,7 @@ public final class VulkanBerylSectionDrawPipeline {
         logControlledSmokeCommandRecordingDiagnostics(renderListVisibleCountForDraw, indirectDrawRecorded, drawSubmitReason);
     }
 
+
     private void logTestStatus(int traversalStageLimit, String stageMeaning,
                                int rawRenderListVisibleCount, int renderListVisibleCountForDraw,
                                boolean cmdgenProbeSelected, String probeEnvName,
@@ -5029,6 +5161,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", drawSubmitReason=" + (drawSubmitReason == null ? "not_applicable" : drawSubmitReason), 20, TEST_STATUS_INTERVAL_NANOS);
     }
 
+
     private void logProbeSelectionLine(boolean cmdgenProbeSelected, String probeEnvName,
                                         String cmdgenSelectedShader, String cmdgenIsolationMode,
                                         String probeSelectionReason) {
@@ -5039,6 +5172,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", cmdgenIsolationMode=" + (cmdgenIsolationMode == null ? "not_selected" : cmdgenIsolationMode)
                 + ", cmdgenProbeSelectionReason=" + probeSelectionReason);
     }
+
 
     private void logControlledSmokeCommandRecordingDiagnostics(int renderListVisibleCountForDraw, boolean indirectDrawRecorded, String drawSubmitReason) {
         if (!controlledRenderListDiagnosticEnabled()) return;
@@ -5066,6 +5200,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.stateLimited("controlled-smoke-command-recording", "controlled-smoke command recording: " + snapshot, snapshot);
     }
 
+
     private String computeCommandBufferSubmitRisk() {
         if (this.anyVkCmdDrawIndirectRecordedThisFrame || this.anyVkCmdDrawRecordedThisFrame) return "stale_draw";
         if (this.controlledSmokeReadbackCopyRecordedThisFrame || this.controlledSmokeReadbackBarrierRecordedThisFrame) return "readback_copy";
@@ -5074,6 +5209,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCountClearCommandRecordedThisFrame) return "unknown";
         return "none";
     }
+
 
     private NoDrawCountDiagnosticIndirectGate evaluateNoDrawCountDiagnosticIndirectGate(int javaDrawCount, boolean cmdgenDispatchSubmitted) {
         if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) {
@@ -5100,6 +5236,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new NoDrawCountDiagnosticIndirectGate(true, "ready");
     }
 
+
     private void logNoDrawCountDiagnosticIndirectGate(NoDrawCountDiagnosticIndirectGate gate, boolean indirectDrawAllowedThisFrame) {
         if (!CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER) return;
         VulkanBerylDebugLog.rateLimited("cmdgen-no-drawcount-write-indirect-gate", "cmdgen no-drawCount-write indirect gate: indirectAllowedByNoDrawCountDiagnostic=" + gate.allowed()
@@ -5109,6 +5246,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
+
     private IndirectDrawGate evaluatePostCmdgenIndirectDrawGate(boolean cmdgenSampleValid,
                                                                boolean indirectSafetyAllowed,
                                                                String frameSafetyReason,
@@ -5116,7 +5254,7 @@ public final class VulkanBerylSectionDrawPipeline {
                                                                boolean cmdgenPostDispatchBarrierRecorded,
                                                                JavaDrawCountDiagnostic javaDrawCount,
                                                                int submittedDrawCount) {
-        if (!ENABLE_INDIRECT_DRAW) {
+        if (!ENABLE_INDIRECT_DRAW && !ENABLE_LODS) {
             return new IndirectDrawGate(false, "indirect_draw_disabled");
         }
         if (!cmdgenDispatchSubmitted) {
@@ -5143,6 +5281,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new IndirectDrawGate(true, "ready");
     }
 
+
     private boolean completedCmdgenSampleUsableForProduction(int visibleCount) {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         if (sample.validCommandCount() < 0 || sample.sampledDrawCount() < 0 || sample.safeVisibleCount() < 0) {
@@ -5158,6 +5297,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 && this.completedDebugSampleDrawPass == this.activeDrawPass;
     }
 
+
     private boolean pendingCmdgenSampleMatchesProduction(int visibleCount) {
         if (!this.debugSamplePending) {
             return false;
@@ -5170,11 +5310,15 @@ public final class VulkanBerylSectionDrawPipeline {
                 && this.pendingDebugSampleDrawPass == this.activeDrawPass;
     }
 
-    private String zeroValidCommandSkipReason(int visibleCount) {
+
+    private String zeroValidCommandSkipReason(int visibleCount, boolean cmdgenSampleValid) {
         if (!CMDGEN_DEBUG_READBACK && !this.controlledSmokeCommandReadbackScheduled) {
             return null;
         }
         if (!completedCmdgenSampleUsableForProduction(visibleCount)) {
+            return null;
+        }
+        if (!cmdgenSampleValid) {
             return null;
         }
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
@@ -5183,6 +5327,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return null;
     }
+
 
     private void logCmdgenZeroCommandReasonSplit(int visibleCount) {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
@@ -5200,6 +5345,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", geometryCapacityQuads=" + this.lastCmdGenConfigGeometryCapacityQuads, 30);
     }
 
+
     private String productionDrawSubmitReason(boolean cmdgenSampleValid, int visibleCount) {
         if (cmdgenSampleValid || completedCmdgenSampleUsableForProduction(visibleCount)) {
             return "submitted_real_commands";
@@ -5210,11 +5356,13 @@ public final class VulkanBerylSectionDrawPipeline {
         return "submitted_real_commands";
     }
 
+
     private int safeDrawCommandCapacity() {
         if (this.drawCommandBuffer == null || this.drawCommandBuffer.getId() == 0L) return 0;
         long capacity = this.drawCommandBuffer.getBufferSize() / DRAW_COMMAND_STRIDE_BYTES;
         return capacity > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) Math.max(0L, capacity);
     }
+
 
 
     private OpaqueDrawSubmission dispatchMetadataBindingProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, Buffer metadataProbeBuffer, int metadataBinding, String stage) {
@@ -5240,6 +5388,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return completeProbeDispatch(visibleCount, stage);
     }
 
+
     private OpaqueDrawSubmission dispatchBinding2ProbeBufferNoConfigProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
         if (pipeline == null) throw new IllegalStateException("cmdgen full-layout binding2 probe-buffer no-config probe pipeline missing: stage=" + stage);
         bindFullLayoutProbeDescriptors(pipeline, geometryData, renderList);
@@ -5253,6 +5402,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
         return completeProbeDispatch(visibleCount, stage);
     }
+
 
     private OpaqueDrawSubmission dispatchBinding2ProbeBufferConstProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
         if (pipeline == null) throw new IllegalStateException("cmdgen full-layout binding2 probe-buffer const probe pipeline missing: stage=" + stage);
@@ -5272,6 +5422,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
         return completeProbeDispatch(visibleCount, stage);
     }
+
 
     private OpaqueDrawSubmission dispatchBinding1AndBinding2NoConfigProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, Buffer binding2ProbeBuffer, String stage) {
         if (pipeline == null) throw new IllegalStateException("cmdgen full-layout binding1/binding2 no-config probe pipeline missing: stage=" + stage);
@@ -5293,6 +5444,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding2DescriptorRangeBytes=" + binding2ProbeBuffer.getBufferSize());
         return completeProbeDispatch(visibleCount, stage);
     }
+
 
     private OpaqueDrawSubmission dispatchBinding1AndBinding2ConstProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
         if (pipeline == null) throw new IllegalStateException("cmdgen full-layout binding1/binding2 const probe pipeline missing: stage=" + stage);
@@ -5319,6 +5471,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding2DescriptorRangeBytes=" + this.cmdGenBinding2ProbeBuffer.getBufferSize());
         return completeProbeDispatch(visibleCount, stage);
     }
+
 
     private OpaqueDrawSubmission dispatchMinimalSsboReadProbe(VkCommandBuffer commandBuffer, int visibleCount, ComputePipeline pipeline, Buffer buffer, int descriptorBinding, String shaderName, String stage, boolean uploadTinyWord) {
         if (pipeline == null) throw new IllegalStateException("cmdgen SSBO read probe pipeline missing: stage=" + stage);
@@ -5358,6 +5511,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return completeProbeDispatch(visibleCount, stage);
     }
 
+
     private OpaqueDrawSubmission dispatchFullLayoutProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ComputePipeline pipeline, String stage) {
         if (pipeline == null) throw new IllegalStateException("cmdgen full-layout probe pipeline missing: stage=" + stage);
         if (!this.cmdGenConfigUploaded) {
@@ -5373,6 +5527,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return completeProbeDispatch(visibleCount, stage);
     }
 
+
     private OpaqueDrawSubmission dispatchDenseLayoutNoopProbe(VkCommandBuffer commandBuffer, int visibleCount, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         if (this.commandGenDenseLayoutNoopProbePipeline == null) throw new IllegalStateException("cmdgen dense-layout noop probe pipeline missing");
         bindDenseLayoutNoopProbeDescriptors(this.commandGenDenseLayoutNoopProbePipeline, geometryData, renderList);
@@ -5384,6 +5539,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return completeProbeDispatch(visibleCount, "dense_layout_noop");
     }
 
+
     private void bindDenseLayoutNoopProbeDescriptors(ComputePipeline pipeline, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         ensureCmdGenUnusedBinding2Buffer();
         bindPipelineStorageBinding(pipeline, CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
@@ -5394,6 +5550,7 @@ public final class VulkanBerylSectionDrawPipeline {
         bindPipelineStorageBinding(pipeline, CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
     }
 
+
     private void bindFullLayoutProbeDescriptors(ComputePipeline pipeline, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         ensureCmdgenBinding2ProbeBuffer();
         bindPipelineStorageBinding(pipeline, CMDGEN_RENDER_LIST_BINDING, renderList.getBuffer(), "renderList.buffer");
@@ -5403,6 +5560,7 @@ public final class VulkanBerylSectionDrawPipeline {
         bindPipelineStorageBinding(pipeline, CMDGEN_DRAW_COUNT_BINDING, this.drawCountBuffer, "drawCountBuffer");
         bindPipelineStorageBinding(pipeline, CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
     }
+
 
     private void bindPipelineStorageBinding(ComputePipeline pipeline, int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
@@ -5417,6 +5575,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (ubo == null) throw new IllegalStateException("Section cmdgen full-layout probe descriptor missing: name=" + label + ", binding=" + binding);
         ubo.getBufferSlice().set(buffer, 0L, (int) bufferSize);
     }
+
 
     private void logPipelineBindingState(ComputePipeline pipeline, int binding, Buffer expectedBuffer, String stage, String label) {
         UBO ubo = pipeline.getUBO(candidate -> candidate.binding == binding);
@@ -5435,6 +5594,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", bufferMatches=" + (expectedBufferId == actualBufferId)
                 + ", descriptorRangeValid=" + (expectedSize > 0L && expectedSize <= VulkanBerylSectionGeometryData.MAX_VULKANMOD_BERYL_DESCRIPTOR_RANGE_BYTES));
     }
+
 
     private OpaqueDrawSubmission stopCmdgenIsolation(int visibleCount, String reason) {
         VulkanBerylDebugLog.once(reason, "cmdgen isolation stop: " + reason);
@@ -5466,6 +5626,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylLodBringupDiagnostics.updateCmdgenSample(false, reason);
         return new OpaqueDrawSubmission(visibleCount, "indirect_generated_per_section", -1L, 0, this.lastCompletedDebugSample.sampledCommandCount(), this.lastCompletedDebugSample.invalidSampledCommandCount(), this.lastCompletedDebugSample.sampledQuadCount(), this.debugSamplePending, reason);
     }
+
 
     /**
      * Complete a cmdgen probe dispatch that actually recorded vkCmdDispatch.
@@ -5508,6 +5669,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 "cmdgen_probe_dispatched:" + stage);
     }
 
+
     private static CmdgenIsolationStage selectedCmdgenIsolationStage() {
         CmdgenIsolationStage selected = null;
         selected = selectCmdgenIsolationStage(selected, CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE, CmdgenIsolationStage.READ_BINDING0_ONLY_NO_OUTPUT_WRITE);
@@ -5526,6 +5688,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return selected;
     }
 
+
     private static CmdgenIsolationStage selectCmdgenIsolationStage(CmdgenIsolationStage current, boolean enabled, CmdgenIsolationStage candidate) {
         if (!enabled) return current;
         if (current != null) {
@@ -5534,6 +5697,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return candidate;
     }
+
 
     private enum CmdgenIsolationStage {
         READ_BINDING0_ONLY_NO_OUTPUT_WRITE("VOXY_VULKAN_BERYL_CMDGEN_SHADER_READ_BINDING0_ONLY_NO_OUTPUT_WRITE", CMDGEN_FLAG_READ_BINDING0_ONLY_NO_OUTPUT_WRITE, Integer.BYTES),
@@ -5567,6 +5731,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return this == READ_METADATA_ONLY || this == WRITE_DRAWS_ONLY;
         }
     }
+
 
 
     private void logRenderListVisibilityDiagnostics(VulkanBerylViewportRenderList renderList,
@@ -5617,6 +5782,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.stateLimited("render-list-visibility-diagnostics", message, stateSnapshot);
     }
 
+
     private void logVisibleCountZeroReason(VulkanBerylViewportRenderList renderList,
                                            int rawVisibleCount,
                                            int visibleCount,
@@ -5649,6 +5815,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ";noDrawCountFullCmdgen=" + noDrawCountFullCmdgen;
         VulkanBerylDebugLog.stateLimited("visible-count-zero-diagnostic", message, stateSnapshot);
     }
+
 
     private ControlledRenderListSmoke recordControlledRenderListSmoke(VkCommandBuffer commandBuffer, VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         ControlledRenderListSmoke smoke = findControlledRenderListSmokeSection(viewport, geometryData, renderList);
@@ -5691,6 +5858,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return smoke;
     }
 
+
     private void logControlledRenderListWordsIfChanged(int word0, int word1, int word2, int word3, int word4, int entry0ByteOffset) {
         String diagnostic = "word0=" + Integer.toUnsignedLong(word0)
                 + " word1=" + Integer.toUnsignedLong(word1)
@@ -5706,6 +5874,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.always("Controlled render-list words before cmdgen: " + diagnostic);
     }
 
+
     private static boolean cpuRenderListSelectionDiagnosticEnabled() {
         return controlledRenderListDiagnosticEnabled()
                 || REAL_LOD_VISIBILITY_DIAGNOSTIC
@@ -5714,6 +5883,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 || VulkanBerylDebugLog.TRACE_LOGS
                 || VulkanBerylDebugLog.VERBOSE_LOGS;
     }
+
 
     private ControlledRenderListSmoke timedFindControlledRenderListSmokeSection(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         long startNanos = System.nanoTime();
@@ -5724,15 +5894,18 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private void addDiagnosticCpuNanos(long nanos) {
         if (nanos > 0L) {
             this.diagnosticCpuNanosThisPass += nanos;
         }
     }
 
+
     private void publishDiagnosticCpuTiming() {
         lastDiagnosticCpuMs = this.diagnosticCpuNanosThisPass / 1_000_000.0;
     }
+
 
     private ControlledRenderListSmoke findControlledRenderListSmokeSection(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         if (renderList.getMaxEntryCount() <= 0) {
@@ -5875,6 +6048,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return ControlledRenderListSmoke.failed(firstOutOfBounds == null ? "quad_bounds_invalid" : firstOutOfBounds, candidateCount, selectedDistance);
     }
 
+
     private VisibilityCandidateSelection findClipVisibleCandidate(VulkanBerylViewport viewport, VulkanBerylSectionGeometryData geometryData, int sectionCount, long usedGeometryBytes) {
         int candidateCount = 0;
         int testedCount = 0;
@@ -5942,10 +6116,12 @@ public final class VulkanBerylSectionDrawPipeline {
         return new VisibilityCandidateSelection(candidateCount, testedCount, clipVisibleCount, selectedSectionId, selectedQuadIndex, selectedSectionQuadStart, selectedSectionQuadCount, selectedClipLooksVisible, rejectReason, selectedDistance);
     }
 
+
     private static String fallbackSelectionStrategy(int candidateCount, int selectedSectionId) {
         if (REAL_LOD_SINGLE_QUAD_WORLD_PROBE) return "fallback_nearest_non_empty";
         return candidateCount == 1 && selectedSectionId == 0 ? "first_section" : "fallback_nearest_non_empty";
     }
+
 
     private static void logCachedExpensiveDiagnosticSelection(String action, ControlledRenderListSmoke smoke) {
         if (smoke == null || !smoke.safe()) return;
@@ -5962,6 +6138,7 @@ public final class VulkanBerylSectionDrawPipeline {
                         + ", rejectReason=" + smoke.selectedVisibilityCandidateRejectReason()
                         + ", fallbackUsedOnlyAfterNoClipVisibleCandidate=" + smoke.fallbackUsedOnlyAfterNoClipVisibleCandidate());
     }
+
 
     private void logControlledSmokeDiagnosticIfChanged(VulkanBerylSectionGeometryData geometryData, ControlledRenderListSmoke smoke) {
         int sectionCount = Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount());
@@ -6007,6 +6184,39 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
+    private void logCpuMirrorMetadataDiagnostic(VulkanBerylSectionGeometryData geometryData, String stage) {
+        if (geometryData == null) {
+            VulkanBerylDebugLog.rateLimited("cpu-mirror-metadata-diagnostic:" + stage, "CPU mirror metadata diagnostic: stage=" + stage + ", geometryData=null", 60);
+            return;
+        }
+        int sectionCount = Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount());
+        int nonZeroMetadataSections = 0;
+        long totalOpaqueQuadCount = 0L;
+        long totalTranslucentQuadCount = 0L;
+        int firstNonZeroSection = -1;
+        for (int sectionId = 0; sectionId < sectionCount; sectionId++) {
+            if (!geometryData.hasNonZeroSectionMetadata(sectionId)) {
+                continue;
+            }
+            if (firstNonZeroSection < 0) {
+                firstNonZeroSection = sectionId;
+            }
+            nonZeroMetadataSections++;
+            totalOpaqueQuadCount += extractOpaqueQuadCount(geometryData, sectionId);
+            totalTranslucentQuadCount += extractTranslucentQuadCount(geometryData, sectionId);
+        }
+        VulkanBerylDebugLog.rateLimited("cpu-mirror-metadata-diagnostic:" + stage, "CPU mirror metadata diagnostic: stage=" + stage
+                + " sectionCount=" + sectionCount
+                + " nonZeroMetadataSections=" + nonZeroMetadataSections
+                + " totalOpaqueQuadCount=" + totalOpaqueQuadCount
+                + " totalTranslucentQuadCount=" + totalTranslucentQuadCount
+                + " firstNonZeroSection=" + firstNonZeroSection
+                + " mirrorWriteCount=" + geometryData.getSectionMetadataMirrorWriteCount()
+                + " usedGeometryBytes=" + geometryData.getUsedGeometryBytes()
+                + " maxSectionCount=" + geometryData.getMaxSectionCount(), 60);
+    }
+
     private static double distanceSectionToBase(VulkanBerylSectionGeometryData geometryData, int sectionId, VulkanBerylViewport viewport) {
         int rawPosA = geometryData.getSectionMetadataInt(sectionId, 0);
         int rawPosB = geometryData.getSectionMetadataInt(sectionId, 1);
@@ -6024,6 +6234,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
+
     private static int[] decodeLodPosition(int rawPosA, int rawPosB) {
         int y = (rawPosA << 4) >> 24;
         int x = (rawPosB << 4) >> 8;
@@ -6033,15 +6244,18 @@ public final class VulkanBerylSectionDrawPipeline {
         return new int[]{x, y, z};
     }
 
+
     private static String formatDouble(double value) {
         if (Double.isNaN(value)) return "NaN";
         if (Double.isInfinite(value)) return value > 0.0 ? "Infinity" : "-Infinity";
         return String.format(java.util.Locale.ROOT, "%.3f", value);
     }
 
+
     private long extractTranslucentQuadCount(VulkanBerylSectionGeometryData geometryData, int sectionId) {
         return geometryData.getSectionMetadataInt(sectionId, 4) & 0xFFFFL;
     }
+
 
     private long extractOpaqueQuadCount(VulkanBerylSectionGeometryData geometryData, int sectionId) {
         long total = 0L;
@@ -6059,10 +6273,82 @@ public final class VulkanBerylSectionDrawPipeline {
         return total;
     }
 
+
+    private int buildIndirectCommandsFromCpuMirror(
+            VkCommandBuffer commandBuffer,
+            Buffer indirectBuffer,
+            VulkanBerylSectionGeometryData geometryData,
+            VulkanBerylViewportRenderList renderList,
+            int maxCommands) {
+        if (!ENABLE_LODS || !CMDGEN_DEBUG_READBACK) return 0;
+        if (geometryData == null || renderList == null || indirectBuffer == null) return 0;
+        if (geometryData.getSectionMetadataMirrorWriteCount() <= 0L) return 0;
+
+        int sectionCount = Math.min(geometryData.getSectionCount(), geometryData.getMaxSectionCount());
+        int commandCount = 0;
+        for (int sectionId = 0; sectionId < sectionCount && commandCount < maxCommands; sectionId++) {
+            if (!geometryData.hasNonZeroSectionMetadata(sectionId)) continue;
+            long opaqueQuadCount = extractOpaqueQuadCount(geometryData, sectionId);
+            if (opaqueQuadCount <= 0L) continue;
+            commandCount++;
+        }
+        if (commandCount == 0) return 0;
+
+        int renderListWords = 1 + commandCount;
+        int renderListBytes = renderListWords * Integer.BYTES;
+        int drawCommandBytes = commandCount * DRAW_COMMAND_STRIDE_BYTES;
+        if (renderListBytes > 65536 || drawCommandBytes > 65536) {
+            VulkanBerylDebugLog.rateLimited("cpu-mirror-draw-commands-vkCmdUpdateBuffer-overflow",
+                    "CPU mirror DrawCommands vkCmdUpdateBuffer overflow risk: renderListBytes=" + renderListBytes
+                            + " drawCommandBytes=" + drawCommandBytes
+                            + " commandCount=" + commandCount, 60);
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            ByteBuffer renderListData = stack.malloc(renderListBytes).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            renderListData.putInt(0, commandCount);
+            ByteBuffer drawCommands = stack.malloc(drawCommandBytes).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            int cmdIndex = 0;
+            for (int sectionId = 0; sectionId < sectionCount && cmdIndex < commandCount; sectionId++) {
+                if (!geometryData.hasNonZeroSectionMetadata(sectionId)) continue;
+                long opaqueQuadCount = extractOpaqueQuadCount(geometryData, sectionId);
+                if (opaqueQuadCount <= 0L) continue;
+                renderListData.putInt(4 + cmdIndex * Integer.BYTES, sectionId);
+                int cmdOffset = cmdIndex * DRAW_COMMAND_STRIDE_BYTES;
+                long vertexCount = opaqueQuadCount * 6L;
+                drawCommands.putInt(cmdOffset, (int) Math.min(vertexCount, 0xFFFFFFFFL));
+                drawCommands.putInt(cmdOffset + 4, 1);
+                drawCommands.putInt(cmdOffset + 8, 0);
+                drawCommands.putInt(cmdOffset + 12, cmdIndex);
+                cmdIndex++;
+            }
+            VK10.vkCmdUpdateBuffer(commandBuffer, renderList.getBuffer().getId(), 0L, renderListData);
+            VK10.vkCmdUpdateBuffer(commandBuffer, indirectBuffer.getId(), 0L, drawCommands);
+            VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack)
+                    .sType(VK10.VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                    .srcAccessMask(VK10.VK_ACCESS_TRANSFER_WRITE_BIT)
+                    .dstAccessMask(VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK10.VK_ACCESS_SHADER_READ_BIT);
+            VK10.vkCmdPipelineBarrier(
+                    commandBuffer,
+                    VK10.VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK10.VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK10.VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                    0, barrier, null, null);
+        }
+        VulkanBerylDebugLog.rateLimited("cpu-mirror-draw-commands-built",
+                "CPU mirror DrawCommands built: commandCount=" + commandCount
+                        + " sectionCount=" + sectionCount
+                        + " maxCommands=" + maxCommands
+                        + " renderListBytes=" + renderListBytes
+                        + " drawCommandBytes=" + drawCommandBytes
+                        + " metadataWriteCount=" + geometryData.getSectionMetadataMirrorWriteCount(), 60);
+        return commandCount;
+    }
+
+
     private record VisibilityCandidateSelection(int candidateCount, int testedCount, int clipVisibleCount, int sectionId, long quadIndex, int sectionQuadStart, long sectionQuadCount, boolean clipLooksVisible, String rejectReason, double distanceToBase) {
         static VisibilityCandidateSelection notRun() { return new VisibilityCandidateSelection(0, 0, 0, -1, -1L, 0, 0L, false, (ENABLE_EXPENSIVE_WORLD_DRAW_DIAGNOSTICS && REAL_LOD_VISIBILITY_DIAGNOSTIC) ? "not_found" : "not_run", Double.NaN); }
         boolean found() { return this.sectionId >= 0 && this.quadIndex >= 0L && this.clipLooksVisible; }
     }
+
 
     private record ControlledRenderListSmoke(boolean enabled, boolean safe, int sectionId, int quadStart, long quadCount, String reason, String selectionStrategy, int candidateCount, double distanceToBase, VisibilityCandidateSelection visibilitySelection) {
         static ControlledRenderListSmoke disabled() { return new ControlledRenderListSmoke(false, false, -1, 0, 0L, "disabled", "fallback", 0, Double.NaN, VisibilityCandidateSelection.notRun()); }
@@ -6086,6 +6372,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     && !this.visibilitySelection.found();
         }
     }
+
 
     public void free() {
         if (this.freed) return;
@@ -6236,6 +6523,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         this.resourcesBound = false;
     }
+
     private static long readTempFileSize(Path path) {
         try {
             return java.nio.file.Files.exists(path) ? java.nio.file.Files.size(path) : -1L;
@@ -6244,6 +6532,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return -1L;
         }
     }
+
 
 
 
@@ -6261,6 +6550,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return descriptors;
     }
 
+
     private static List<ImageDescriptor> createManualDrawImageDescriptors() {
         return List.of(
                 new ImageDescriptor(7, "sampler2D", "blockModelAtlas", VTextureSelector.getTextureIdx("Sampler0")),
@@ -6268,11 +6558,13 @@ public final class VulkanBerylSectionDrawPipeline {
         );
     }
 
+
     private void bindDrawTextureDescriptors() {
         VTextureSelector.bindShaderTextures(this.graphicsPipeline);
         bindWhiteTextureFallback(0, "blockModelAtlas");
         bindWhiteTextureFallback(7, "depthTex");
     }
+
 
     private static void bindWhiteTextureFallback(int textureIndex, String label) {
         if (VTextureSelector.getImage(textureIndex) != null) return;
@@ -6282,6 +6574,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", fallback=VTextureSelector.whiteTexture"
                 + ", depthSamplingEnabled=" + DRAW_ENABLE_DEPTH_TEX);
     }
+
 
     private void ensureCommandBuffers(int maxEntryCount) {
         if (maxEntryCount <= 0) throw new IllegalArgumentException("maxEntryCount must be positive");
@@ -6350,6 +6643,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.drawCommandCapacity = maxEntryCount;
     }
 
+
     private void ensureCmdGenConfigBuffer() {
         if (this.cmdGenConfigBuffer != null) {
             if (this.cmdGenConfigBuffer.getBufferSize() < CMDGEN_CONFIG_SIZE_BYTES) {
@@ -6364,6 +6658,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", capacityBytes=" + this.cmdGenConfigBuffer.getBufferSize()
                 + ", usage=" + cmdGenConfigUsageString());
     }
+
 
     private void ensureCmdGenUnusedBinding2Buffer() {
         if (this.cmdGenUnusedBinding2Buffer != null) {
@@ -6381,41 +6676,51 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
+
     private static boolean isExplicitCmdgenShaderSelectionDiagnosticActive() {
         return activeCmdgenShaderSelectionEnvVar() != null;
     }
+
 
     private static boolean bindDrawCountToScratchActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && (CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER || usePassingScratchBindingAsRealDrawCountDescriptorActive());
     }
 
+
     private static boolean largeDrawCountBufferActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER;
     }
+
 
     private static boolean drawCountWithIndirectUsageActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE;
     }
 
+
     private static boolean useScratchAllocationForRealDrawCountActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT;
     }
+
 
     private static boolean usePassingScratchBindingAsRealDrawCountDescriptorActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive();
     }
 
+
     private static boolean skipDrawCountClearBeforeDispatchActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH;
     }
+
 
     private static boolean disableAnyDrawCountConsumerPathActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH;
     }
 
+
     private static boolean drawCountFullDescriptorRangeActive() {
         return isExplicitCmdgenShaderSelectionDiagnosticActive() && CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER;
     }
+
 
     private void allocateRealDrawCountBuffer(long oldDrawCountBufferId) {
         if (usePassingScratchBindingAsRealDrawCountDescriptorActive()) {
@@ -6438,6 +6743,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.lastOldRealDrawCountBufferStillExists = oldDrawCountBufferId != 0L;
         logDiagnosticDrawCountAllocation(drawCountBytes, oldDrawCountBufferId, scratchStyle);
     }
+
 
     private void logDiagnosticDrawCountAllocation(long drawCountBytes, long oldDrawCountBufferId, boolean scratchStyle) {
         if (!isExplicitCmdgenShaderSelectionDiagnosticActive()) {
@@ -6466,6 +6772,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static void logInactiveDrawCountDiagnosticEnvVars() {
         if (CMDGEN_BIND_DRAWCOUNT_TO_SCRATCH_BUFFER || CMDGEN_USE_LARGE_DRAWCOUNT_BUFFER || CMDGEN_DRAWCOUNT_DESCRIPTOR_RANGE_FULL_BUFFER || CMDGEN_USE_DRAWCOUNT_BUFFER_WITH_INDIRECT_USAGE || CMDGEN_USE_SCRATCH_ALLOCATION_FOR_REAL_DRAWCOUNT || CMDGEN_USE_PASSING_SCRATCH_BINDING_AS_REAL_DRAWCOUNT_DESCRIPTOR || CMDGEN_SKIP_DRAWCOUNT_CLEAR_BEFORE_DISPATCH || CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH) {
             VulkanBerylDebugLog.once("cmdgen-drawcount-diagnostic-env-inactive", "cmdgen drawCount buffer diagnostic env var ignored because no explicit cmdgen shader-selection env var is active: scratch="
@@ -6480,6 +6787,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private Buffer cmdgenDrawCountDescriptorBuffer() {
         if (usePassingScratchBindingAsRealDrawCountDescriptorActive()) {
             ensurePassingScratchDrawCountIsCurrent();
@@ -6491,6 +6799,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return this.drawCountBuffer;
     }
+
 
     private void ensurePassingScratchDrawCountIsCurrent() {
         ensureCmdgenDrawCountScratchBuffer();
@@ -6510,9 +6819,11 @@ public final class VulkanBerylSectionDrawPipeline {
         logPassingScratchAsRealAllocation(oldDrawCountBufferId);
     }
 
+
     private String drawCountDescriptorLabel() {
         return bindDrawCountToScratchActive() ? "cmdgenDrawCountScratchBuffer" : "drawCountBuffer";
     }
+
 
     private void logPassingScratchAsRealAllocation(long oldDrawCountBufferId) {
         VulkanBerylDebugLog.once("cmdgen-passing-scratch-as-real-drawcount-allocation:" + this.drawCountAllocationGeneration, "cmdgen passing scratch binding is current drawCountBuffer: shaderSelectionEnv=" + activeCmdgenShaderSelectionEnvVar()
@@ -6525,6 +6836,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", oldRealDrawCountBufferId=" + oldDrawCountBufferId
                 + ", oldRealDrawCountBufferStillExists=" + (oldDrawCountBufferId != 0L));
     }
+
 
     private void logPassingScratchAsRealComparison() {
         if (!usePassingScratchBindingAsRealDrawCountDescriptorActive()) return;
@@ -6539,6 +6851,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", usedRealClearPath=" + this.drawCountUsedRealClearPathThisFrame
                 + ", usedScratchClearPath=" + this.drawCountUsedScratchClearPathThisFrame);
     }
+
 
     private void logDrawCountBarrierDiagnostic(String stage, boolean recorded, int srcStageMask, int dstStageMask, int srcAccessMask, int dstAccessMask) {
         if (!isExplicitCmdgenShaderSelectionDiagnosticActive()) return;
@@ -6562,6 +6875,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", dstAccess=" + accessMaskString(dstAccessMask));
     }
 
+
     private void ensureCmdgenDrawCountScratchBuffer() {
         if (this.cmdgenDrawCountScratchBuffer != null && this.cmdgenDrawCountScratchBuffer.getBufferSize() >= CMDGEN_DIAGNOSTIC_DRAWCOUNT_CAPACITY_BYTES) return;
         if (this.cmdgenDrawCountScratchBuffer != null) this.cmdgenDrawCountScratchBuffer.scheduleFree();
@@ -6576,6 +6890,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", usage=" + bufferUsageString(this.cmdgenDrawCountScratchBufferUsageFlags)
                 + ", binding4ReboundToScratch=true");
     }
+
 
     private void logCmdgenDrawCountDescriptorOverride(Buffer descriptorBuffer, String stage) {
         if (!isExplicitCmdgenShaderSelectionDiagnosticActive()) return;
@@ -6598,9 +6913,11 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static long alignedFillBytes(long bufferBytes) {
         return Math.max(4L, bufferBytes & ~3L);
     }
+
 
     private void clearDrawCommandState(VkCommandBuffer commandBuffer) {
         logDrawCountBarrierDiagnostic("before_clear", false, 0, 0, 0, 0);
@@ -6660,6 +6977,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
+
     private void ensureCmdgenTinyMetadataProbeBuffer() {
         if (this.cmdGenTinyMetadataProbeBuffer != null) return;
         this.cmdGenTinyMetadataProbeBuffer = new Buffer("voxy_vulkanberyl_cmdgen_tiny_metadata_probe",
@@ -6673,6 +6991,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sectionMetaStrideBytes=" + VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE);
     }
 
+
     private void uploadTinyMetadataProbeBuffer(VkCommandBuffer commandBuffer) {
         ensureCmdgenTinyMetadataProbeBuffer();
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -6680,6 +6999,7 @@ public final class VulkanBerylSectionDrawPipeline {
             VK10.vkCmdUpdateBuffer(commandBuffer, this.cmdGenTinyMetadataProbeBuffer.getId(), 0L, words);
         }
     }
+
 
     private void ensureCmdgenBinding2ProbeBuffer() {
         if (this.cmdGenBinding2ProbeBuffer != null) {
@@ -6697,6 +7017,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sectionMetaStrideBytes=" + VulkanBerylSectionGeometryData.SECTION_METADATA_SIZE);
     }
 
+
     private void uploadCmdgenBinding2ProbeBuffer(VkCommandBuffer commandBuffer) {
         ensureCmdgenBinding2ProbeBuffer();
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -6704,6 +7025,7 @@ public final class VulkanBerylSectionDrawPipeline {
             VK10.vkCmdUpdateBuffer(commandBuffer, this.cmdGenBinding2ProbeBuffer.getId(), 0L, words);
         }
     }
+
 
     private void ensureAndBindCmdgenRenderListAltProbeBuffer() {
         if (this.cmdGenRenderListAltProbeBuffer == null) {
@@ -6721,6 +7043,7 @@ public final class VulkanBerylSectionDrawPipeline {
         logCmdgenRenderListDescriptorState("alt_probe", this.cmdGenRenderListAltProbeBuffer, this.cmdGenRenderListAltProbeBuffer.getBufferSize(), true);
     }
 
+
     private void recordCmdgenRenderListAltProbeUpload(VkCommandBuffer commandBuffer) {
         ensureAndBindCmdgenRenderListAltProbeBuffer();
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -6735,13 +7058,16 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sameCommandBufferAsDispatch=true");
     }
 
+
     private static int cmdGenRenderListAltProbeCapacityEntries() {
         return 4;
     }
 
+
     private static long cmdGenRenderListAltProbeSizeBytes() {
         return (long) (cmdGenRenderListAltProbeCapacityEntries() + 1) * Integer.BYTES;
     }
+
 
     private void logCmdgenRenderListDescriptorState(String source, Buffer buffer, long rangeBytes, boolean reboundThisFrame) {
         long bufferId = buffer == null ? 0L : buffer.getId();
@@ -6761,6 +7087,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.always("cmdgen render-list descriptor state: " + diagnostic);
     }
 
+
     private void logCmdgenCommandBufferUse(String stage, VkCommandBuffer uploadCommandBuffer, VkCommandBuffer dispatchCommandBuffer, boolean descriptorReboundThisFrame) {
         boolean sameCommandBuffer = uploadCommandBuffer == dispatchCommandBuffer;
         String diagnostic = "stage=" + stage
@@ -6776,6 +7103,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.always("cmdgen render-list command-buffer state: " + diagnostic);
     }
 
+
     private static boolean cmdgenRenderListDescriptorDiagnosticsEnabled() {
         return ENABLE_CMDGEN_DISPATCH
                 || CMDGEN_DESCRIPTOR_NOOP_BIND_PROBE
@@ -6787,6 +7115,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 || VulkanBerylDebugLog.TRACE_LOGS
                 || VulkanBerylDebugLog.VERBOSE_LOGS;
     }
+
 
     private String validateCmdgenDispatchInputs(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, int visibleCount, ControlledRenderListSmoke controlledSmoke, boolean skipControlledSectionValidation, CmdgenIsolationStage isolationStage) {
         if (this.commandGenPipeline == null) return "cmdgen_pipeline_missing";
@@ -6855,6 +7184,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return null;
     }
 
+
     private void barrierTransferToCompute(VkCommandBuffer commandBuffer) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkMemoryBarrier.Buffer transferToCompute = VkMemoryBarrier.calloc(1, stack)
@@ -6867,6 +7197,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     0, transferToCompute, null, null);
         }
     }
+
 
     private void barrierTransferToComputeForCmdgenNonDrawCountTransfers(VkCommandBuffer commandBuffer, Buffer additionalBuffer) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -6887,6 +7218,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private int appendTransferToComputeBufferBarrier(VkBufferMemoryBarrier.Buffer barriers, int index, Buffer buffer) {
         if (buffer == null) return index;
         barriers.get(index)
@@ -6901,6 +7233,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return index + 1;
     }
 
+
     private void logCmdgenProbeTransferBarrierAfterUploads(String stage, boolean readsTinyMetadataProbe, boolean readsBinding2Probe, boolean readsConfig) {
         VulkanBerylDebugLog.once("cmdgen-transfer-barrier-after-uploads:" + stage, "cmdgen probe transfer barrier placed after uploads: stage=" + stage
                 + ", srcStage=TRANSFER"
@@ -6913,6 +7246,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", beforeDispatch=true");
     }
 
+
     private void validateDrawCommandBuffer(int visibleCount) {
         if (this.drawCommandBuffer == null) throw new IllegalStateException("drawCommandBuffer must not be null");
         if (this.drawCommandBuffer.getId() == 0L) throw new IllegalStateException("drawCommandBuffer has invalid Vulkan buffer id");
@@ -6922,12 +7256,14 @@ public final class VulkanBerylSectionDrawPipeline {
         if (this.drawCommandBuffer.getBufferSize() < requiredBytes) throw new IllegalStateException("drawCommandBuffer is too small for visible draws");
     }
 
+
     private void logDebugReadbackIsolationDiagnostics(String mode, boolean scheduleCalled, boolean readbackVulkanCommandRecorded, boolean debugSamplePendingChanged) {
         VulkanBerylDebugLog.once("cmdgen-debug-readback-isolation", "cmdgen debug readback isolation: mode=" + mode
                 + ", scheduleCalled=" + scheduleCalled
                 + ", readbackVulkanCommandRecorded=" + readbackVulkanCommandRecorded
                 + ", debugSamplePendingChanged=" + debugSamplePendingChanged);
     }
+
 
     private String geometryDiagnosticStaleReason(long selectedQuadIndex, long selectedByteOffset, long currentSourceBufferId, long currentGeometrySyncGeneration, long currentFrameId, int currentRendererFrameSlot) {
         if (this.geometryDiagnosticReadbackScheduled && !this.geometryDiagnosticReadbackCompleted) {
@@ -6967,6 +7303,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return "none";
     }
 
+
     private String geometryDiagnosticStateStaleReason(long quadIndex, long byteOffset, long sourceBufferId, long geometrySyncGeneration, DrawPass drawPass,
                                                       long selectedQuadIndex, long selectedByteOffset, long currentSourceBufferId, long currentGeometrySyncGeneration) {
         if (geometrySyncGeneration != 0L
@@ -6987,6 +7324,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         return "none";
     }
+
 
     private void clearGeometryDiagnosticReadbackState(String staleReason) {
         this.geometryDiagnosticStaleCleared = true;
@@ -7014,6 +7352,7 @@ public final class VulkanBerylSectionDrawPipeline {
         this.geometryDiagnosticCompletedRaw = 0L;
         this.geometryDiagnosticRejectReason = staleReason;
     }
+
 
     private ScheduledDebugReadback scheduleDebugCommandReadback(VkCommandBuffer commandBuffer, int requestedSampledCommandCount, int visibleCount, VulkanBerylSectionGeometryData geometryData, long geometryDiagnosticQuadIndex, long currentFrameId) {
         long geometryDiagnosticByteOffset = geometryDiagnosticQuadIndex < 0L ? -1L : Math.multiplyExact(geometryDiagnosticQuadIndex, Long.BYTES);
@@ -7284,6 +7623,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new ScheduledDebugReadback(copyDrawCommands, copyDrawCommands ? "scheduled" : "command_copy_disabled", copyDrawCommands ? commandCopyBytes : 0L, countCopyBytes, false, false, "none", copyDrawCommands ? safeRendererFrameSlot() : -1, copyDrawCommands ? commandBuffer.address() : 0L, copyDrawCommands ? this.controlledSmokeCommandGeneration : -1L, copyDrawCommands ? readbackDrawCommandSourceBuffer.getId() : 0L);
     }
 
+
     private static String bufferUsageString(int usageFlags) {
         List<String> usages = new ArrayList<>();
         if ((usageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0) usages.add("STORAGE");
@@ -7292,6 +7632,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if ((usageFlags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0) usages.add("TRANSFER_SRC");
         return usages.isEmpty() ? "0" : String.join("|", usages);
     }
+
 
     private static String pipelineStageMaskString(int stageMask) {
         if (stageMask == 0) return "none";
@@ -7303,6 +7644,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return stages.isEmpty() ? Integer.toString(stageMask) : String.join("|", stages);
     }
 
+
     private static String accessMaskString(int accessMask) {
         if (accessMask == 0) return "none";
         List<String> accesses = new ArrayList<>();
@@ -7312,6 +7654,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if ((accessMask & VK10.VK_ACCESS_INDIRECT_COMMAND_READ_BIT) != 0) accesses.add("INDIRECT_COMMAND_READ");
         return accesses.isEmpty() ? Integer.toString(accessMask) : String.join("|", accesses);
     }
+
 
     private void recordCmdgenSampleSchedule(ScheduledDebugReadback scheduledDebugReadback, long frameId, CmdgenCommandSnapshot snapshot) {
         this.cmdgenSampleScheduled = true;
@@ -7332,6 +7675,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private void recordCompletedDebugSampleForPass(DrawPass drawPass, DrawCommandDebugSample sample) {
         this.lastObservedCompletedDebugSampleDrawPass = drawPass;
         this.lastObservedCompletedDebugSampleRejectReason = drawPass == this.activeDrawPass ? "none" : "draw_pass_mismatch";
@@ -7349,25 +7693,31 @@ public final class VulkanBerylSectionDrawPipeline {
         refreshActiveCompletedDebugSample();
     }
 
+
     private DrawPass preferredDiagnosticReadbackPass() {
         return (REAL_LOD_SINGLE_QUAD_WORLD_PROBE || REAL_QUAD_READ_CLIPSPACE_PROBE) ? DrawPass.OPAQUE : this.activeDrawPass;
     }
+
 
     private boolean diagnosticReadbackAllowedForActivePass() {
         return this.activeDrawPass == preferredDiagnosticReadbackPass();
     }
 
+
     private static String diagnosticReadbackPassName(DrawPass drawPass) {
         return drawPass == DrawPass.TRANSLUCENT ? "translucent" : "opaque";
     }
+
 
     private long pendingDebugSampleFrameIdForPass(DrawPass drawPass) {
         return this.debugSamplePending && this.pendingDebugSampleDrawPass == drawPass ? this.pendingDebugSampleFrameId : -1L;
     }
 
+
     private long completedDebugSampleFrameIdForPass(DrawPass drawPass) {
         return drawPass == DrawPass.TRANSLUCENT ? this.completedTranslucentDebugSampleFrameId : this.completedOpaqueDebugSampleFrameId;
     }
+
 
     private void refreshActiveCompletedDebugSample() {
         if (this.activeDrawPass == DrawPass.TRANSLUCENT) {
@@ -7385,11 +7735,13 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private boolean sampleAcceptedForActivePass() {
         return this.lastCompletedDebugSample.sampledCommandCount() > 0
                 && this.completedDebugSampleDrawPass == this.activeDrawPass
                 && isCmdgenSampleValid();
     }
+
 
     private String sampleRejectedReasonForActivePass() {
         if (!diagnosticReadbackAllowedForActivePass()) {
@@ -7402,10 +7754,12 @@ public final class VulkanBerylSectionDrawPipeline {
         return "ready".equals(gateReason) ? "none" : gateReason;
     }
 
+
     private long passDebugSampleQuadCount(DrawPass drawPass) {
         DrawCommandDebugSample sample = drawPass == DrawPass.TRANSLUCENT ? this.lastCompletedTranslucentDebugSample : this.lastCompletedOpaqueDebugSample;
         return sample.sampledCommandCount() > 0 ? sample.sampledQuadCount() : -1L;
     }
+
 
     private void consumePendingDebugCommandSampleIfReady(int currentFrameId) {
         if (!this.debugSamplePending) {
@@ -7525,6 +7879,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
+
     private static int safeRendererFrameSlot() {
         try {
             return Renderer.getCurrentFrame();
@@ -7532,6 +7887,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return -1;
         }
     }
+
 
     private static long safeCurrentCommandBufferAddress() {
         try {
@@ -7541,6 +7897,7 @@ public final class VulkanBerylSectionDrawPipeline {
             return 0L;
         }
     }
+
 
     private void markPendingGeometryReadback(int currentFrameId, int currentRendererFrameSlot) {
         if (!this.geometryDiagnosticReadbackScheduled || this.geometryDiagnosticReadbackCompleted) return;
@@ -7562,6 +7919,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
         this.geometryDiagnosticRejectReason = "pending_gpu_completion";
     }
+
 
     private void consumePendingGeometryQuadReadbackIfReady(long currentFrameId, VulkanBerylSectionGeometryData geometryData, long selectedQuadIndex, long selectedByteOffset) {
         if (!this.geometryDiagnosticReadbackScheduled || this.geometryDiagnosticReadbackCompleted) {
@@ -7648,6 +8006,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 this.geometryDiagnosticCompletedFrameId + ":" + this.geometryDiagnosticCompletedQuadIndex + ":" + this.geometryDiagnosticCompletedRaw);
     }
 
+
     private DrawCommandDebugSample readDebugCommandSample(int sampledCommandCount, int visibleCount, long geometryBufferBytes) {
         long readbackPtr = this.drawCommandDebugReadbackBuffer == null ? 0L : this.drawCommandDebugReadbackBuffer.getDataPtr();
         long drawCountReadbackPtr = this.drawCountDebugReadbackBuffer == null ? 0L : this.drawCountDebugReadbackBuffer.getDataPtr();
@@ -7712,6 +8071,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new DrawCommandDebugSample(sampledCommandCount, invalid, quadCount, firstVertexCount, firstInstanceCount, firstFirstVertex, firstFirstInstance, sampledDrawCount, safeVisibleCount, validCommandCount, zeroCommandCount, invalidMetadataCount, zeroOpaqueCount, passQuadCountZeroCount, passQuadRangeOutOfBoundsCount, invalidMetadataDetailedCount, commandCapacityExceededCount, rejectReason);
     }
 
+
     private CmdgenCommandSnapshot cmdgenCommandSnapshot(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, ControlledRenderListSmoke controlledSmoke) {
         RenderListEntry0Diagnostics entry0 = renderListEntry0Diagnostics(geometryData, controlledSmoke);
         Buffer commandBuffer = controlledSmokeDrawCommandBuffer(controlledSmoke);
@@ -7725,6 +8085,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return new CmdgenCommandSnapshot(entry0.sectionId(), entry0.expectedFirstVertex(), entry0.expectedVertexCount(), 1L, 0L, commandBufferId, commandGeneration, renderListBufferId, metadataBufferId, true);
     }
 
+
     private boolean isCmdgenSampleValid() {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         return sample.sampledCommandCount() > 0
@@ -7735,11 +8096,13 @@ public final class VulkanBerylSectionDrawPipeline {
                 && completedSampleMatchesScheduledSnapshot();
     }
 
+
     private boolean completedSampleMatchesScheduledSnapshot() {
         return sampleMatchesSnapshot(this.lastCompletedDebugSample, this.completedDebugSampleSnapshot)
                 && this.completedDebugSampleSourceBufferId != 0L
                 && this.completedDebugSampleSourceBufferId == this.completedDebugSampleSnapshot.drawCommandBufferId();
     }
+
 
     private boolean sampleMatchesSnapshot(DrawCommandDebugSample sample, CmdgenCommandSnapshot snapshot) {
         if (sample.sampledCommandCount() <= 0 || !snapshot.available()) return false;
@@ -7754,9 +8117,11 @@ public final class VulkanBerylSectionDrawPipeline {
                 && sampledFirstInstance == snapshot.expectedFirstInstance();
     }
 
+
     private boolean completedCmdgenSampleSnapshotMatches(CmdgenCommandSnapshot currentSnapshot) {
         return isCmdgenSampleValid() && this.completedDebugSampleSnapshot.sameSnapshot(currentSnapshot);
     }
+
 
     private boolean pendingCmdgenSampleSnapshotMatches(CmdgenCommandSnapshot currentSnapshot) {
         return this.debugSamplePending
@@ -7764,10 +8129,12 @@ public final class VulkanBerylSectionDrawPipeline {
                 && this.pendingDebugSampleSnapshot.sameSnapshot(currentSnapshot);
     }
 
+
     private static long currentCmdgenDiagnosticFrameId(VulkanBerylViewport viewport, VulkanBerylViewportRenderList renderList) {
         long renderListFrameId = renderList == null ? -1L : renderList.getLastVisibleFrameId();
         return renderListFrameId >= 0L ? renderListFrameId : Integer.toUnsignedLong(viewport.frameId & 0x7fffffff);
     }
+
 
     private boolean cmdgenSampleFrameMatches(long diagnosticFrameId) {
         return this.lastCompletedDebugSample.sampledCommandCount() > 0
@@ -7776,12 +8143,14 @@ public final class VulkanBerylSectionDrawPipeline {
                 && this.completedDebugSampleFrameId == diagnosticFrameId;
     }
 
+
     private boolean cmdgenSampleMatchesActiveDrawCommandBuffer(long activeDrawCommandBufferId) {
         return this.lastCompletedDebugSample.sampledCommandCount() > 0
                 && this.completedDebugSampleSourceBufferId != 0L
                 && activeDrawCommandBufferId != 0L
                 && this.completedDebugSampleSourceBufferId == activeDrawCommandBufferId;
     }
+
 
     private boolean cmdgenSampleFromWrongBuffer() {
         if (this.completedDebugSampleSourceBufferId == 0L || this.lastCompletedDebugSample.sampledCommandCount() <= 0) return false;
@@ -7791,6 +8160,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 && this.completedDebugSampleSourceBufferId != drawBufferId
                 && (controlledBufferId == 0L || this.completedDebugSampleSourceBufferId != controlledBufferId);
     }
+
 
     private String cmdgenSampleDiagnosticReason() {
         if (isCmdgenSampleValid()) return "sample_matches_scheduled_command";
@@ -7803,6 +8173,7 @@ public final class VulkanBerylSectionDrawPipeline {
         String rejectReason = cmdgenSampleGateReason();
         return "sample_rejected:" + (rejectReason == null || rejectReason.isBlank() ? "invalid_sample" : rejectReason);
     }
+
 
     private String cmdgenSampleDiagnosticReason(CmdgenCommandSnapshot currentSnapshot, long activeDrawCommandBufferId) {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
@@ -7826,6 +8197,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return cmdgenSampleDiagnosticReason();
     }
 
+
     private String cmdgenSampleGateReason() {
         DrawCommandDebugSample sample = this.lastCompletedDebugSample;
         if (isCmdgenSampleValid()) return "ready";
@@ -7841,9 +8213,11 @@ public final class VulkanBerylSectionDrawPipeline {
         return "invalid_sample";
     }
 
+
     private record DrawCommandDebugSample(int sampledCommandCount, int invalidSampledCommandCount, long sampledQuadCount, int firstVertexCount, int firstInstanceCount, int firstFirstVertex, int firstFirstInstance, int sampledDrawCount, int safeVisibleCount, int validCommandCount, int zeroCommandCount, int invalidMetadataCount, int zeroOpaqueCount, int passQuadCountZeroCount, int passQuadRangeOutOfBoundsCount, int invalidMetadataDetailedCount, int commandCapacityExceededCount, String rejectReason) {
         static DrawCommandDebugSample empty() { return new DrawCommandDebugSample(0, 0, -1L, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, "not_sampled"); }
     }
+
 
     private record CmdgenCommandSnapshot(int scheduledRenderListEntry0SectionId, long expectedFirstVertex, long expectedVertexCount, long expectedInstanceCount, long expectedFirstInstance, long drawCommandBufferId, long commandBufferGeneration, long renderListBufferId, long metadataBufferId, boolean available) {
         static CmdgenCommandSnapshot unavailable() {
@@ -7878,6 +8252,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
+
     private void ensureCommandGenMinimalTinySsboReadProbePipeline() {
         if (this.commandGenMinimalTinySsboReadProbePipeline != null) return;
         if (this.cmdGenMinimalTinySsboReadProbeBuffer == null) {
@@ -7893,10 +8268,12 @@ public final class VulkanBerylSectionDrawPipeline {
         this.commandGenMinimalTinySsboReadProbePipeline = createSingleSsboReadProbePipeline(CMDGEN_MINIMAL_SSBO_READ_SHADER_RESOURCE, CMDGEN_MINIMAL_SSBO_READ_SHADER_NAME, 0, this.cmdGenMinimalTinySsboReadProbeBuffer, "CmdGenMinimalTinySsboReadProbe");
     }
 
+
     private void ensureCommandGenMinimalRenderListReadProbePipeline(Buffer renderListBuffer) {
         if (this.commandGenMinimalRenderListReadProbePipeline != null) return;
         this.commandGenMinimalRenderListReadProbePipeline = createSingleSsboReadProbePipeline(CMDGEN_MINIMAL_SSBO_READ_SHADER_RESOURCE, CMDGEN_MINIMAL_SSBO_READ_SHADER_NAME, CMDGEN_RENDER_LIST_BINDING, renderListBuffer, "CmdGenMinimalRenderListReadProbe");
     }
+
 
     private void ensureCommandGenMinimalConfigReadProbePipeline() {
         if (this.commandGenMinimalConfigReadProbePipeline != null) return;
@@ -7905,11 +8282,13 @@ public final class VulkanBerylSectionDrawPipeline {
         this.commandGenMinimalConfigReadProbePipeline = createDenseConfigReadProbePipeline();
     }
 
+
     private void ensureCommandGenMinimalConfigBinding0ReadProbePipeline() {
         if (this.commandGenMinimalConfigBinding0ReadProbePipeline != null) return;
         ensureCmdGenConfigBuffer();
         this.commandGenMinimalConfigBinding0ReadProbePipeline = createSingleSsboReadProbePipeline(CMDGEN_MINIMAL_CONFIG_BINDING0_READ_SHADER_RESOURCE, CMDGEN_MINIMAL_CONFIG_BINDING0_READ_SHADER_NAME, CMDGEN_RENDER_LIST_BINDING, this.cmdGenConfigBuffer, "CmdGenMinimalConfigBinding0ReadProbe");
     }
+
 
     private void ensureCommandGenMinimalConfigReadProbePlaceholderBuffer() {
         if (this.cmdGenMinimalConfigReadProbePlaceholderBuffer != null) return;
@@ -7923,85 +8302,102 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", usage=STORAGE|TRANSFER_DST");
     }
 
+
     private void ensureCommandGenHardcodedBinding0ReadPipeline(Buffer renderListBuffer) {
         if (this.commandGenHardcodedBinding0ReadPipeline != null) return;
         this.commandGenHardcodedBinding0ReadPipeline = createSingleSsboReadProbePipeline(CMDGEN_HARDCODED_BINDING0_READ_SHADER_RESOURCE, CMDGEN_HARDCODED_BINDING0_READ_SHADER_NAME, CMDGEN_RENDER_LIST_BINDING, renderListBuffer, "CmdGenHardcodedBinding0ReadProbe");
     }
+
 
     private void ensureCommandGenFullLayoutNoopProbePipeline() {
         if (this.commandGenFullLayoutNoopProbePipeline != null) return;
         this.commandGenFullLayoutNoopProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_NOOP_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_NOOP_SHADER_NAME, "CmdGenFullLayoutNoopProbe");
     }
 
+
     private void ensureCommandGenFullLayoutHardcodedBinding0ReadProbePipeline() {
         if (this.commandGenFullLayoutHardcodedBinding0ReadProbePipeline != null) return;
         this.commandGenFullLayoutHardcodedBinding0ReadProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_HARDCODED_BINDING0_READ_SHADER_NAME, "CmdGenFullLayoutHardcodedBinding0ReadProbe");
     }
+
 
     private void ensureCommandGenFullLayoutConfigBinding0ReadProbePipeline() {
         if (this.commandGenFullLayoutConfigBinding0ReadProbePipeline != null) return;
         this.commandGenFullLayoutConfigBinding0ReadProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_CONFIG_BINDING0_READ_SHADER_NAME, "CmdGenFullLayoutConfigBinding0ReadProbe");
     }
 
+
     private void ensureCommandGenNoImportProbePipeline() {
         if (this.commandGenNoImportProbePipeline != null) return;
         this.commandGenNoImportProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_SHADER_RESOURCE, CMDGEN_NO_IMPORT_SHADER_NAME, "CmdGenNoImportProbe");
     }
+
 
     private void ensureCommandGenNoImportReadMetadata0OnlyProbePipeline() {
         if (this.commandGenNoImportReadMetadata0OnlyProbePipeline != null) return;
         this.commandGenNoImportReadMetadata0OnlyProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_RESOURCE, CMDGEN_NO_IMPORT_READ_METADATA0_ONLY_SHADER_NAME, "CmdGenNoImportReadMetadata0OnlyProbe");
     }
 
+
     private void ensureCommandGenNoImportRawMetadataUvec4Binding1ProbePipeline() {
         if (this.commandGenNoImportRawMetadataUvec4Binding1ProbePipeline != null) return;
         this.commandGenNoImportRawMetadataUvec4Binding1ProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_SHADER_RESOURCE, CMDGEN_NO_IMPORT_RAW_METADATA_UVEC4_BINDING1_SHADER_NAME, "CmdGenNoImportRawMetadataUvec4Binding1Probe");
     }
+
 
     private void ensureCommandGenFullLayoutBinding1UintReadProbePipeline() {
         if (this.commandGenFullLayoutBinding1UintReadProbePipeline != null) return;
         this.commandGenFullLayoutBinding1UintReadProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_UINT_READ_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_UINT_READ_SHADER_NAME, "CmdGenFullLayoutBinding1UintReadProbe");
     }
 
+
     private void ensureCommandGenFullLayoutBinding1UintReadConstProbePipeline() {
         if (this.commandGenFullLayoutBinding1UintReadConstProbePipeline != null) return;
         this.commandGenFullLayoutBinding1UintReadConstProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_UINT_READ_CONST_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_UINT_READ_CONST_SHADER_NAME, "CmdGenFullLayoutBinding1UintReadConstProbe");
     }
+
 
     private void ensureCommandGenFullLayoutBinding1TinyUintReadNoConfigProbePipeline() {
         if (this.commandGenFullLayoutBinding1TinyUintReadNoConfigProbePipeline != null) return;
         this.commandGenFullLayoutBinding1TinyUintReadNoConfigProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_TINY_UINT_READ_NO_CONFIG_SHADER_NAME, "CmdGenFullLayoutBinding1TinyUintReadNoConfigProbe");
     }
 
+
     private void ensureCommandGenFullLayoutBinding1AndBinding2UintReadProbePipeline() {
         if (this.commandGenFullLayoutBinding1AndBinding2UintReadProbePipeline != null) return;
         this.commandGenFullLayoutBinding1AndBinding2UintReadProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_AND_BINDING2_UINT_READ_SHADER_NAME, "CmdGenFullLayoutBinding1AndBinding2UintReadProbe");
     }
+
 
     private void ensureCommandGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbePipeline() {
         if (this.commandGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbePipeline != null) return;
         this.commandGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_NAME, "CmdGenFullLayoutBinding2ProbeBufferUintReadNoConfigProbe");
     }
 
+
     private void ensureCommandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline() {
         if (this.commandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline != null) return;
         this.commandGenFullLayoutBinding2ProbeBufferUintReadConstProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_NAME, "CmdGenFullLayoutBinding2ProbeBufferUintReadConstProbe");
     }
+
 
     private void ensureCommandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline() {
         if (this.commandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline != null) return;
         this.commandGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_TINY_UINT_READ_NO_CONFIG_SHADER_NAME, "CmdGenFullLayoutBinding1TinyAndBinding2TinyUintReadNoConfigProbe");
     }
 
+
     private void ensureCommandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline() {
         if (this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline != null) return;
         this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_NO_CONFIG_SHADER_NAME, "CmdGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadNoConfigProbe");
     }
 
+
     private void ensureCommandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline() {
         if (this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline != null) return;
         this.commandGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING1_TINY_AND_BINDING2_PROBE_BUFFER_UINT_READ_CONST_SHADER_NAME, "CmdGenFullLayoutBinding1TinyAndBinding2ProbeBufferUintReadConstProbe");
     }
+
 
     private void ensureCommandGenSingleBinding1UintReadProbePipeline() {
         if (this.commandGenSingleBinding1UintReadProbePipeline != null) return;
@@ -8009,41 +8405,49 @@ public final class VulkanBerylSectionDrawPipeline {
         this.commandGenSingleBinding1UintReadProbePipeline = createDenseSsboReadProbePipeline(CMDGEN_SINGLE_BINDING1_UINT_READ_SHADER_RESOURCE, CMDGEN_SINGLE_BINDING1_UINT_READ_SHADER_NAME, CMDGEN_METADATA_BINDING, this.cmdGenTinyMetadataProbeBuffer, "CmdGenSingleBinding1UintReadProbe");
     }
 
+
     private void ensureCommandGenBinding0UintReadProbePipeline() {
         if (this.commandGenBinding0UintReadProbePipeline != null) return;
         ensureCmdgenTinyMetadataProbeBuffer();
         this.commandGenBinding0UintReadProbePipeline = createSingleSsboReadProbePipeline(CMDGEN_BINDING0_UINT_READ_SHADER_RESOURCE, CMDGEN_BINDING0_UINT_READ_SHADER_NAME, CMDGEN_RENDER_LIST_BINDING, this.cmdGenTinyMetadataProbeBuffer, "CmdGenBinding0UintReadProbe");
     }
 
+
     private void ensureCommandGenFullLayoutBinding2UintReadProbePipeline() {
         if (this.commandGenFullLayoutBinding2UintReadProbePipeline != null) return;
         this.commandGenFullLayoutBinding2UintReadProbePipeline = createFullLayoutProbePipeline(CMDGEN_FULL_LAYOUT_BINDING2_UINT_READ_SHADER_RESOURCE, CMDGEN_FULL_LAYOUT_BINDING2_UINT_READ_SHADER_NAME, "CmdGenFullLayoutBinding2UintReadProbe");
     }
+
 
     private void ensureCommandGenRawMetadataUvec4Binding0ProbePipeline() {
         if (this.commandGenRawMetadataUvec4Binding0ProbePipeline != null) return;
         this.commandGenRawMetadataUvec4Binding0ProbePipeline = createSingleSsboReadProbePipeline(CMDGEN_RAW_METADATA_UVEC4_BINDING0_SHADER_RESOURCE, CMDGEN_RAW_METADATA_UVEC4_BINDING0_SHADER_NAME, CMDGEN_RENDER_LIST_BINDING, this.cmdGenTinyMetadataProbeBuffer != null ? this.cmdGenTinyMetadataProbeBuffer : this.cmdGenConfigBuffer, "CmdGenRawMetadataUvec4Binding0Probe");
     }
 
+
     private void ensureCommandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline() {
         if (this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline != null) return;
         this.commandGenNoImportComputeQuadCountsOnlyNoWriteProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_RESOURCE, CMDGEN_NO_IMPORT_COMPUTE_QUAD_COUNTS_ONLY_NO_WRITE_SHADER_NAME, "CmdGenNoImportComputeQuadCountsOnlyNoWriteProbe");
     }
+
 
     private void ensureCommandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline() {
         if (this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline != null) return;
         this.commandGenNoImportWriteCommand0OnlyNoAtomicProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_RESOURCE, CMDGEN_NO_IMPORT_WRITE_COMMAND0_ONLY_NO_ATOMIC_SHADER_NAME, "CmdGenNoImportWriteCommand0OnlyNoAtomicProbe");
     }
 
+
     private void ensureCommandGenNoImportAtomicDrawcountOnlyProbePipeline() {
         if (this.commandGenNoImportAtomicDrawcountOnlyProbePipeline != null) return;
         this.commandGenNoImportAtomicDrawcountOnlyProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_RESOURCE, CMDGEN_NO_IMPORT_ATOMIC_DRAWCOUNT_ONLY_SHADER_NAME, "CmdGenNoImportAtomicDrawcountOnlyProbe");
     }
 
+
     private void ensureCommandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline() {
         if (this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline != null) return;
         this.commandGenNoImportSingleInvocationRealCommandNoAtomicProbePipeline = createFullLayoutProbePipeline(CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_RESOURCE, CMDGEN_NO_IMPORT_SINGLE_INVOCATION_REAL_COMMAND_NO_ATOMIC_SHADER_NAME, "CmdGenNoImportSingleInvocationRealCommandNoAtomicProbe");
     }
+
 
     private void ensureCommandGenDenseLayoutNoopProbePipeline() {
         if (this.commandGenDenseLayoutNoopProbePipeline != null) return;
@@ -8068,10 +8472,12 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private void ensureCommandGenReadRenderlistMetadataNoWritePipeline() {
         if (this.commandGenReadRenderlistMetadataNoWritePipeline != null) return;
         this.commandGenReadRenderlistMetadataNoWritePipeline = createFullLayoutProbePipeline(CMDGEN_READ_RENDERLIST_METADATA_NO_WRITE_SHADER_RESOURCE, CMDGEN_READ_RENDERLIST_METADATA_NO_WRITE_SHADER_NAME, "CmdGenReadRenderlistMetadataNoWrite");
     }
+
 
     private ComputePipeline createDenseConfigReadProbePipeline() {
         int computeStage = ComputePipeline.Builder.getStageFromString("compute");
@@ -8111,6 +8517,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return pipeline;
     }
 
+
     private void bindConfigReadProbePlaceholders(ComputePipeline pipeline) {
         for (int binding = 0; binding < CMDGEN_CONFIG_BINDING; binding++) {
             final int targetBinding = binding;
@@ -8119,6 +8526,7 @@ public final class VulkanBerylSectionDrawPipeline {
             ubo.getBufferSlice().set(this.cmdGenMinimalConfigReadProbePlaceholderBuffer, 0L, Integer.BYTES);
         }
     }
+
 
     private ComputePipeline createDenseSsboReadProbePipeline(String shaderResource, String shaderName, int descriptorBinding, Buffer descriptorBuffer, String label) {
         ensureCommandGenMinimalConfigReadProbePlaceholderBuffer();
@@ -8138,10 +8546,12 @@ public final class VulkanBerylSectionDrawPipeline {
         return pipeline;
     }
 
+
     private ComputePipeline createSingleSsboReadProbePipeline(String shaderResource, String shaderName, int descriptorBinding, Buffer descriptorBuffer, String label) {
         int computeStage = ComputePipeline.Builder.getStageFromString("compute");
         return createSsboReadProbePipeline(shaderResource, shaderName, List.of(createManualDescriptor(descriptorBinding, computeStage, descriptorBuffer, label)), label, "manual_one_binding");
     }
+
 
     private ComputePipeline createSsboReadProbePipeline(String shaderResource, String shaderName, List<UBO> descriptors, String label, String descriptorMode) {
         ComputePipeline.Builder builder = new ComputePipeline.Builder(shaderResource);
@@ -8169,6 +8579,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", descriptorMode=" + descriptorMode);
         return pipeline;
     }
+
 
     private ComputePipeline createFullLayoutProbePipeline(String shaderResource, String shaderName, String label) {
         ensureCmdgenBinding2ProbeBuffer();
@@ -8200,11 +8611,13 @@ public final class VulkanBerylSectionDrawPipeline {
 
 
 
+
     private static boolean drawCountStoreSuppressedForDiagnosticSafetyActive() {
         return CMDGEN_USE_STANDALONE_DRAWCOUNT_NO_CONFIG_LITERAL_ZERO_WRITE_SHADER
                 && !ENABLE_INDIRECT_DRAW
                 && disableAnyDrawCountConsumerPathActive();
     }
+
 
     private static String safeActiveCmdgenShaderResource() {
         if (drawCountStoreSuppressedForDiagnosticSafetyActive()) {
@@ -8213,12 +8626,14 @@ public final class VulkanBerylSectionDrawPipeline {
         return activeCmdgenShaderResource();
     }
 
+
     private static String safeActiveCmdgenShaderName() {
         if (drawCountStoreSuppressedForDiagnosticSafetyActive()) {
             return CMDGEN_STANDALONE_DRAWCOUNT_DECLARED_NO_WRITE_SHADER_NAME;
         }
         return activeCmdgenShaderName();
     }
+
 
     private static void logDrawCountStoreSuppressedForDiagnosticSafety(String shaderResource, String shaderName) {
         if (!drawCountStoreSuppressedForDiagnosticSafetyActive()) return;
@@ -8232,6 +8647,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", reason=drawCount store isolated as device-loss trigger");
     }
 
+
     private static long pipelineBindingBufferId(ComputePipeline pipeline, int binding) {
         if (pipeline == null) return 0L;
         UBO ubo = pipeline.getUBO(candidate -> candidate.binding == binding);
@@ -8240,6 +8656,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return buffer == null ? 0L : buffer.getId();
     }
 
+
     private static long pipelineBindingRangeBytes(ComputePipeline pipeline, int binding) {
         if (pipeline == null) return 0L;
         UBO ubo = pipeline.getUBO(candidate -> candidate.binding == binding);
@@ -8247,6 +8664,7 @@ public final class VulkanBerylSectionDrawPipeline {
         Buffer buffer = ubo.getBufferSlice().getBuffer();
         return buffer == null ? 0L : buffer.getBufferSize();
     }
+
 
     private String validateCmdgenDispatchDescriptorBindings(ComputePipeline pipeline, String stage) {
         if (pipeline == null) return "pipeline_missing";
@@ -8284,6 +8702,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return "ok";
     }
 
+
     private static String cmdgenDispatchRiskFromState(boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenDispatchSkippedByEnv, boolean cmdgenPostDispatchBarrierRecorded, boolean cmdgenSameLayoutNoopActive, String validation, String stage) {
         if (validation != null && !"ok".equals(validation) && !"pipeline_missing".equals(validation)) return "range_or_usage";
         if (CMDGEN_DISABLE_BIND_PIPELINE || !cmdgenPipelineBound) return "pipeline_bind";
@@ -8303,6 +8722,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if ("full".equals(stage) || "full cmdgen.comp".equals(stage) || stage == null) return "full_no_drawcount_write";
         return "unknown";
     }
+
 
     private void logCmdgenDispatchPathDiagnostic(ComputePipeline pipeline, String shaderName, String shaderResource, String stage, boolean cmdgenPipelineBound, boolean cmdgenDescriptorsBound, boolean cmdgenDispatchCallRecorded, boolean cmdgenDispatchSkippedByEnv, boolean cmdgenPostDispatchBarrierRecorded, String cmdgenPostDispatchBarrierSkippedReason, int cmdgenDispatchGroupCount, boolean cmdgenSameLayoutNoopActive, String validation, String reason) {
         boolean cmdgenDispatchRecorded = cmdgenPipelineBound && cmdgenDescriptorsBound && cmdgenDispatchCallRecorded;
@@ -8362,6 +8782,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", cmdgenDispatchRisk=" + dispatchRisk);
     }
 
+
     private static void logSelectedCmdgenShaderDiagnostics(String shaderResource, String shaderName) {
         if (!CMDGEN_DUMP_SHADER_DIAGNOSTICS) return;
         VulkanBerylDebugLog.once("cmdgen-selected-shader-diagnostics", "selected cmdgen shader diagnostics: resource=" + shaderResource
@@ -8383,6 +8804,7 @@ public final class VulkanBerylSectionDrawPipeline {
         }
     }
 
+
     private static void dumpSelectedCmdgenPreprocessedShaderDiagnostics(VulkanBerylShaderImportPreprocessor.PreparedShader preprocessedShader) {
         if (!CMDGEN_DUMP_SHADER_DIAGNOSTICS) return;
         try {
@@ -8397,6 +8819,7 @@ public final class VulkanBerylSectionDrawPipeline {
             VulkanBerylDebugLog.error("selected cmdgen preprocessed shader dump unavailable: error=" + e);
         }
     }
+
 
 
     private static void logSelectedCmdgenShaderSourceAnalysis(String shaderResource, String shaderSource) {
@@ -8415,6 +8838,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", noConfigLiteralZeroBinding4OnlyWriteConfirmedByJavaTokenCheck=" + (noConfigZero && drawCountBindingDeclarations >= 1 && drawCountStores == 1 && commandStores == 0));
     }
 
+
     private static int countOccurrences(String text, String needle) {
         if (text == null || text.isEmpty() || needle == null || needle.isEmpty()) return 0;
         int count = 0;
@@ -8426,9 +8850,11 @@ public final class VulkanBerylSectionDrawPipeline {
         return count;
     }
 
+
     private static Path selectedCmdgenShaderDebugDirectory() {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("voxy-vulkan-debug");
     }
+
 
     private static String readShaderResourceSource(String shaderResource) {
         net.minecraft.resources.Identifier id = net.minecraft.resources.Identifier.parse(shaderResource);
@@ -8440,6 +8866,7 @@ public final class VulkanBerylSectionDrawPipeline {
             throw new IllegalStateException("Failed reading shader resource for diagnostics: " + shaderResource + " (" + classpathPath + ")", e);
         }
     }
+
 
     private void ensureCommandGenPipeline() {
         if (this.commandGenPipeline != null) return;
@@ -8515,6 +8942,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.once("cmdgen-pipeline-created", "cmdgen pipeline created: shader=" + cmdgenShaderName);
     }
 
+
     private void ensureCommandGenNoopPipeline() {
         if (this.commandGenNoopPipeline != null) return;
         ComputePipeline.Builder builder = new ComputePipeline.Builder(CMDGEN_NOOP_SHADER_RESOURCE);
@@ -8545,6 +8973,7 @@ public final class VulkanBerylSectionDrawPipeline {
 
 
 
+
     private static void logCmdGenCompileFailureDiagnostics(VulkanBerylShaderImportPreprocessor.PreparedShader shader) {
         final int maxLines = 120;
         try {
@@ -8561,6 +8990,7 @@ public final class VulkanBerylSectionDrawPipeline {
                     + shader.shaderPath() + ", error=" + readError);
         }
     }
+
 
     private static void validateCmdgenLayoutContract(JsonObject config) {
         java.util.Map<String, Integer> expectedBindings = java.util.Map.of(
@@ -8628,6 +9058,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", bindings=" + jsonBindings);
     }
 
+
     private List<UBO> createManualCmdGenDescriptors() {
         ensureCmdGenUnusedBinding2Buffer();
         int computeStage = ComputePipeline.Builder.getStageFromString("compute");
@@ -8640,6 +9071,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 createManualDescriptor(CMDGEN_CONFIG_BINDING, computeStage, this.cmdGenConfigBuffer, "CmdGenConfig")
         );
     }
+
 
 
     private List<UBO> createManualCmdGenProbeDescriptors() {
@@ -8655,12 +9087,14 @@ public final class VulkanBerylSectionDrawPipeline {
         );
     }
 
+
     private static ManualUBO createManualDescriptor(int binding, int computeStage, Buffer buffer, String label) {
         int requestedSize = descriptorSizeBytes(binding, label, buffer);
         int structSizeInts = Math.max(1, (requestedSize + Integer.BYTES - 1) / Integer.BYTES);
         VulkanBerylDebugLog.verboseOnce("manual-descriptor:" + label + ":" + binding, "Creating manual descriptor binding=" + binding + ", label=" + label + ", requestedBytes=" + requestedSize + ", descriptorKind=storageBuffer, descriptorType=" + VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC + ", descriptorClass=ManualStorageBuffer, manualStructInts=" + structSizeInts);
         return new ManualStorageBuffer(binding, computeStage, structSizeInts);
     }
+
 
     private static int descriptorSizeBytes(int binding, String label, Buffer buffer) {
         if (buffer == null) throw new IllegalStateException("Descriptor buffer is null for binding " + binding + " (" + label + ")");
@@ -8671,12 +9105,14 @@ public final class VulkanBerylSectionDrawPipeline {
         return (int) size;
     }
 
+
     private void ensureSceneUniformBuffer() {
         if (this.sceneUniformBuffer != null) return;
         this.sceneUniformBuffer = new Buffer("voxy_vulkanberyl_section_draw_scene_uniform", VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, MemoryTypes.GPU_MEM);
         this.sceneUniformBuffer.createBuffer(SCENE_UNIFORM_SIZE_BYTES);
         this.sceneUniformBound = false;
     }
+
 
     private void ensureRealLodGpuDecodeParityBuffers() {
         if (this.realLodGpuDecodeParityBuffer == null) {
@@ -8692,6 +9128,7 @@ public final class VulkanBerylSectionDrawPipeline {
             this.realLodGpuDecodeParityReadbackBuffer.createBuffer(REAL_LOD_GPU_DECODE_PARITY_BYTES);
         }
     }
+
 
     private void bindUniformBinding(int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
@@ -8711,6 +9148,7 @@ public final class VulkanBerylSectionDrawPipeline {
         ubo.getBufferSlice().set(buffer, 0L, SCENE_UNIFORM_SIZE_BYTES);
     }
 
+
     private void bindStorageBinding(int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
         long bufferSize = buffer.getBufferSize();
@@ -8726,6 +9164,7 @@ public final class VulkanBerylSectionDrawPipeline {
         VulkanBerylDebugLog.trace("binding-draw-descriptor:" + binding + ":" + label, "Binding draw descriptor: binding=" + binding + ", label=" + label + ", bufferBytes=" + bufferSize + ", finalRangeBytes=" + rangeBytes);
         ubo.getBufferSlice().set(buffer, 0L, rangeBytes);
     }
+
 
     private void logSectionDrawDescriptorParityBindings(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || this.graphicsPipeline == null) return;
@@ -8783,18 +9222,22 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", binding9ParityBytes=" + REAL_LOD_GPU_DECODE_PARITY_BYTES, 60);
     }
 
+
     private static long bufferId(Buffer buffer) {
         return buffer == null ? 0L : buffer.getId();
     }
+
 
     private static long boundBufferId(UBO ubo) {
         if (ubo == null || ubo.getBufferSlice() == null || ubo.getBufferSlice().getBuffer() == null) return 0L;
         return ubo.getBufferSlice().getBuffer().getId();
     }
 
+
     private static boolean boundExpectedBuffer(UBO ubo, Buffer expectedBuffer) {
         return expectedBuffer != null && boundBufferId(ubo) == expectedBuffer.getId();
     }
+
     private void logRealLodProbeBoundBufferContentDiagnostics(VulkanBerylSectionGeometryData geometryData, CpuDecodeParitySnapshot cpuSnapshot, GpuDecodeParitySnapshot gpuSnapshot) {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE || geometryData == null) return;
         this.realLodProbeBoundMetadataReadbackAvailable = false;
@@ -8914,6 +9357,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", realLodProbeBufferContentMismatchReason=" + this.realLodProbeBufferContentMismatchReason, 60);
     }
 
+
     private void bindComputeStorageBinding(int binding, Buffer buffer, String label) {
         if (buffer == null) throw new IllegalStateException(label + " must not be null");
         long bufferSize = buffer.getBufferSize();
@@ -8939,6 +9383,7 @@ public final class VulkanBerylSectionDrawPipeline {
     }
 
 
+
     private int validateDrawCommandBinding3DescriptorRange(long bufferSize, String label) {
         long expectedBytes = drawCommandBinding3ExpectedBytes();
         if (this.drawCommandCapacity <= 0) {
@@ -8960,9 +9405,11 @@ public final class VulkanBerylSectionDrawPipeline {
         return Math.toIntExact(expectedBytes);
     }
 
+
     private long drawCommandBinding3ExpectedBytes() {
         return Math.multiplyExact((long) this.drawCommandCapacity, DRAW_COMMAND_STRIDE_BYTES);
     }
+
 
     private void updateAndBindCmdGenConfigBuffer(VkCommandBuffer commandBuffer, VulkanBerylSectionGeometryData geometryData, int renderListCapacity, int flags) {
         if (commandBuffer == null) {
@@ -8991,6 +9438,7 @@ public final class VulkanBerylSectionDrawPipeline {
         logCmdGenConfigBufferState("uploaded_same_command_buffer");
         bindComputeStorageBinding(CMDGEN_CONFIG_BINDING, this.cmdGenConfigBuffer, "cmdGenConfigBuffer");
     }
+
 
     private void logDrawCountAliasAndLifetimeDiagnostics(VulkanBerylSectionGeometryData geometryData, VulkanBerylViewportRenderList renderList, String stage, boolean indirectAllowed) {
         if (!isExplicitCmdgenShaderSelectionDiagnosticActive()) return;
@@ -9041,6 +9489,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", indirectDisabledOldDrawCountReferenceCheck=" + (!ENABLE_INDIRECT_DRAW ? "graphics_indirect_submit_disabled;drawCountConsumers=" + (disableAnyDrawCountConsumerPathActive() ? "disabled_by_env" : "debug_readback_or_descriptor_state_may_still_reference_current_drawCount") : "indirect_enabled"), 1);
     }
 
+
     private void logDrawCountConsumerPathDisabled(int visibleCount, boolean indirectAllowed, boolean debugReadbackRequested) {
         VulkanBerylDebugLog.once("cmdgen-disable-any-drawcount-consumer-path", "cmdgen drawCount consumer paths disabled after cmdgen dispatch: env=VOXY_VULKAN_BERYL_CMDGEN_DISABLE_ANY_DRAWCOUNT_CONSUMER_PATH"
                 + ", shaderSelectionEnv=" + activeCmdgenShaderSelectionEnvVar()
@@ -9059,6 +9508,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", drawCountBufferId=" + (this.drawCountBuffer == null ? 0L : this.drawCountBuffer.getId())
                 + ", drawCommandBufferId=" + (this.drawCommandBuffer == null ? 0L : this.drawCommandBuffer.getId()));
     }
+
 
     private void logDrawCountBufferDiagnostics(String stage, boolean descriptorRangeValidExpected) {
         Buffer descriptorBuffer = cmdgenDrawCountDescriptorBuffer();
@@ -9097,6 +9547,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", javaSideDrawCountCapacityMatchesDescriptorCapacity=" + capacityMatchesConfig);
     }
 
+
     private static boolean isExplicitCmdgenDiagnosticEnvActive() {
         return activeCmdgenShaderSelectionEnvVar() != null
                 || !activeCmdgenProbeEnvVars().isEmpty()
@@ -9110,6 +9561,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 || CMDGEN_BIND_FULL_ONLY;
     }
 
+
     private static String explicitCmdgenDiagnosticEnvSummary() {
         String shaderEnv = activeCmdgenShaderSelectionEnvVar();
         if (shaderEnv != null) return shaderEnv;
@@ -9120,6 +9572,7 @@ public final class VulkanBerylSectionDrawPipeline {
         return "cmdgen_diagnostic_mode";
     }
 
+
     private static void logCmdgenWaitIdleAfterDispatchState(String stage) {
         if (!CMDGEN_WAIT_IDLE_AFTER_DISPATCH) return;
         if (!isExplicitCmdgenDiagnosticEnvActive()) return;
@@ -9127,6 +9580,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", result=recorded_command_buffer_not_yet_submitted"
                 + ", note=VulkanMod owns the render command-buffer submit; VK_ERROR_DEVICE_LOST may still surface at the following submit");
     }
+
 
     private void logMetadataBufferState(VulkanBerylSectionGeometryData geometryData, String stage, Buffer boundMetadataBuffer, int binding) {
         long boundSize = boundMetadataBuffer == null ? -1L : boundMetadataBuffer.getBufferSize();
@@ -9146,6 +9600,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", sectionCount=" + geometryData.getSectionCount()
                 + ", mirrorWriteCount=" + geometryData.getSectionMetadataMirrorWriteCount());
     }
+
 
     private void logCmdGenConfigBufferState(String stage) {
         String logKey = "cmdgen-config-buffer-state:" + stage;
@@ -9167,9 +9622,11 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", flags=" + this.lastCmdGenConfigFlags + "]");
     }
 
+
     private static String cmdGenConfigUsageString() {
         return "STORAGE|TRANSFER_DST(" + CMDGEN_CONFIG_USAGE_FLAGS + ")";
     }
+
 
     private static IllegalStateException descriptorRangeException(int binding, String label, long sizeBytes) {
         return new IllegalStateException("Descriptor range unsupported for binding=" + binding
@@ -9179,6 +9636,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", strategy=BufferSlice.set(Buffer,long,int)"
                 + ", fixHint=cap Vulkan/Beryl geometry capacity before buffer creation");
     }
+
 
     private void bindSceneUniform(VkCommandBuffer commandBuffer, VulkanBerylViewport viewport) {
         if (commandBuffer == null) throw new IllegalStateException("Section draw command buffer is unavailable for SceneUniform upload");
@@ -9240,6 +9698,7 @@ public final class VulkanBerylSectionDrawPipeline {
         logRealLodProbeReplayCpuWorldUniformUpload();
     }
 
+
     private void logRealLodProbeReplayCpuClipUniformUpload() {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_CLIP) return;
         VulkanBerylDebugLog.rateLimited("section-draw-real-lod-replay-cpu-clip-upload", "section draw real LOD replay CPU clip uniform upload:"
@@ -9254,6 +9713,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", realLodProbeReplayCpuClipUniformUploadPath=SceneUniform.binding0.vkCmdUpdateBuffer"
                 + ", realLodProbeReplayCpuClipUniformLayout=std140 SceneUniform offsets: realLodProbeData@" + SCENE_UNIFORM_REAL_LOD_PROBE_DATA_OFFSET_BYTES + " uvec4 flags.w bit1=replay_available, replayCpuClip0..3@" + SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_CLIP_OFFSET_BYTES + "/128/144/160 vec4, sizeBytes=" + SCENE_UNIFORM_SIZE_BYTES, 60);
     }
+
 
     private void logRealLodProbeReplayCpuWorldUniformUpload() {
         if (!REAL_LOD_SINGLE_QUAD_WORLD_PROBE_REPLAY_CPU_WORLD) return;
@@ -9274,6 +9734,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", realLodProbeReplayCpuWorldUniformLayout=" + realLodProbeUniformLayoutSummary(), 60);
     }
 
+
     private static String realLodProbeUniformLayoutSummary() {
         return "std140 SceneUniform offsets: realLodProbeData@" + SCENE_UNIFORM_REAL_LOD_PROBE_DATA_OFFSET_BYTES
                 + " uvec4 flags.w bit1=replay_cpu_clip_available bit2=replay_cpu_world_available bit3=force_cpu_section_and_quad"
@@ -9281,6 +9742,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", replayCpuWorld0..3@" + SCENE_UNIFORM_REAL_LOD_REPLAY_CPU_WORLD_OFFSET_BYTES + "/192/208/224 vec4"
                 + ", sizeBytes=" + SCENE_UNIFORM_SIZE_BYTES;
     }
+
 
     private void logSectionDrawBindingState(String drawSubmitReason) {
         UBO sceneUbo = this.graphicsPipeline == null ? null : this.graphicsPipeline.getUBO(candidate -> candidate.binding == SCENE_UNIFORM_BINDING);
@@ -9298,6 +9760,7 @@ public final class VulkanBerylSectionDrawPipeline {
                 + ", drawSubmitReason=" + drawSubmitReason, 30);
     }
 
+
     private static String descriptorKind(UBO descriptor) {
         if (descriptor == null) return "unknown";
         int type = descriptor.getType();
@@ -9305,6 +9768,7 @@ public final class VulkanBerylSectionDrawPipeline {
         if (type == VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || type == VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) return "storageBuffer";
         return "unknown";
     }
+
 
     private static final class ManualStorageBuffer extends ManualUBO {
         private ManualStorageBuffer(int binding, int stages, int size) {
@@ -9316,4 +9780,5 @@ public final class VulkanBerylSectionDrawPipeline {
             return VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         }
     }
+
 }

@@ -1,0 +1,12 @@
+---
+description: Java code conventions
+alwaysApply: true
+globs: ["*.java"]
+---
+# Java Conventions
+
+- Follow project's existing code style (check neighboring files before writing)
+- LWJGL native resources must be explicitly freed (no relying on GC)
+- Vulkan error codes must be checked at every API call
+- Memory barriers required between compute and graphics pipeline stages
+- Keep shader code in src/main/resources/shaders/

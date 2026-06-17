@@ -100,13 +100,5 @@ void markRequested(inout UnpackedNode node) {
 }
 
 void debugDumpNode(in UnpackedNode node) {
-    printf("Node %d, %d@[%d,%d,%d], flags: %d, mesh: %d, ChildPtr: %d",
-           node.nodeId,
-           node.lodLevel,
-           node.pos.x,
-           node.pos.y,
-           node.pos.z,
-           node.flags,
-           node.meshPtr,
-           node.childPtr);
+    // debug printing disabled (requires GL_EXT_debug_printf + matching overload)
 }

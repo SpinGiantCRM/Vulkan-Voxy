@@ -304,6 +304,11 @@ public final class VulkanBerylTraversalResources {
             fillness *= fillness;
             final int requestSize = (int) Math.ceil(fillness * MAX_REQUEST_QUEUE_SIZE);
             int finalRequestSize = Math.max(0, Math.min(MAX_REQUEST_QUEUE_SIZE, requestSize));
+            VulkanBerylDebugLog.once("traversal-request-queue-size-uniform", "Traversal requestQueueSize uniform: finalRequestSize=" + finalRequestSize
+                    + " rawRequestSize=" + requestSize
+                    + " fillness=" + fillness
+                    + " taskCount=" + renderGen.getTaskCount()
+                    + " MAX_REQUEST_QUEUE_SIZE=" + MAX_REQUEST_QUEUE_SIZE);
             MemoryUtil.memPutInt(ptr, finalRequestSize); ptr += Integer.BYTES;
 
             MemoryUtil.memPutInt(ptr, Math.max(0, maxNodeCount)); ptr += Integer.BYTES;

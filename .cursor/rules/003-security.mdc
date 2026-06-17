@@ -1,0 +1,12 @@
+---
+description: Security rules for Vulkan project
+alwaysApply: true
+globs: ["*.java", "*.gradle", "*.yml", "*.yaml"]
+---
+# Security Rules
+
+- NEVER commit secrets, API keys, or tokens
+- NEVER hardcode paths that vary between systems
+- Shader file I/O must validate file paths
+- Native library loading must use safe paths
+- Gradle daemon settings must not expose sensitive data

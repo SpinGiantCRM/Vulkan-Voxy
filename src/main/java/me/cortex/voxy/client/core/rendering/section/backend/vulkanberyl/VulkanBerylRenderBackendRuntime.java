@@ -3,6 +3,7 @@ package me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl;
 import me.cortex.voxy.client.config.VoxyConfig;
 import me.cortex.voxy.client.core.AbstractRenderPipeline;
 import static me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl.VulkanBerylCmdgenDiagnostics.TRAVERSAL_STAGE_LIMIT;
+import static me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl.VulkanBerylCmdgenDiagnostics.CMDGEN_DEBUG_READBACK;
 import static me.cortex.voxy.client.core.rendering.section.backend.vulkanberyl.VulkanBerylCmdgenDiagnostics.traversalStageMeaning;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.building.RenderGenerationService;
@@ -58,6 +59,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private static final boolean RENDERLIST_SMOKE_ONE_ENTRY = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_RENDERLIST_SMOKE_ONE_ENTRY", false);
     private static final boolean ENABLE_CMDGEN_DISPATCH = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_CMDGEN_DISPATCH", false);
     private static final boolean ENABLE_INDIRECT_DRAW = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_INDIRECT_DRAW", false);
+    private static final boolean ENABLE_LODS = VulkanBerylEnvironment.flag("VOXY_VULKAN_BERYL_ENABLE_LODS", false);
     private static final int FULL_TRAVERSAL_STAGE_LIMIT = 7;
     private static final int RENDER_LIST_SAMPLE_LIMIT = 64;
     private static final int RENDER_LIST_DEBUG_FIRST_IDS = 8;
@@ -177,7 +179,7 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + " renderListCounterCleared=" + frameInit.renderListCounterCleared()
                 + " transferToComputeBarrier=" + frameInit.transferToComputeBarrier());
         boolean explicitNoGpuDrawCountCmdgenPath = ENABLE_CMDGEN_DISPATCH && VulkanBerylCmdgenDiagnostics.CMDGEN_USE_FULL_NO_DRAWCOUNT_WRITE_SHADER;
-        int activeTraversalStageLimit = explicitNoGpuDrawCountCmdgenPath && TRAVERSAL_STAGE_LIMIT == 0 ? FULL_TRAVERSAL_STAGE_LIMIT : TRAVERSAL_STAGE_LIMIT;
+        int activeTraversalStageLimit = ENABLE_LODS ? FULL_TRAVERSAL_STAGE_LIMIT : (explicitNoGpuDrawCountCmdgenPath && TRAVERSAL_STAGE_LIMIT == 0 ? FULL_TRAVERSAL_STAGE_LIMIT : TRAVERSAL_STAGE_LIMIT);
         logTraversalUniformUploadDiagnostics(vulkanViewport, renderList, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit);
         this.traversalResources.recordTraversalUniformUpload(commandBuffer, vulkanViewport, renderList, this.topLevelNodeStore, this.renderGen, this.nodeManager.maxNodeCount, TRAVERSAL_SHADER_UNIFORM_SMOKE, activeTraversalStageLimit);
         if (this.traversalExecutor != null && this.traversalExecutor.getRenderList() != renderList) {
@@ -223,8 +225,9 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 renderListPopulationBlocker = firstRenderListPopulationBlocker(renderListPopulationBlocker, "initial_traversal_dispatch_disabled");
                 VulkanBerylDebugLog.once("initial-traversal-dispatch-skipped", "Initial traversal dispatch skipped by safety gate");
             }
-            if (ENABLE_INDIRECT_TRAVERSAL_DISPATCH && TRAVERSAL_MAX_ITERATIONS > 1) {
-                this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer(), TRAVERSAL_MAX_ITERATIONS);
+            int effectiveMaxIterations = ENABLE_LODS ? VulkanBerylTraversalResources.MAX_ITERATIONS : TRAVERSAL_MAX_ITERATIONS;
+            if ((ENABLE_LODS || ENABLE_INDIRECT_TRAVERSAL_DISPATCH) && effectiveMaxIterations > 1) {
+                this.traversalExecutor.dispatchRemainingTraversalIterations(vulkanWorkContext.frame().renderer(), effectiveMaxIterations);
                 remainingTraversalDispatchesRan = this.traversalExecutor.getIndirectDispatchIterationCount();
             } else {
                 VulkanBerylDebugLog.once("traversal-remaining-iterations-skipped", "Traversal remaining iterations skipped by safety gate");
@@ -256,6 +259,14 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
                 + " readbackScheduledThisFrame=" + traversalReadbacksScheduled
                 + " readbackReason=" + this.lastRenderListReadbackReason
                 + " renderListPopulationBlocker=" + renderListPopulationBlocker);
+        if (ENABLE_LODS && CMDGEN_DEBUG_READBACK && (initialTraversalDispatch || remainingTraversalDispatchesRan > 0)) {
+            VulkanBerylDebugLog.rateLimited("traversal-dispatch-info", "Traversal dispatch info: traversalDispatchAllowed=" + traversalDispatchAllowed
+                    + " initialTraversalDispatch=" + initialTraversalDispatch
+                    + " remainingTraversalDispatchesRan=" + remainingTraversalDispatchesRan
+                    + " traversalReadbacksScheduled=" + traversalReadbacksScheduled
+                    + " requestReadbackPending=" + this.requestReadbackPending
+                    + " renderListPopulationBlocker=" + renderListPopulationBlocker, 60);
+        }
         logRenderListPopulationDiagnostics(renderList, topNodeCount, frameInit, traversalDispatchAllowed, initialTraversalDispatch, remainingTraversalDispatchesRan, traversalReadbacksScheduled, renderListPopulationBlocker, activeTraversalStageLimit, this.traversalExecutor);
         this.frameSequence++;
         this.frameId++;
@@ -384,6 +395,21 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
         ByteBuffer requestBytes = MemoryUtil.memByteBuffer(readbackPtr, (int) VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES);
         int rawCount = requestBytes.getInt(0);
         int maxRequestQueueSize = this.traversalResources.getMaxRequestQueueSize();
+
+        // Raw hex dump of first 64 bytes of request buffer for diagnostics
+        {
+            int dumpLen = Math.min(64, (int) VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES);
+            StringBuilder hexDump = new StringBuilder(dumpLen * 3 + 64);
+            hexDump.append("[");
+            for (int i = 0; i < dumpLen; i++) {
+                if (i > 0) hexDump.append(' ');
+                int b = requestBytes.get(i) & 0xFF;
+                if (b < 16) hexDump.append('0');
+                hexDump.append(Integer.toHexString(b));
+            }
+            hexDump.append("]");
+            VulkanBerylDebugLog.trace("traversal-request-readback-hex", "Request buffer hex dump (first " + dumpLen + " bytes): " + hexDump.toString());
+        }
         long requestReadbackBufferSizeBytes = VulkanBerylTraversalResources.REQUEST_BUFFER_SIZE_BYTES;
         int maxByBuffer = (int) ((requestReadbackBufferSizeBytes - 8L) / 8L);
 
@@ -463,6 +489,16 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
 
         this.lastRequestReadbackDiscarded = discarded;
         this.lastRequestBatchDiscardReason = discardReason;
+
+        if (CMDGEN_DEBUG_READBACK) {
+            VulkanBerylDebugLog.rateLimited("request-readback-info", "Request readback info: requestReadbackFrameId=" + this.requestReadbackFrameId
+                    + " rawRequestCount=" + rawCount
+                    + " acceptedRequestCount=" + acceptedCount
+                    + " discarded=" + discarded
+                    + " discardReason=" + discardReason
+                    + " batchSizeBytes=" + (discarded || acceptedCount <= 0 ? 0 : (8L + (long) acceptedCount * 8L))
+                    + " firstPositions=" + firstPositionsPreview, 60);
+        }
 
         long batchSize = 0L;
         if (!discarded && acceptedCount > 0) {
@@ -949,8 +985,8 @@ public final class VulkanBerylRenderBackendRuntime implements SectionRenderBacke
     private void updateFrameSafetyState(int maxEntryCount) {
         boolean goodCounter = !this.lastRenderListCounterDiscarded && this.lastVisibleSectionCount >= 0 && this.lastVisibleSectionCount <= maxEntryCount;
         boolean noCorruption = !this.lastRequestReadbackDiscarded && !this.lastRenderListSampleDiscarded;
-        boolean allowCmdgen = this.frameSequence >= 2 && goodCounter && noCorruption;
-        boolean allowIndirect = this.frameSequence >= 3 && allowCmdgen && this.lastInvalidSampledRenderListEntryCount == 0;
+        boolean allowCmdgen = ENABLE_LODS || (this.frameSequence >= 2 && goodCounter && noCorruption);
+        boolean allowIndirect = ENABLE_LODS || (this.frameSequence >= 3 && allowCmdgen && this.lastInvalidSampledRenderListEntryCount == 0);
         String waitingReason = renderListReadbackWaitingReason(maxEntryCount, goodCounter);
         String reason = allowIndirect ? "ready" : (!goodCounter ? "waiting_for_valid_render_list_readback" : (!noCorruption ? "previous_frame_corruption_detected" : (this.frameSequence < 2 ? "frame_stage_wait_n1" : "frame_stage_wait_n2")));
         LAST_FRAME_SAFETY_STATE = new FrameSafetyState(allowCmdgen, allowIndirect, reason);
